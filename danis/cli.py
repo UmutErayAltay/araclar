@@ -29,6 +29,22 @@ VARSAYILAN_SORU = "Bu dosyayı 3-5 cümleyle özetle."
 _MAX_SORU_UZUNLUK = 500
 
 
+def _utf8_akislari_zorla() -> None:
+    """stdout/stderr'ı UTF-8'e sabitler.
+
+    Neden şart: Windows'ta stdout bir KONSOLA değil de bir BORUYA (yönlendirme,
+    CI log toplama) bağlandığında Python ANSI kod sayfasını (varsayılan cp1252)
+    kullanır. cp1252'de Türkçe noktasız "ı" (U+0131) yoktur; argparse `--help`
+    metnini basarken `UnicodeEncodeError` fırlatıp süreci çökertiyordu.
+
+    Neden `errors="replace"`: kodlanamayan bir karakter gelirse çökmek yerine
+    yer tutucuyla devam et. Sessiz başarısızlık değil — asıl amaç ÇÖKMEMEK.
+    """
+    for akis in (sys.stdout, sys.stderr):
+        if hasattr(akis, "reconfigure"):
+            akis.reconfigure(encoding="utf-8", errors="replace")
+
+
 def _hata_istemi(args: argparse.Namespace, client: CorLLMClient) -> int:
     ham = client.complete(prompt_olustur(args.komut, args.cikis_kodu))
     sonuc = yaniti_ayikla(ham)
@@ -69,6 +85,9 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # argparse çalışmadan ÖNCE: `--help` bile Türkçe basıyor, kod sayfası
+    # dar olduğunda ilk çöken yer burasıdır.
+    _utf8_akislari_zorla()
     args = _parser().parse_args(argv)
     client = CorLLMClient()
     try:

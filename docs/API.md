@@ -38,6 +38,7 @@ danis/
     test_dosya_metni.py
     test_cli_hata.py
     test_cli_dosya.py
+    test_cli_encoding.py # gerçek subprocess, PYTHONIOENCODING=cp1252
     test_shell_hook.py   # gerçek bash subprocess, danis.sh source edilir
   docs/API.md            # bu dosya
   .github/workflows/build-windows.yml   # PyInstaller onefile → danis.exe artifact
@@ -124,6 +125,26 @@ danis dosya <dosya_yolu> [soru]
   yoksa / desteklenmeyen tür / boşsa açık hata mesajı + çıkış kodu 1.
 - Her iki komut da `argparse` ile; `-h/--help` çalışır durumda olmalı.
 
+### Kodlama sözleşmesi (Türkçe çıktı)
+
+Tüm kullanıcıya dönük metin Türkçedir ve Türkçe noktasız `ı` (U+0131) içerir.
+Windows'ta stdout bir **konsola değil boruya** (yönlendirme, CI log toplama)
+bağlandığında Python ANSI kod sayfasına (varsayılan `cp1252`) düşer; `cp1252`
+`ı`yı kodlayamadığı için `danis --help` `UnicodeEncodeError` ile çöker ve
+`Build Windows` işinin smoke test adımını düşürürdü.
+
+Bu yüzden `main()`, `argparse` çalışmadan **önce** `_utf8_akislari_zorla()` ile
+`sys.stdout`/`sys.stderr`'ı `encoding="utf-8", errors="replace"` olarak sabitler.
+`errors="replace"` bilinçlidir: kodlanamayan bir karakterde çökmek yerine yer
+tutucuyla devam edilir. Tek noktada yapılır — `shell/danis.sh` ve `danis.ps1`
+`python3 -m danis.cli` çağırdığı için ikisi de aynı `main()`'den geçer.
+
+`PYTHONIOENCODING=cp1252` altında `stdout` `strict`, `stderr` ise
+`backslashreplace` ile başlar: yani **asıl çökme stdout'tadır**; stderr zaten
+çökmeyip Türkçe harfleri `ı` biçiminde bozuk basardı. Sabitleme ikisini de
+düzeltir. `tests/test_cli_encoding.py` bu sözleşmeyi GERÇEK alt süreçle korur
+(mock yok).
+
 ## `shell/danis.sh` (bash/zsh)
 
 - `PROMPT_COMMAND`'a eklenen bir fonksiyon: her komuttan sonra `$?`'yi
@@ -177,8 +198,10 @@ belirtilmeli, "test ettim" denmemeli).
 
 Mock YOK: gerçek bash subprocess, gerçek örnek dosyalar (küçük bir .txt/.md/
 .pdf/.docx tests/fixtures/ altında), cor için yerel sahte `http.server`
-(ne-izlesem/tests'teki desendeki gibi). `@pytest.mark.integration` gerçek cor
-proxy'sine karşı (bu container'da `cor start` ile MEVCUT, çalıştırılabilir)
+(ne-izlesem/tests'teki desendeki gibi). `tests/test_cli_encoding.py` de aynı
+felsefeyle GERÇEK alt süreç başlatır — `PYTHONIOENCODING=cp1252` verilerek
+Windows'taki dar kod sayfası taklit edilir. `@pytest.mark.integration` gerçek
+cor proxy'sine karşı (bu container'da `cor start` ile MEVCUT, çalıştırılabilir)
 — varsayılan `pytest` çalıştırmasında bu marker'lı testler de dahil (cor
 gerçekten burada çalışıyor, atlamaya gerek yok; sadece CI'da cor yoksa diye
 `addopts` ile decoupled bırakılabilir, agent karar verebilir).

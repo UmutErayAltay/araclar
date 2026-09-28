@@ -3,6 +3,8 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+# PyInstaller'ın ürettiği geçici tanım dosyası; CI komut satırından üretir.
+*.spec
 *.egg-info/
 .venv/
 venv/

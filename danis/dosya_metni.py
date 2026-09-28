@@ -12,9 +12,16 @@ from pathlib import Path
 MAX_KARAKTER = 12000
 KIRPMA_NOTU = "\n\n[... kırpıldı ...]"
 
+# NUL bayt taraması yalnızca bu kadar bayta bakar: pratikte ikili dosyalar
+# baştan itibaren NUL içerir, 8 KiB maliyetli bir güvenlik ağı için fazlasıyla
+# yeterlidir (dosyanın tamamını diske çıkarmadan karar vermek).
+NUL_TARAMA_BOYUTU = 8192
+
 # API.md: "bilinmeyen metin uzantıları → doğrudan oku" AMA "desteklenmeyen
 # uzantı (ör. resim) → hata". İkisini birleştiren çözüm: metin olmayan türler
 # KESİN olarak listelenip reddedilir, geri kalan her şey metin varsayılır.
+# Liste dışı kalanlar (`.blend`, `.dat`, ...) için liste bir ikili garantisi
+# DEĞİLDİR: içerik bazlı NUL taraması ikinci güvenlik ağıdır.
 _METIN_UZANTILARI = frozenset({".txt", ".md", ".py", ".json", ".csv"})
 _METIN_DEGIL_UZANTILARI = frozenset(
     {
@@ -43,6 +50,10 @@ class DosyaTuruDesteklenmiyorError(DosyaHatasi):
 
 class BosDosyaError(DosyaHatasi):
     """Dosya okundu ama içinde anlamlı metin yok."""
+
+
+class IkiliDosyaError(DosyaHatasi):
+    """Metin sanılan ama içerik ikili (NUL bayt içeren) çıktı."""
 
 
 def metni_cikar(dosya_yolu: Path) -> str:
@@ -75,8 +86,13 @@ def _kirp(metin: str) -> str:
 
 
 def _duz_metni(yol: Path) -> str:
-    """UTF-8, okunamayan baytlar `errors="replace"` ile değiştirilir."""
-    return yol.read_text(encoding="utf-8", errors="replace")
+    ham = yol.read_bytes()
+    if b"\x00" in ham[:NUL_TARAMA_BOYUTU]:
+        raise IkiliDosyaError(
+            f"İkili/okunamayan bir dosya gibi görünüyor (NUL bayt içeriyor): {yol}"
+        )
+    # UTF-8, okunamayan baytlar `errors="replace"` ile değiştirilir.
+    return ham.decode("utf-8", errors="replace")
 
 
 def _pdf_metni(yol: Path) -> str:

@@ -65,6 +65,21 @@ def test_unsupported_type_exits_nonzero_with_ocr_hint(
     assert "kısayol" in hata
 
 
+def test_binary_file_exits_nonzero_with_nul_hint(
+    cli_cor: FakeCorServer, capsys, tmp_path: Path
+) -> None:
+    """İkili dosya: net Türkçe mesaj, çıkış kodu 1, LLM'ye istek gitmez."""
+    yol = tmp_path / "veri.dat"
+    yol.write_bytes(b"\x00\x01\x02\x03sonrasigarki")
+
+    assert main(["dosya", str(yol)]) == 1
+
+    hata = capsys.readouterr().err
+    assert "NUL bayt" in hata
+    assert "İkili" in hata
+    assert cli_cor.hits == 0
+
+
 def test_empty_file_exits_nonzero(cli_cor: FakeCorServer, capsys, tmp_path: Path) -> None:
     yol = tmp_path / "bos.txt"
     yol.write_text("   \n", encoding="utf-8")

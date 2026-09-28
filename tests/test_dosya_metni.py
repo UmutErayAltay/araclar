@@ -13,9 +13,11 @@ import pytest
 from conftest import FIXTURE_DIR
 from danis.dosya_metni import (
     MAX_KARAKTER,
+    NUL_TARAMA_BOYUTU,
     BosDosyaError,
     DosyaBulunamadiError,
     DosyaTuruDesteklenmiyorError,
+    IkiliDosyaError,
     metni_cikar,
 )
 
@@ -63,11 +65,56 @@ def test_extension_match_is_case_insensitive(tmp_path: Path) -> None:
 
 
 def test_undecodable_bytes_are_replaced_not_fatal(tmp_path: Path) -> None:
-    """`errors="replace"`: bozuk bayt ölümcül hata değil."""
+    """`errors="replace"`: bozuk bayt ölümcül hata değil.
+
+    NUL içermeyen bozuk baytlar hâlâ düzeltilerek geçer; NUL baytı ise aşağıdaki
+    ikili kontrolüne takılır.
+    """
     yol = tmp_path / "bozuk.txt"
     yol.write_bytes(b"onceki \xff\xfe sonrasi")
     metin = metni_cikar(yol)
     assert "onceki" in metin and "sonrasi" in metin
+
+
+# --------------------------------------------------------------------- #
+# NUL baytı / ikili dosya güvenlik ağı
+# --------------------------------------------------------------------- #
+
+
+def test_binary_fixture_file_raises_ikili_dosya() -> None:
+    """tests/fixtures/ikili.dat: gerçek ikili bayt, bilinmeyen uzantı.
+
+    Uzantı listesinde olmayan gerçek bir ikili dosya, `errors="replace"` ile
+    sessizce bozuk karakter yığınına çevrilip cor'a gönderilmemeli.
+    """
+    with pytest.raises(IkiliDosyaError) as exc:
+        metni_cikar(FIXTURE_DIR / "ikili.dat")
+    assert "NUL bayt" in str(exc.value)
+    assert "ikili.dat" in str(exc.value)
+
+
+def test_nul_byte_in_known_text_extension_also_raises(tmp_path: Path) -> None:
+    """Kontrol bilinen metin uzantılarına da uygulanır (tutarlılık)."""
+    yol = tmp_path / "sahte.txt"
+    yol.write_bytes(b"metin gibi gorunuyor\x00\x00ama ikili")
+    with pytest.raises(IkiliDosyaError):
+        metni_cikar(yol)
+
+
+def test_nul_after_scan_window_is_not_fatal(tmp_path: Path) -> None:
+    """Tarama yalnızca ilk 8192 bayta bakar: sınırın ötesi kasıtlı olarak kör."""
+    yol = tmp_path / "gec_nul.txt"
+    yol.write_bytes(b"a" * (NUL_TARAMA_BOYUTU + 100) + b"\x00" + b"b" * 10)
+    metin = metni_cikar(yol)
+    assert metin.startswith("a" * 10) and metin.endswith("b" * 10)
+
+
+def test_utf8_multibyte_characters_are_not_mistaken_for_binary(tmp_path: Path) -> None:
+    """Türkçe karakterlerde NUL olmayan çok baytlı diziler yanlışlıkla reddedilmez."""
+    yol = tmp_path / "turkce.txt"
+    icerik = "ğüşiöç ĞÜŞİÖÇ — çalıştı ✓ 漢字"
+    yol.write_text(icerik, encoding="utf-8")
+    assert metni_cikar(yol) == icerik
 
 
 # --------------------------------------------------------------------- #

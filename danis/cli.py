@@ -17,6 +17,7 @@ from danis.dosya_metni import (
     BosDosyaError,
     DosyaBulunamadiError,
     DosyaTuruDesteklenmiyorError,
+    IkiliDosyaError,
     metni_cikar,
 )
 from danis.hata_analiz import prompt_olustur, yaniti_ayikla
@@ -85,6 +86,13 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"Hata: Bu dosya türü {exc}. Önce OCR ile metne çevirin "
             "(örn. kısayol projesi).",
+            file=sys.stderr,
+        )
+        return 1
+    except IkiliDosyaError as exc:
+        print(
+            f"Hata: {exc}. Bu içerik ikili; metne çevirmek için önce bir "
+            "metin çıkarma aracı kullanın.",
             file=sys.stderr,
         )
         return 1

@@ -151,21 +151,68 @@ alıp ortam değişkeni olarak eklemeli, bu Faz'ın bilinen açık ucu).
 
 ## Yeni backend modülü
 
-- `app/recommend.py` — `recommend(mood: str, existing_titles: list[str],
-  tmdb_client, cor_client) -> list[dict]`. Akış: TMDB `discover/movie`
-  ve `discover/tv`'den (mood'a kabaca eşlenen tür/genre filtresiyle —
-  örn. "hafif" → Comedy, "gerilim" → Thriller; eşleşme
-  `app/recommend.py` içinde küçük bir sözlükle yapılır, LLM'e
-  bırakılmaz) bir aday havuzu çek, `existing_titles`'ta (case-insensitive)
-  olanları ele, kalanlardan cor üzerinden (bkz. `app/llm.py` — `anlat`
-  projesindeki `narrator.py::CorLLMClient` ile AYNI desen: stdlib
-  `urllib`, `POST {COR_BASE_URL}/v1/messages`, retry sadece 5xx'te) en
+- `app/external/tmdb.py`'ye YENİ bir metod eklenir (mevcut `search`/
+  `watch_providers`'a dokunma): `discover(media_type: str, genre_id: int,
+  page: int = 1) -> list[dict]` → `/discover/{media_type}` (`with_genres`,
+  `language=tr-TR`, `sort_by=popularity.desc`), dönüş şekli `search()` ile
+  AYNI (`{title, year, poster_url, external_id, overview}`). Aynı hata
+  deseni (`TMDBError`), aynı `limit`/kırpma yaklaşımı yok (aday havuzu
+  için TMDB'nin varsayılan sayfa boyutu — genelde 20 — yeterli).
+- `app/recommend.py` — sabit bir `MOOD_GENRE_MAP` sözlüğü (anahtar:
+  küçük harf Türkçe ruh hali kelimesi, değer: `{"movie": genre_id,
+  "tv": genre_id}`). Aşağıdaki tabloyu BİREBİR kullan (TMDB'nin resmi
+  genre id'leri, uydurma):
+
+  | Anahtar kelimeler (girişte substring arar) | movie genre_id | tv genre_id |
+  | --- | --- | --- |
+  | hafif, eğlenceli, rahatlatıcı, komedi | 35 (Comedy) | 35 (Comedy) |
+  | gerilim, heyecan, gizem | 53 (Thriller) | 9648 (Mystery) |
+  | korku | 27 (Horror) | 9648 (Mystery) |
+  | romantik, aşk | 10749 (Romance) | 18 (Drama) |
+  | aksiyon | 28 (Action) | 10759 (Action & Adventure) |
+  | bilim kurgu, fantastik, uzay | 878 (Science Fiction) | 10765 (Sci-Fi & Fantasy) |
+  | duygusal, ağlatan, dram | 18 (Drama) | 18 (Drama) |
+  | aile, çocuk | 10751 (Family) | 10751 (Family) |
+  | (eşleşme yoksa varsayılan) | 18 (Drama) | 18 (Drama) |
+
+  Eşleştirme: `mood.lower()` içinde yukarıdaki anahtar kelimelerden biri
+  substring olarak geçiyorsa o satır kullanılır (ilk eşleşen kazanır,
+  sırayı tablodaki gibi koru); hiçbiri geçmiyorsa varsayılan (Drama)
+  satırı kullanılır — asla "eşleşme yok" diye hata verme, her zaman bir
+  aday havuzu üretilebilmeli.
+
+  `recommend(mood: str, existing_titles: list[str], tmdb_client,
+  cor_client) -> list[dict]`. Akış: `MOOD_GENRE_MAP`'ten genre_id'leri
+  bul, `tmdb_client.discover("movie", movie_genre_id)` VE
+  `tmdb_client.discover("tv", tv_genre_id)` ile aday havuzu kur (ikisini
+  birleştir, movie sonuçlarına `kind="film"`, tv sonuçlarına `kind="dizi"`
+  etiketi ekle), `existing_titles`'ta (case-insensitive tam eşleşme)
+  olanları ele. Kalan adaylardan (en fazla ilk 15'i cor'a gönder — tüm
+  havuzu değil, prompt'u şişirme) cor üzerinden (bkz. `app/llm.py`) en
   fazla 5 tanesini seçtirip her biri için tek cümlelik Türkçe gerekçe
-  üretilir. Aday havuzu boşsa veya cor boş/bozuk cevap dönerse sessizce
-  sahte/boş öneri UYDURMA — `RecommendationError` fırlat, üst katman
-  kullanıcıya açık bir hata gösterir.
-- `COR_BASE_URL` ortam değişkeni (varsayılan `http://127.0.0.1:8787`),
-  `COR_MODEL` (varsayılan `stealth/space-bunny-alpha`).
+  üretilir. Aday havuzu boşsa (her iki discover de boş VEYA hepsi
+  `existing_titles`'ta) `RecommendationError("bu ruh haline uygun,
+  henüz eklemediğin bir aday bulunamadı")` fırlat. cor boş/bozuk cevap
+  dönerse yine `RecommendationError` — sessizce sahte/boş öneri UYDURMA.
+
+- `app/llm.py` — `anlat` projesindeki `generator/narrator.py::CorLLMClient`
+  ile AYNI desen (stdlib `urllib`, `POST {COR_BASE_URL}/v1/messages`,
+  retry SADECE 5xx'te, `LLMClient` Protocol ile test'te sahte istemci
+  enjekte edilebilir). `COR_BASE_URL` ortam değişkeni (varsayılan
+  `http://127.0.0.1:8787`), `COR_MODEL` (varsayılan
+  `stealth/space-bunny-alpha`).
+
+  Prompt sözleşmesi: `recommend()` cor'a adayların `title` + `overview`
+  (varsa) listesini ve kullanıcının ruh halini vererek, YANITIN
+  SADECE bir JSON dizisi olmasını iste (kod bloğu/açıklama YOK):
+  `[{"title": "<adaylardan birebir bir başlık>", "reason": "<tek cümle
+  Türkçe gerekçe>"}, ...]`, en fazla 5 eleman. `recommend()` bu JSON'u
+  ayrıştırır (markdown kod bloğu ile sarılmışsa \`\`\` işaretlerini
+  kırpıp yine dener), her `title`'ı aday havuzuyla eşleştirir (birebir
+  eşleşmeyeni SESSİZCE ATLA, uydurma başlık ekleme), sonucu adayın
+  `kind`/`poster_url`/`external_id`/`external_source` alanlarıyla
+  birleştirip döner. JSON ayrıştırılamazsa veya eşleşen hiçbir aday
+  kalmazsa `RecommendationError`.
 
 ## Yeni uç nokta
 

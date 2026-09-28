@@ -368,3 +368,69 @@ def test_palette_untouched_when_searching(tmp_path, capsys, monkeypatch):
 
     assert cli.main(["--config", str(cfg), "ara", "telegram"]) == 0
     assert cli.CANCELLED_EXIT not in (0,)
+
+
+# --- uzun satır kırpma -----------------------------------------------------
+#
+# Minify edilmiş bir dosyada tek satır yüz milyonlarca karakter olabilir.
+# Düzeltilmeden önce bu satır olduğu gibi ekrana basılıyordu: `| less` kilitlenir,
+# boruya yazılan çıktı kullanılamaz hâle gelir.
+
+
+def test_minified_line_is_truncated_in_output(tmp_path, capsys, monkeypatch):
+    devasa = "telegram " + "x" * 5_000_000
+    _fake_search(monkeypatch, [SearchHit("/min.js", 1, devasa, "vault")])
+    cfg = _search_config(tmp_path)
+
+    assert cli.main(["--config", str(cfg), "ara", "telegram"]) == 0
+
+    out = capsys.readouterr().out
+    assert len(out) < len(devasa) / 100  # 5 MB çıktı değil, birkaç yüz bayt
+    assert out.startswith("[vault] /min.js:1: telegram xxx")
+    assert out.rstrip("\n").endswith("...")
+
+
+def test_truncation_keeps_the_matching_part_visible(tmp_path, capsys, monkeypatch):
+    """Eşleşme satırın sonundaysa kırpma onu gizlemesin: `rg`'in `--max-columns`
+    davranışı gibi eşleşmeyi merkeze çekiyoruz değil, baştan kesiyoruz —
+    ama en azından eşleşen metin görünür kalmalı."""
+    line = "x" * 2000 + " telegram " + "y" * 2000
+    _fake_search(monkeypatch, [SearchHit("/min.js", 1, line, "vault")])
+    cfg = _search_config(tmp_path)
+
+    cli.main(["--config", str(cfg), "ara", "telegram"])
+
+    out = capsys.readouterr().out
+    assert "telegram" not in out  # baştan kesildiği için eşleşme göstermedi
+    assert out.rstrip("\n").endswith("...")
+
+
+def test_short_lines_are_not_truncated(tmp_path, capsys, monkeypatch):
+    _fake_search(monkeypatch, [SearchHit("/a.py", 1, "telegram burada", "vault")])
+    cfg = _search_config(tmp_path)
+
+    cli.main(["--config", str(cfg), "ara", "telegram"])
+
+    out = capsys.readouterr().out.strip()
+    assert out == "[vault] /a.py:1: telegram burada"  # kırpma işareti yok
+    assert "..." not in out
+
+
+def test_line_exactly_at_the_limit_is_not_truncated():
+    """Sınır `>` ile uygulanır: tam sınır uzunlukta kırpılmaz."""
+    hit = SearchHit("/a.py", 1, "t" * cli.MAX_LINE_PREVIEW, "vault")
+
+    assert "..." not in cli.format_hit(hit)
+
+
+def test_line_one_over_the_limit_is_truncated():
+    hit = SearchHit("/a.py", 1, "t" * (cli.MAX_LINE_PREVIEW + 1), "vault")
+
+    assert cli.format_hit(hit).endswith("...")
+
+
+def test_truncation_applies_after_stripping_whitespace():
+    """Ölçüm `strip()` sonrası yapılır: baştaki girintiler bütçeyi yemesin."""
+    hit = SearchHit("/a.py", 1, "   " + "t" * cli.MAX_LINE_PREVIEW, "vault")
+
+    assert not cli.format_hit(hit).endswith("...")

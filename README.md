@@ -101,6 +101,8 @@ Her sonuç `[kök] yol:satır_no: satır` biçimindedir:
   "en son ne yapmıştık" sorusunun cevabı en üstte.
 - Sorgu **düz metindir**, regex değil: `kp ara "c++"` çalışır.
 - Büyük harf varsa duyarlı, yoksa duyarsız arar (ripgrep'in `--smart-case` kuralı).
+- Eşleşen satır en fazla **500 karakter** gösterilir; minify edilmiş devasa
+  satırlar ekranı (ve `less`'i) kilitlemesin diye kırpılır.
 - `search_roots` tanımlı değilse ya da sorgu boşsa anlamlı bir mesajla çıkar.
 - Bulunmayan/erişilemeyen kökler sessizce atlanır.
 
@@ -122,13 +124,29 @@ dakikalar). Kurulum önerilir ama zorunlu değildir.
 
 İki motor arasındaki tek bilinçli fark `.gitignore`'dır: `rg` onu uygular
 (bırakılan `config.yaml`, `.env`, `*.log` dosyaları sonuçlarda görünmez), saf
-Python motoru uygulamaz. Aynı makinede iki motoru karşılaştırmak için:
+Python motoru uygulamaz. Gizli dosya/dizinler (`.env`, `.git/`, nokta ile
+başlayan her şey) ve sembolik bağlar ise **iki motorda da** atlanır; `rg` bunu
+varsayılan olarak yapar, Python motoru da aynı kuralı uygular. Tek istisna:
+`search_roots`'a nokta ile başlayan bir kök yazarsan (`.vault`) o kökün *içi*
+taranır — istediğin için seçmişsindir.
+
+Aynı makinede iki motoru karşılaştırmak için:
 
 ```bash
 kp ara telegram | sort > /tmp/rg.txt
 kp ara telegram --no-ripgrep | sort > /tmp/py.txt
 diff /tmp/rg.txt /tmp/py.txt
 ```
+
+> **Dikkat:** `kp ara` eşleşen satırın **tamamını** düz metin olarak ekrana (ve
+> `| less`, `| tee dosya` gibi borularda oraya) basar — bu, aramanın amacıdır.
+> Vault'unda API anahtarı, parola veya kişisel not varsa bunlar ekrana da
+> geçmiş olur: geçmişe giden terminal kaydı (scrollback), shell geçmişi veya
+> `tee` ile yazdığın dosya saklar. Hassas içerik taşıyan kökleri aramak
+> istemiyorsan daralt (`kp ara telegram --limit 5`) ya da o kökü
+> `search_roots`'tan çıkar. Ekran görüntüsü/alıntı paylaşırken de satır
+> kırpılır (500 karakter), ama bu koruma boruya yazdığın metni değil, yalnızca
+> ekran çıktısını sınırlar.
 
 `kp --list` çıktısı script'lenebilir — etiket, tag'ler ve komut ` · ` ile
 ayrılmış tek satırdadır:

@@ -26,12 +26,24 @@ edilmez. Bu kasıtlı ve "beklenmeyen bir tutarsızlık" değil: `kp ara`'nın c
 arama cevabında görünmemeleri doğrudur. Bu yüzden modüller arası eşitlik
 gereksinimi *aynı motorun* iki kez çalıştırılmasıyla test edilir; iki motor
 karşılaştırılırken de testler bunu açıkça hesaba katar (bkz. tests/test_search.py).
+
+`.gitignore`'daki bu farkın dışında iki motor **aynı dosyaları** bulmak zorundadır:
+gizli dosya/dizinler (`SKIP_HIDDEN`), sembolik bağlar, `build/` gibi ağır dizinler
+ve binary içerik iki motorda da aynı şekilde elenir. Arama yüzeyi farklılaşırsa
+"hangi makinede çalıştım" sorusunun cevabı da değişir.
+
+Okuma tarafında iki savunma vardır ve ikisi de `open`den **önce** çalışır:
+sembolik bağlar (kök dışına çıkabilirler) ve normal olmayan dosyalar (FIFO'da
+`open` yazıcı bekler ve sonsuza kadar asılı kalır) atlanır. Sınır koymadan
+`--no-ripgrep` ile çalışan bir kullanıcı, vault'unda bir log borusu bulunan bir
+makinede takılı kalırdı.
 """
 from __future__ import annotations
 
 import os
 import re
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 from typing import Any, Iterable, Iterator, NamedTuple
@@ -53,9 +65,15 @@ RG_TIMEOUT = 30.0
 BINARY_SNIFF_BYTES = 8192
 
 #: Gizli dosya/dizinler iki motorda da atlanır. `rg` bunu varsayılan olarak
-#: yapar (bayrak verilmez); Python motoru de aynı kuralı uygular. Bu bir seçim:
-#: Umut'un vault'unda notlar `🏰 300-Projects/...` gibi emoji'li dizinlerde
-#: yaşıyor (gizli *değil*, unicode) ve bunlar her iki motorda da bulunur.
+#: yapar (bayrak verilmez); Python motoru de aynı kuralı uygular (`_is_skippable`
+#: hem dosya adına hem dizin adına bakar). Bu bir seçim: Umut'un vault'unda
+#: notlar `🏰 300-Projects/...` gibi emoji'li dizinlerde yaşıyor (gizli *değil*,
+#: unicode) ve bunlar her iki motorda da bulunur.
+#:
+#: Kök dizinin kendisi istisnadır: kullanıcı `search_roots`'a nokta ile başlayan
+#: bir yol yazdıysa (`.vault`, `~/.notes`) o *bilerek* seçilmiştir, `rg` de
+#: böyle bir kökün içini tümüyle tarar. Kural yalnızca kökün *altındakilere*
+#: uygulanır, yoksa `.vault` config'leyen kullanıcı hiçbir sonuç alamazdı.
 SKIP_HIDDEN = True
 
 _RG_FLAGS = (
@@ -256,25 +274,62 @@ def _make_matcher(query: str) -> re.Pattern[str] | None:
 
 
 def _iter_files(root: Path) -> Iterator[Path]:
-    """Kökün altındaki dosyaları üretir; ağır/gizli dizinlere inmez.
+    """Kökün altındaki *normal* dosyaları üretir; ağır/gizli dizinlere inmez.
 
     `os.walk`'in `onerror`i boş: erişilemeyen dizin programı durdurmaz, sadece
     o dal taranmaz (Dalga A'daki keşifle aynı tavır).
+
+    Dosyalar da süzülür, sadece dizinler değil: aksi hâlde kökün içindeki
+    `.env`/`.htpasswd` gibi gizli dosyalar Python motoruna sızar, `rg` ise
+    (varsayılan olarak) bunları hiç göstermez — aynı sorgu iki makinede iki
+    farklı cevap verirdi. Aynı sebeple sembolik bağ atlanır: `rg` bağı izlemez,
+    Python `os.walk`'ı izler ve bağın gösterdiği dosyayı ikinci kez, hatta
+    döngüsel bağlarda sonsuza kadar raporlar.
     """
     for dirpath, dirnames, filenames in os.walk(str(root), onerror=lambda _e: None):
-        dirnames[:] = [d for d in dirnames if _is_searchable_dir(d)]
+        dirnames[:] = [d for d in dirnames if not _is_skippable(d, is_dir=True)]
         for name in sorted(filenames):
-            yield Path(dirpath) / name
+            if not _is_skippable(name):
+                yield Path(dirpath) / name
 
 
-def _is_searchable_dir(name: str) -> bool:
-    if name in SKIP_DIR_NAMES:
-        return False
-    return not (SKIP_HIDDEN and name.startswith("."))
+def _is_skippable(name: str, *, is_dir: bool = False) -> bool:
+    """Adı ya da dosya türü bu girişi arama dışı bırakıyor mu?
+
+    `is_dir` yalnızca ad tabanlı kuralın (SKIP_DIR_NAMES) dizinlere özgü
+    olması için ayrım taşır: `build` adlı bir *dosya* normal dosyadır, `build/`
+    dizini ise atlanır — `rg`'nin `--glob=!build/**` davranışı da böyledir.
+    """
+    if is_dir and name in SKIP_DIR_NAMES:
+        return True
+    return SKIP_HIDDEN and name.startswith(".")
+
+
+def _is_readable_regular_file(path: Path) -> bool:
+    """Sadece normal dosya mı? Sembolik bağ ve özel dosyalar elenir.
+
+    **Neden `stat`?** `open()` FIFO'da (named pipe) yazıcı gelene kadar bloklanır
+    — vault'ta `/var/run/docker.sock` ya da bir log borusu `open`i sonsuza
+    kadar asılı tutar ve `kp ara` hiç dönmemeye başlar. Kontrol `open`'dan
+    ÖNCE yapılmalıdır, çünkü sorun tam olarak `open`in bloklanmasıdır.
+
+    `follow_symlinks=False`: bağın *kendisi* sorulur. `rg` sembolik bağları
+    izlemez, biz de izlemeyelim — yoksa bir bağ klasör dışına çıkıp kökün
+    dışından sonuç getirebilir. Sıfırlanmayan yarım yazılmış dosya (orphan inode)
+    zaten `S_ISREG` değildir ve atlanır.
+    """
+    try:
+        return stat.S_ISREG(os.stat(path, follow_symlinks=False).st_mode)
+    except OSError:
+        return False  # stat edilen de yok (kırık bağ) ya da erişilemiyor
 
 
 def _scan_file(path: Path, matcher: re.Pattern[str], limit: int) -> list[tuple[int, str]]:
     """Binary dosyaları ve okunamayanları atlayarak eşleşen satırları verir."""
+    # `open`den ÖNCE: FIFO/soket/cihazda open bloklanır (bkz. _is_readable_regular_file).
+    if not _is_readable_regular_file(path):
+        return []
+
     try:
         with path.open("rb") as f:
             if b"\0" in f.read(BINARY_SNIFF_BYTES):

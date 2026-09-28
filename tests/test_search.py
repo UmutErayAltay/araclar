@@ -544,3 +544,180 @@ def test_python_engine_reads_files_and_walks_directories(tmp_path):
     (deep / "not.md").write_text("telegram\n", encoding="utf-8")
 
     assert search("telegram", [root], use_ripgrep=False)[0].path == str(deep / "not.md")
+
+
+# --- iki motorun aynı dosyaları bulması (gizli dosya / bağ / özel dosya) ----
+#
+# Aşağıdaki testler kabul edilen TEK farkın (`.gitignore`) dışında iki motorun
+# aynı sonucu vermesini gerçek dosya sistemiyle doğrular. Hepsi `tmp_path`
+# üzerinde kurulur, mock yoktur: söz konusu olan tam olarak I/O davranışı.
+
+
+def test_hidden_files_are_skipped_by_both_engines(tmp_path):
+    """`.env` sonuçlara sızmamalı. `rg` bunu varsayılan olarak yapar; Python
+    motoru de aynı kuralı uygular. Düzeltilmeden önce Python motoru `.env`i
+    getiriyor, `rg` getirmiyordu — aynı sorgu iki farklı cevap alıyordu."""
+    root = tmp_path / "kule"
+    _write(root / "app" / "main.py", "telegram normal\n")
+    _write(root / ".env", "API_KEY=gizli telegram\n")
+    _write(root / ".htpasswd", "telegram gizli\n")
+
+    for engine in (True, False):
+        hits = search("telegram", [root], use_ripgrep=engine)
+        assert [Path(h.path).name for h in hits] == ["main.py"], engine
+
+
+def test_hidden_directories_are_skipped_by_both_engines(tmp_path):
+    root = tmp_path / "kule"
+    _write(root / "app" / "main.py", "telegram\n")
+    _write(root / ".secret" / "not.md", "telegram gizli\n")
+
+    for engine in (True, False):
+        hits = search("telegram", [root], use_ripgrep=engine)
+        assert [Path(h.path).name for h in hits] == ["main.py"], engine
+
+
+def test_symlinks_are_not_followed_by_both_engines(tmp_path):
+    """`rg` sembolik bağı izlemez; Python motoru de izlememeli.
+
+    Bağ iki sorun birden çözerdi: kökün dışındaki dosyayı sonuçlara sızdırırdı
+    ve köke geri bağlanan bir bağda `os.walk` sonsuza kadar döngüye girerdi.
+    """
+    root = tmp_path / "kule"
+    _write(root / "app" / "main.py", "telegram\n")
+    outside = _write(tmp_path / "disarida" / "gizli.py", "telegram disarida\n")
+    (root / "bag.py").symlink_to(outside)
+
+    for engine in (True, False):
+        hits = search("telegram", [root], use_ripgrep=engine)
+        assert [Path(h.path).name for h in hits] == ["main.py"], engine
+
+
+def test_symlinked_directory_is_not_traversed(tmp_path):
+    root = tmp_path / "kule"
+    _write(root / "app" / "main.py", "telegram\n")
+    disarida = tmp_path / "disarida"
+    _write(disarida / "gizli.py", "telegram disarida\n")
+    (root / "bagdir").symlink_to(disarida, target_is_directory=True)
+
+    for engine in (True, False):
+        hits = search("telegram", [root], use_ripgrep=engine)
+        assert [Path(h.path).name for h in hits] == ["main.py"], engine
+
+
+def test_hidden_root_directory_is_still_searched(tmp_path):
+    """Nokta ile başlayan *kök* atlanmaz: kullanıcı `search_roots`'a `.vault`
+    yazdıysa bilerek seçmiştir. `rg` de böyle davranır; kökün altındakiler
+    yine gizli kuralına tabidir."""
+    root = tmp_path / ".vault"
+    _write(root / "not.md", "telegram kökte\n")
+    _write(root / ".gizli", "telegram gizli\n")
+
+    for engine in (True, False):
+        hits = search("telegram", [root], use_ripgrep=engine)
+        assert [Path(h.path).name for h in hits] == ["not.md"], engine
+
+
+def test_build_named_file_is_still_searched(tmp_path):
+    """`SKIP_DIR_NAMES` yalnızca *dizin* adları için: `build` adlı normal bir
+    dosya elenmemeli (`rg`'in `--glob=!build/**` davranışı da böyle).
+
+    Dosya ve dizin aynı adı taşıyamayacağı için iki ayrı kök kurulur.
+    """
+    dosya_koku = tmp_path / "kule"
+    _write(dosya_koku / "build", "telegram dosya\n")
+    dizin_koku = tmp_path / "kule2"
+    _write(dizin_koku / "build" / "cikti.js", "telegram dizin\n")
+
+    for engine in (True, False):
+        dosya_adlari = [
+            Path(h.path).name for h in search("telegram", [dosya_koku], use_ripgrep=engine)
+        ]
+        dizin_adlari = [Path(h.path).name for h in search("telegram", [dizin_koku], use_ripgrep=engine)]
+        assert dosya_adlari == ["build"], engine
+        assert dizin_adlari == [], engine
+
+
+# --- FIFO / özel dosyalar --------------------------------------------------
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="platformda mkfifo yok")
+def test_named_pipe_does_not_hang_the_search(tmp_path):
+    """FIFO'da `open()` yazıcı gelene kadar BLOKLANIR.
+
+    Düzeltilmeden önce `kp ara` bir log borusuna denk geldiğinde sonsuza
+    kadar asılı kalıyordu (8 sn'de hâlâ dönmüyordu). `os.mkfifo` ile gerçekten
+    bir FIFO kurulur ve arama `open`a hiç uğramadan geçmeyi zorunlu kılar:
+    test, arama biter bitmez döner, yoksa askıda kalır.
+    """
+    root = tmp_path / "kule"
+    _write(root / "okunur.py", "telegram burada\n")
+    os.mkfifo(root / "boru")
+
+    hits = search("telegram", [root], use_ripgrep=False)
+
+    assert [Path(h.path).name for h in hits] == ["okunur.py"]
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="platformda mkfifo yok")
+def test_fifo_is_skipped_even_when_it_matches(tmp_path):
+    """FIFO'nun içinde eşleşen bir metin olsa bile okunmaya çalışılmaz."""
+    root = tmp_path / "kule"
+    _write(root / "okunur.py", "telegram burada\n")
+    os.mkfifo(root / "boru")
+
+    hits = search("telegram", [root], use_ripgrep=False)
+
+    assert all("boru" not in h.path for h in hits)
+
+
+def test_ripgrep_does_not_hang_on_a_named_pipe_either(tmp_path):
+    """`rg` motoru da aynı ağaçta güvende: iki motor aynı sonucu verir."""
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("platformda mkfifo yok")
+    root = tmp_path / "kule"
+    _write(root / "okunur.py", "telegram burada\n")
+    os.mkfifo(root / "boru")
+
+    with_rg = search("telegram", [root], use_ripgrep=True)
+    without_rg = search("telegram", [root], use_ripgrep=False)
+
+    assert with_rg == without_rg
+    assert [Path(h.path).name for h in without_rg] == ["okunur.py"]
+
+
+def test_socket_and_block_device_are_not_read(tmp_path):
+    """Soket dosyaları da `S_ISREG` değildir; açılmadan atlanmalı."""
+    import socket
+
+    root = tmp_path / "kule"
+    _write(root / "okunur.py", "telegram\n")
+    sock_path = root / "s.sock"
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        sock.bind(str(sock_path))
+    finally:
+        sock.close()
+
+    hits = search("telegram", [root], use_ripgrep=False)
+
+    assert [Path(h.path).name for h in hits] == ["okunur.py"]
+
+
+def test_broken_symlink_does_not_raise(tmp_path):
+    """Kırık bağ `stat` sırasında hata verir; taramayı düşürmemeli."""
+    root = tmp_path / "kule"
+    _write(root / "okunur.py", "telegram\n")
+    (root / "kırık.py").symlink_to(tmp_path / "yok.py")
+
+    assert [Path(h.path).name for h in search("telegram", [root], use_ripgrep=False)] == [
+        "okunur.py"
+    ]
+
+
+def test_directories_are_not_matched_as_files(tmp_path):
+    """Dizin adı arama desenine uyuyorsa sonuç üretmemeli."""
+    root = tmp_path / "kule"
+    (root / "telegram_dizini").mkdir(parents=True)
+
+    assert search("telegram", [root], use_ripgrep=False) == []

@@ -35,6 +35,13 @@ DEFAULT_LIMIT = 50
 #: kullanıcı zaten aramayı daraltabilir.
 MAX_LIMIT = 1000
 
+#: Sonuçta gösterilen eşleşen satırın uzunluk sınırı. Minify edilmiş tek
+#: satırlık bir dosyada satır yüz milyonlarca karakter olabilir: `| less`
+#: kilitlenir, boruya yazılıp script'e girerse çıktı kullanılamaz hâle gelir.
+#: Kırpma sonuç satırında görünür (yoksa kullanıcı eşleşmenin nerede bittiğini
+#: anlamaz) ve aramanın kendisine dokunmaz — eşleşme yine tam dosyada aranır.
+MAX_LINE_PREVIEW = 500
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -192,8 +199,12 @@ def format_hit(hit: SearchHit) -> str:
 
     Kök etiketi başta: kullanıcı ilk bakışta sonucun vault'tan mı repodan mı
     geldiğini görür, uzun yolun arasında aramak zorunda kalmaz.
+
+    Satır `MAX_LINE_PREVIEW` karaktere kırpılır; aşan yer `...` ile belli olur.
     """
     line = hit.line.strip()
+    if len(line) > MAX_LINE_PREVIEW:
+        line = line[:MAX_LINE_PREVIEW] + "..."
     return f"[{hit.root_label}] {hit.path}:{hit.line_number}: {line}"
 
 

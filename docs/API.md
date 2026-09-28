@@ -184,11 +184,15 @@ alıp ortam değişkeni olarak eklemeli, bu Faz'ın bilinen açık ucu).
   `recommend(mood: str, existing_titles: list[str], tmdb_client,
   cor_client) -> list[dict]`. Akış: `MOOD_GENRE_MAP`'ten genre_id'leri
   bul, `tmdb_client.discover("movie", movie_genre_id)` VE
-  `tmdb_client.discover("tv", tv_genre_id)` ile aday havuzu kur (ikisini
-  birleştir, movie sonuçlarına `kind="film"`, tv sonuçlarına `kind="dizi"`
-  etiketi ekle), `existing_titles`'ta (case-insensitive tam eşleşme)
-  olanları ele. Kalan adaylardan (en fazla ilk 15'i cor'a gönder — tüm
-  havuzu değil, prompt'u şişirme) cor üzerinden (bkz. `app/llm.py`) en
+  `tmdb_client.discover("tv", tv_genre_id)` ile aday havuzu kur — SIRAYLA
+  HARMANLA (`movie[0], tv[0], movie[1], tv[1], ...`, biri biterse
+  diğerinden devam), ARDIŞIK BİRLEŞTİRME (önce tüm movie, sonra tüm tv)
+  YAPMA — movie sayfası tek başına 15'lik sınırı doldurup tv'yi hiç
+  LLM'e ulaştırmayabilir. movie sonuçlarına `kind="film"`, tv sonuçlarına
+  `kind="dizi"` etiketi ekle. Harmanlanmış havuzdan `existing_titles`'ta
+  (case-insensitive tam eşleşme) olanları ele. Kalan adaylardan (en fazla
+  ilk 15'i cor'a gönder — tüm havuzu değil, prompt'u şişirme) cor
+  üzerinden (bkz. `app/llm.py`) en
   fazla 5 tanesini seçtirip her biri için tek cümlelik Türkçe gerekçe
   üretilir. Aday havuzu boşsa (her iki discover de boş VEYA hepsi
   `existing_titles`'ta) `RecommendationError("bu ruh haline uygun,

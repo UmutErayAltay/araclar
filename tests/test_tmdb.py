@@ -239,6 +239,105 @@ def test_search_blank_query_raises() -> None:
 
 
 # --------------------------------------------------------------------- #
+# discover
+# --------------------------------------------------------------------- #
+
+
+def test_discover_sends_genre_language_sort_and_page(fake_tmdb: FakeTMDBServer) -> None:
+    fake_tmdb.json_body("/discover/movie", movie_payload())
+    client_for(fake_tmdb).discover("movie", 878)
+
+    request = fake_tmdb.requests[-1]
+    assert request["path"] == "/discover/movie"
+    assert request["query"]["with_genres"] == "878"
+    assert request["query"]["language"] == "tr-TR"
+    assert request["query"]["sort_by"] == "popularity.desc"
+    assert request["query"]["page"] == "1"
+    assert request["query"]["api_key"] == API_KEY
+
+
+def test_discover_honours_page_argument(fake_tmdb: FakeTMDBServer) -> None:
+    fake_tmdb.json_body("/discover/movie", movie_payload())
+    client_for(fake_tmdb).discover("movie", 28, page=3)
+
+    assert fake_tmdb.requests[-1]["query"]["page"] == "3"
+
+
+def test_discover_maps_results_like_search(fake_tmdb: FakeTMDBServer) -> None:
+    """Dönüş şekli `search()` ile birebir aynı olmalı."""
+    fake_tmdb.json_body("/discover/movie", movie_payload())
+
+    assert client_for(fake_tmdb).discover("movie", 878) == [
+        {
+            "title": "Dune",
+            "year": 2021,
+            "poster_url": "https://image.tmdb.org/t/p/w342/d5NXSklXo0qyIYkgV94XAgMIckC.jpg",
+            "external_id": "438631",
+            "overview": "Bir çöl gezegeninde iktidar savaşı.",
+        }
+    ]
+
+
+def test_discover_tv_uses_name_and_first_air_date(fake_tmdb: FakeTMDBServer) -> None:
+    fake_tmdb.json_body(
+        "/discover/tv",
+        {
+            "results": [
+                {
+                    "id": 94605,
+                    "name": "Arcane",
+                    "first_air_date": "2021-11-06",
+                    "poster_path": None,
+                    "overview": "İki kız kardeş.",
+                }
+            ]
+        },
+    )
+
+    results = client_for(fake_tmdb).discover("tv", 10765)
+
+    assert fake_tmdb.requests[-1]["path"] == "/discover/tv"
+    assert results == [
+        {
+            "title": "Arcane",
+            "year": 2021,
+            "poster_url": None,
+            "external_id": "94605",
+            "overview": "İki kız kardeş.",
+        }
+    ]
+
+
+def test_discover_does_not_truncate_page(fake_tmdb: FakeTMDBServer) -> None:
+    """Aday havuzu için kırpma YOK — TMDB'nin sayfa boyutu olduğu gibi döner."""
+    fake_tmdb.json_body(
+        "/discover/movie",
+        {"results": [movie_payload(id=1000 + i)["results"][0] for i in range(20)]},
+    )
+
+    assert len(client_for(fake_tmdb).discover("movie", 18)) == 20
+
+
+def test_discover_empty_results_returns_empty_list(fake_tmdb: FakeTMDBServer) -> None:
+    fake_tmdb.json_body("/discover/movie", {"results": [], "total_results": 0})
+    assert client_for(fake_tmdb).discover("movie", 18) == []
+
+
+def test_discover_http_error_raises(fake_tmdb: FakeTMDBServer) -> None:
+    fake_tmdb.error_body("/discover/movie", 500, {"status_message": "boom"})
+
+    with pytest.raises(TMDBError, match="HTTP 500"):
+        client_for(fake_tmdb).discover("movie", 18)
+
+
+def test_discover_broken_json_raises(fake_tmdb: FakeTMDBServer) -> None:
+    fake_tmdb.raw_body("/discover/movie", b"<html>not json</html>")
+
+    with pytest.raises(TMDBError, match="yanıt biçimi"):
+        client_for(fake_tmdb).discover("movie", 18)
+
+
+# --------------------------------------------------------------------- #
 # watch_providers
 # --------------------------------------------------------------------- #
 

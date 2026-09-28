@@ -9,6 +9,7 @@
   --danger: #ff6b6b;
   --gold: #f5c542;
   --tag: #3d4557;
+  --accent-soft: rgba(108, 140, 255, 0.07);
 
   --status-planlanan: #4b5163;
   --status-izleniyor: #3b6fd6;
@@ -429,6 +430,196 @@ body {
   font-size: 0.82rem;
 }
 
+/* --- Faz C: ruh hali formu + öneriler --- */
+
+/* Öneri bölümü, ana listeye ("Ne İzlesem" başlığı olmayan bölüm) yerleştiği
+   için sinyaller kartlardan önce gelsin diye yukarıda; bölüm kendi
+   başlığını taşıyor. */
+.mood-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.mood-form input[type="text"] {
+  flex: 1 1 220px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+}
+
+.mood-form input[type="text"]::placeholder {
+  color: var(--text-dim);
+}
+
+.mood-form input[type="text"]:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* "Öner" butonu "Ekle" butonundan bilinçli olarak farklı: ana eylem dolu
+   vurgulu kalır, öneri ikincil bir eylem olarak dursun. */
+.mood-form button {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mood-form button:hover:not(:disabled) {
+  background: var(--accent-dim);
+  color: var(--text);
+}
+
+.mood-form button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.suggestions {
+  margin-bottom: 24px;
+  padding: 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+}
+
+.suggestions-head {
+  margin-bottom: 12px;
+}
+
+.suggestions-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.suggestions-sub {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin: 2px 0 0;
+}
+
+.suggestions-sub:empty {
+  display: none;
+}
+
+.suggestions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+
+.suggestions-grid:empty {
+  display: none;
+}
+
+/* Ana listedeki .card gibi düz bir kart değil: ince accent çerçeve + kartın
+   kendi yüzeyinde de hafif accent tonu ile ayrışır (bölüm zemini de
+   --accent-soft olduğu için kart zeminden da okunuyor). */
+.suggestion-card {
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-elevated);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suggestion-card .card-poster {
+  width: 72px;
+}
+
+.suggestion-reason {
+  font-size: 0.87rem;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.suggestion-add {
+  align-self: flex-start;
+  background: var(--accent);
+  color: #0b0d12;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.suggestion-add:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.suggestion-add:disabled {
+  background: var(--status-tamamlandi);
+  color: #fff;
+  cursor: default;
+}
+
+.suggestion-add.is-pending {
+  background: var(--tag);
+  color: var(--text-dim);
+}
+
+/* Yükleniyor durumu: spinner + hafif pulse, tamamen CSS. */
+.mood-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 0.88rem;
+  padding: 4px 2px;
+  animation: mood-pulse 1.6s ease-in-out infinite;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 2px solid var(--accent-dim);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes mood-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mood-loading,
+  .spinner {
+    animation: none;
+  }
+}
+
 @media (max-width: 480px) {
   .grid {
     grid-template-columns: 1fr;
@@ -441,5 +632,16 @@ body {
   .add-form button {
     flex: none;
     width: 100%;
+  }
+  .mood-form {
+    flex-direction: column;
+  }
+  .mood-form input[type="text"],
+  .mood-form button {
+    flex: none;
+    width: 100%;
+  }
+  .suggestions-grid {
+    grid-template-columns: 1fr;
   }
 }

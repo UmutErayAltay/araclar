@@ -121,6 +121,31 @@ class TMDBClient:
             return []
         return [self._to_result(item) for item in results[:limit] if isinstance(item, dict)]
 
+    def discover(
+        self, media_type: str, genre_id: int, page: int = 1
+    ) -> list[dict[str, Any]]:
+        """`/discover/{movie|tv}` → `[{title, year, poster_url, external_id, overview}]`.
+
+        Ruh haline göre öneri motorunun aday havuzunu besler: `with_genres`
+        ile türe göre süzüp popülerliğe göre sıralarız.
+
+        `search`'ten iki farkı var: kırpma (`limit`) YOK — aday havuzu için
+        TMDB'nin varsayılan sayfa boyutu (genelde 20) olduğu gibi döner.
+        """
+        payload = self._get(
+            f"/discover/{media_type}",
+            {
+                "with_genres": str(genre_id),
+                "language": LANGUAGE,
+                "sort_by": "popularity.desc",
+                "page": str(page),
+            },
+        )
+        results = payload.get("results")
+        if not isinstance(results, list):
+            return []
+        return [self._to_result(item) for item in results if isinstance(item, dict)]
+
     def watch_providers(
         self, media_type: str, tmdb_id: str, region: str
     ) -> list[dict[str, Any]]:

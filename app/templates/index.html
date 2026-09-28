@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ne İzlesem / Okusam</title>
+<!-- Boş data URI: tarayıcının /favicon.ico isteğini (ve 404'ü) tamamen keser. -->
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -32,6 +34,24 @@
     </select>
     <button type="submit">Ekle</button>
   </form>
+
+  <form id="mood-form" class="mood-form">
+    <input type="text" id="mood-input" placeholder="Ruh halin ne? (örn. rahatlatıcı, hafif bir şey)"
+           autocomplete="off">
+    <button type="submit" id="mood-submit">Öner</button>
+  </form>
+
+  <section id="suggestions" class="suggestions hidden" aria-live="polite" aria-busy="false">
+    <div class="suggestions-head">
+      <h2 class="suggestions-title">Öneriler</h2>
+      <p class="suggestions-sub" id="suggestions-sub"></p>
+    </div>
+    <div class="mood-loading hidden" id="mood-loading">
+      <span class="spinner" aria-hidden="true"></span>
+      <span>Ruh haline göre öneriler aranıyor… birkaç saniye sürebilir.</span>
+    </div>
+    <div class="suggestions-grid" id="suggestions-grid"></div>
+  </section>
 
   <div class="controls">
     <input type="search" id="search" placeholder="Ara…" autocomplete="off">

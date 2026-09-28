@@ -6,6 +6,7 @@
     kind: "",
     status: "",
     q: "",
+    suggestions: [], // Faz C: şu an gösterilen öneri kartları
   };
 
   const grid = document.getElementById("grid");
@@ -529,6 +530,160 @@
     e.stopPropagation();
     await loadWatchProviders(watchBtn.dataset.id);
   });
+
+  // ---------------------------------------------------------------
+  // Faz C: ruh haline göre öneri motoru
+  // ---------------------------------------------------------------
+
+  const moodForm = document.getElementById("mood-form");
+  const moodInput = document.getElementById("mood-input");
+  const moodSubmit = document.getElementById("mood-submit");
+  const suggestions = document.getElementById("suggestions");
+  const suggestionsSub = document.getElementById("suggestions-sub");
+  const suggestionsGrid = document.getElementById("suggestions-grid");
+  const moodLoading = document.getElementById("mood-loading");
+
+  let suggestionSeq = 0;
+
+  function setLoading(loading) {
+    suggestions.classList.remove("hidden");
+    suggestions.setAttribute("aria-busy", loading ? "true" : "false");
+    moodLoading.classList.toggle("hidden", !loading);
+    moodSubmit.disabled = loading;
+    moodSubmit.textContent = loading ? "Aranıyor…" : "Öner";
+  }
+
+  // `value` boş string ise alt başlık gizlenir (CSS :empty kuralı).
+  function renderSuggestions(list, value) {
+    state.suggestions = list;
+    suggestionsGrid.innerHTML = list.map(suggestionCardHtml).join("");
+    suggestionsSub.textContent = value || "";
+  }
+
+  function suggestionCardHtml(suggestion, index) {
+    const kindLabel = KIND_LABELS[suggestion.kind] || suggestion.kind || "";
+    const badges = kindLabel
+      ? `<div class="badges"><span class="badge badge-kind">${escapeHtml(kindLabel)}</span></div>`
+      : "";
+    const body = `
+      <div class="card-top">
+        <div class="card-title">${escapeHtml(suggestion.title || "")}</div>
+      </div>
+      ${badges}
+      ${
+        suggestion.reason
+          ? `<p class="suggestion-reason">${escapeHtml(suggestion.reason)}</p>`
+          : ""
+      }
+      <button type="button" class="suggestion-add" data-index="${index}">Listeme ekle</button>
+    `;
+    const inner = suggestion.poster_url
+      ? `
+        <img class="card-poster" src="${escapeHtml(suggestion.poster_url)}" alt="" loading="lazy"
+             onerror="this.remove()">
+        <div class="card-body">${body}</div>
+      `
+      : body;
+    return `<div class="suggestion-card">${inner}</div>`;
+  }
+
+  async function requestSuggestions(mood) {
+    const seq = ++suggestionSeq;
+    setLoading(true);
+    suggestionsGrid.innerHTML = "";
+    // Yükleniyor satırı zaten ne arandığını yazıyor; alt başlık boş bırakılır
+    // ki aynı mesaj iki kez görünmesin.
+    suggestionsSub.textContent = "";
+
+    let data;
+    try {
+      data = await apiGetSilent(`${API_BASE}/recommend?mood=${encodeURIComponent(mood)}`);
+    } catch (err) {
+      if (seq !== suggestionSeq) return; // eski istek — sessizce geç
+      // 422 (mood boş) / 503 (TMDB_API_KEY yok) / 502 (cor'a ulaşılamadı)
+      // mevcut toast mekanizmasıyla gösterilir; sayfa çökmez.
+      showToast(err.detail || err.message || "Öneriler alınamadı.");
+      suggestionsSub.textContent = "";
+      setLoading(false);
+      return;
+    }
+    if (seq !== suggestionSeq) return;
+
+    const list =
+      data && Array.isArray(data.suggestions) ? data.suggestions.filter(Boolean) : [];
+    renderSuggestions(list, `“${mood}” için öneriler:`);
+    setLoading(false);
+    if (!list.length) {
+      showToast("Bu ruh haline uygun bir öneri bulunamadı.");
+    }
+  }
+
+  moodForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (moodSubmit.disabled) return; // istek sürerken ikinci gönderim
+    const mood = moodInput.value.trim();
+    if (!mood) {
+      // Backend 422 dönecek; boş durumda gereksiz istek atılmaz.
+      showToast("Önce ruh halini yaz.");
+      moodInput.focus();
+      return;
+    }
+    await requestSuggestions(mood);
+  });
+
+  suggestionsGrid.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".suggestion-add");
+    if (!btn || btn.disabled) return;
+
+    const suggestion = (state.suggestions || [])[Number(btn.dataset.index)];
+    if (!suggestion || !suggestion.title) return;
+
+    btn.disabled = true;
+    btn.classList.add("is-pending");
+    btn.textContent = "Ekleniyor…";
+
+    const body = {
+      title: suggestion.title,
+      kind: suggestion.kind,
+      status: "planlanan",
+    };
+    // Poster/kimlik alanları yalnızca geldiyse gönderilir; API sözleşmesinde
+    // hepsi opsiyonel.
+    if (suggestion.poster_url) body.poster_url = suggestion.poster_url;
+    if (suggestion.external_source) body.external_source = suggestion.external_source;
+    if (suggestion.external_id) body.external_id = suggestion.external_id;
+
+    try {
+      await apiFetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      // Öneri kartını kaldır, ana listeyi yenile.
+      removeSuggestion(Number(btn.dataset.index));
+      await loadItems();
+    } catch (err) {
+      // toast zaten gösterildi; kart butonu tekrar kullanılabilir olsun.
+      btn.disabled = false;
+      btn.classList.remove("is-pending");
+      btn.textContent = "Listeme ekle";
+    }
+  });
+
+  // Kart DOM'u sırayla indekslenir; bir kart kalıcı olarak silinince dizi de
+  // küçülür, kalan indeksler yeniden yazılır (delta = 0 ise hiç dokunulmaz).
+  function removeSuggestion(index) {
+    const list = state.suggestions || [];
+    if (!list[index]) return;
+    const delta = list.length - 1 - index;
+    list.splice(index, 1);
+    renderSuggestions(list, suggestionsSub.textContent);
+    if (delta) {
+      Array.from(suggestionsGrid.querySelectorAll(".suggestion-add")).forEach((btn, i) => {
+        btn.dataset.index = String(i);
+      });
+    }
+  }
 
   loadItems();
 })();

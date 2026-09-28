@@ -17,6 +17,13 @@ def get_connection(db_path=DEFAULT_DB_PATH):
     return conn
 
 
+EXTERNAL_COLUMNS = {
+    "poster_url": "TEXT",
+    "external_source": "TEXT",
+    "external_id": "TEXT",
+}
+
+
 def init_db(conn):
     conn.execute(
         """
@@ -27,12 +34,29 @@ def init_db(conn):
             status TEXT NOT NULL,
             rating INTEGER,
             note TEXT,
+            poster_url TEXT,
+            external_source TEXT,
+            external_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
         )
         """
     )
+    _migrate_external_columns(conn)
     conn.commit()
+
+
+def _migrate_external_columns(conn):
+    """Faz A'dan kalan DB dosyalarına dış veri kolonlarını idempotent ekler.
+
+    `CREATE TABLE IF NOT EXISTS` var olan tabloya dokunmadığı için, kolonları
+    ayrıca `pragma table_info` ile kontrol edip yoksa `ALTER TABLE` ile ekleriz.
+    İkinci kez çalıştırmak hiçbir şey yapmaz.
+    """
+    existing = {row["name"] for row in conn.execute("PRAGMA table_info(items)")}
+    for column, column_type in EXTERNAL_COLUMNS.items():
+        if column not in existing:
+            conn.execute(f"ALTER TABLE items ADD COLUMN {column} {column_type}")
 
 
 def _now() -> str:
@@ -61,12 +85,34 @@ def list_items(conn, kind=None, status=None, q=None):
     return [_row_to_dict(r) for r in rows]
 
 
-def create_item(conn, title, kind, status="planlanan", rating=None, note=None):
+def create_item(
+    conn,
+    title,
+    kind,
+    status="planlanan",
+    rating=None,
+    note=None,
+    poster_url=None,
+    external_source=None,
+    external_id=None,
+):
     now = _now()
     cur = conn.execute(
-        "INSERT INTO items (title, kind, status, rating, note, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (title, kind, status, rating, note, now, now),
+        "INSERT INTO items (title, kind, status, rating, note, poster_url, "
+        "external_source, external_id, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            title,
+            kind,
+            status,
+            rating,
+            note,
+            poster_url,
+            external_source,
+            external_id,
+            now,
+            now,
+        ),
     )
     conn.commit()
     return get_item(conn, cur.lastrowid)

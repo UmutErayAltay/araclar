@@ -13,7 +13,11 @@
   </header>
 
   <form id="add-form" class="add-form">
-    <input type="text" id="add-title" placeholder="Başlık ekle…" required autocomplete="off">
+    <div class="add-title-wrap" id="add-title-wrap">
+      <input type="text" id="add-title" placeholder="Başlık ekle…" required autocomplete="off"
+             role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-dropdown">
+      <div id="search-dropdown" class="search-dropdown hidden" role="listbox" aria-label="Arama sonuçları"></div>
+    </div>
     <select id="add-kind">
       <option value="film">Film</option>
       <option value="dizi">Dizi</option>

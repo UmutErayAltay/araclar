@@ -88,3 +88,64 @@ def test_index_page_serves_html(client):
     assert res.status_code == 200
     assert "text/html" in res.headers["content-type"]
     assert "Ne İzlesem" in res.text
+
+
+# --------------------------------------------------------------------- #
+# Faz B: dış veri alanları (Faz A davranışı bozulmadan)
+# --------------------------------------------------------------------- #
+
+
+def test_create_item_without_external_fields(client):
+    """Faz A davranışı: dış alanlar verilmeden de eklenebilmeli."""
+    res = client.post("/api/items", json={"title": "Dune", "kind": "film"})
+    body = res.json()
+    assert body["poster_url"] is None
+    assert body["external_source"] is None
+    assert body["external_id"] is None
+
+
+def test_create_item_stores_external_fields(client):
+    res = client.post(
+        "/api/items",
+        json={
+            "title": "Dune",
+            "kind": "film",
+            "poster_url": "https://image.tmdb.org/t/p/w342/a.jpg",
+            "external_source": "tmdb",
+            "external_id": "438631",
+        },
+    )
+    body = res.json()
+    assert res.status_code == 201
+    assert body["external_source"] == "tmdb"
+    assert body["external_id"] == "438631"
+    assert body["poster_url"] == "https://image.tmdb.org/t/p/w342/a.jpg"
+
+
+def test_create_kitap_item_with_openlibrary_fields(client):
+    res = client.post(
+        "/api/items",
+        json={
+            "title": "Dune",
+            "kind": "kitap",
+            "external_source": "openlibrary",
+            "external_id": "/works/OL12345W",
+        },
+    )
+    assert res.status_code == 201
+    assert res.json()["external_id"] == "/works/OL12345W"
+
+
+def test_patch_item_updates_external_fields(client):
+    created = client.post("/api/items", json={"title": "Dune", "kind": "film"}).json()
+
+    res = client.patch(
+        f"/api/items/{created['id']}",
+        json={"external_source": "tmdb", "external_id": "438631", "poster_url": "https://x/a.jpg"},
+    )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["external_source"] == "tmdb"
+    assert body["external_id"] == "438631"
+    assert body["title"] == "Dune"

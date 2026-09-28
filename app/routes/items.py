@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,8 +14,15 @@ from app.db import (
     list_items,
     update_item,
 )
+from app.external.tmdb import TMDBClient, TMDBError
 
 router = APIRouter()
+
+TMDB_NOT_CONFIGURED_MESSAGE = "TMDB_API_KEY ayarlanmamış"
+DEFAULT_WATCH_REGION = "TR"
+
+# `kind` → TMDB `media_type`. `anime` TMDB'de `movie` altında aranır.
+MEDIA_TYPE_BY_KIND = {"film": "movie", "anime": "movie", "dizi": "tv"}
 
 
 def get_db():
@@ -23,6 +31,20 @@ def get_db():
         yield conn
     finally:
         conn.close()
+
+
+def get_tmdb_client() -> Optional[TMDBClient]:
+    """`TMDB_API_KEY`'den istemci üretir; anahtar yoksa `None` döner.
+
+    Anahtar eksikliğini burada istisnaya çevirmiyoruz: bağımlılıklar route
+    gövdesinden ÖNCE çözüldüğü için bu istisna, `kind=kitap` gibi TMDB'ye
+    hiç gidilmeyen istekleri de 503'e düşürürdü. Bunun yerine `None`
+    döndürüp 503'ü route içinde, gerçekten TMDB çağrısı yapılacakken fırlatıyoruz.
+    """
+    api_key = os.environ.get("TMDB_API_KEY", "").strip()
+    if not api_key:
+        return None
+    return TMDBClient(api_key=api_key)
 
 
 def _kind_message() -> str:
@@ -39,6 +61,9 @@ class ItemCreate(BaseModel):
     status: str = "planlanan"
     rating: Optional[int] = None
     note: Optional[str] = None
+    poster_url: Optional[str] = None
+    external_source: Optional[str] = None
+    external_id: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -75,6 +100,9 @@ class ItemUpdate(BaseModel):
     status: Optional[str] = None
     rating: Optional[int] = None
     note: Optional[str] = None
+    poster_url: Optional[str] = None
+    external_source: Optional[str] = None
+    external_id: Optional[str] = None
 
     @field_validator("title")
     @classmethod
@@ -128,6 +156,9 @@ def post_item(payload: ItemCreate, conn=Depends(get_db)):
         status=payload.status,
         rating=payload.rating,
         note=payload.note,
+        poster_url=payload.poster_url,
+        external_source=payload.external_source,
+        external_id=payload.external_id,
     )
 
 
@@ -150,3 +181,44 @@ def delete_item_route(item_id: int, conn=Depends(get_db)):
     if not delete_item(conn, item_id):
         raise HTTPException(status_code=404, detail="öğe bulunamadı")
     return None
+
+
+@router.get("/api/items/{item_id}/watch")
+def get_item_watch(
+    item_id: int,
+    region: Optional[str] = None,
+    conn=Depends(get_db),
+    tmdb=Depends(get_tmdb_client),
+):
+    """Bir öğe için bölgedeki abonelik (flatrate) sağlayıcılarını döner.
+
+    Sahte/boş liste dönmüyoruz: kitap türü ya da dış veri bağlantısı olmayan
+    öğe 404, `TMDB_API_KEY` yoksa 503.
+    """
+    item = get_item(conn, item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="öğe bulunamadı")
+    if item["kind"] == "kitap":
+        raise HTTPException(
+            status_code=404, detail="kitap için 'nerede izlerim' anlamsız"
+        )
+    if not item["external_id"] or not item["external_source"]:
+        raise HTTPException(
+            status_code=404,
+            detail="bu öğe bir dış kaynağa bağlı değil; önce dış aramadan seçilmelidir",
+        )
+
+    media_type = MEDIA_TYPE_BY_KIND.get(item["kind"])
+    if media_type is None:
+        raise HTTPException(status_code=404, detail="bu tür için sağlayıcı aranmaz")
+
+    effective_region = (region or os.environ.get("WATCH_REGION") or DEFAULT_WATCH_REGION).strip()
+
+    if tmdb is None:
+        raise HTTPException(status_code=503, detail=TMDB_NOT_CONFIGURED_MESSAGE)
+
+    try:
+        providers = tmdb.watch_providers(media_type, item["external_id"], effective_region)
+    except TMDBError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"providers": providers}

@@ -1,3 +1,9 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "integration: gerçek cor proxy'sine (127.0.0.1:8787) karşı çalışır",
+]
+# `addopts` ile integration dışlanMAZ: cor bu container'da gerçekten
+# çalışıyor ve varsayılan koşuda doğrulanması istendi. cor'un kapalı olduğu
+# bir ortamda: `python3 -m pytest -m "not integration"`.

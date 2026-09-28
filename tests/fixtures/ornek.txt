@@ -1,0 +1,3 @@
+Danis test dosyasi.
+Bu dosya txt olarak duz metin okunur.
+Ikinci satir.

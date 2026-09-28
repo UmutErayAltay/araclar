@@ -1,0 +1,36 @@
+# kisayol config — bu dosyayı ~/.config/kisayol/config.yaml olarak kopyala:
+#   mkdir -p ~/.config/kisayol && cp config.yaml.example ~/.config/kisayol/config.yaml
+#
+# Bu bir "koleksiyoncu" config'i değil: kısayol paletini tanımlar.
+
+items:
+  - label: kule sunucusunu başlat
+    cwd: ~/kule
+    command: uvicorn app.main:app --reload
+    tags: [kule, server, web]
+
+  - label: kule testlerini çalıştır
+    cwd: ~/kule
+    command: python -m pytest -v
+    tags: [kule, test]
+
+  - label: kule durum panosu
+    cwd: ~/kule
+    command: ./scripts/status.sh
+    tags: [kule, dashboard]
+
+  - label: docs
+    cwd: ~/Documents
+    command: $EDITOR
+    tags: [notlar]
+
+  - label: hızlı not al          # tags verilmezse sorun değil, opsiyoneldir
+    cwd: ~
+    command: ${EDITOR:-vi} ~/notes/scratch.md
+
+# Bu dizinlerin altında .git içeren klasörler otomatik bulunur ve
+# "repoya gir" kısayolu olarak palette eklenir (shell, cwd'de açılır).
+# Bulunamayan/erişilemeyen kökler sessizce atlanır.
+discover_roots:
+  - ~/projeler
+  - ~/Desktop

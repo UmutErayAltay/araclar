@@ -1,8 +1,8 @@
-"""kp — paleti seç, komutu çalıştır.
+"""kp — paleti seç, komutu çalıştır, tüm notlarda ara.
 
 Bu modül yalnızca "hangi mantık" sorusunu yanıtlar; mantığın kendisi
-matcher.py'de saf durur. Buradaki tek sorumluluk soruyu sormak (questionary)
-ve cevabı çalıştırmak (subprocess).
+matcher.py'de ve search.py'de saf durur. Buradaki tek sorumluluk soruyu sormak
+(questionary), cevabı çalıştırmak (subprocess) ve arama sonuçlarını yazdırmaktır.
 
 Seçim iptal edilirse (Ctrl-C / ESC) hiçbir komut çalıştırılmaz, program
 sessizce 130 ile çıkar.
@@ -10,7 +10,6 @@ sessizce 130 ile çıkar.
 from __future__ import annotations
 
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -21,8 +20,20 @@ import questionary
 from kisayol import __version__
 from kisayol.config import ConfigError, ENV_VAR, help_message, load_config
 from kisayol.matcher import build_items, format_item
+from kisayol.search import SearchHit, search
 
 CANCELLED_EXIT = 130
+
+#: Alt komutun adı — Türkçe ve kısa, `kp ara "telegram"` gibi kullanılır.
+SEARCH_COMMAND = "ara"
+SEARCH_HELP = "Tüm search_roots içinde tam metin arar (vault + kod repoları)."
+
+#: `--limit` varsayılanı: 50 satır ekrana sığar, `| less` ile gezilebilir.
+DEFAULT_LIMIT = 50
+
+#: `--limit` için üst sınır: binlerce satır ekrana boşalmaktan çok yorucudur,
+#: kullanıcı zaten aramayı daraltabilir.
+MAX_LIMIT = 1000
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,7 +54,71 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Config dosyası yolu (varsayılan: ${ENV_VAR} veya ~/.config/kisayol/config.yaml).",
     )
     parser.add_argument("--version", action="version", version=f"kp {__version__}")
+
+    # `ara` bir *alt komut*: hem adı hem sorgusu ayrı ayrı konumsal olmalı.
+    # argparse tek bir konumsalı ikinci kez dolduramaz, bu yüzden subparser
+    # şart — `kp ara telegram` tek sözcükte "ara"ya denk gelmezdi.
+    # Palet seçenekleri (`--config`, `--list`) alt komutta da kabul edilir:
+    # kullanıcı `kp --config X ara <sorgu>` yazdığında olduğu gibi çalışmasın.
+    subparsers = parser.add_subparsers(dest="command", metavar="{ara}")
+    ara = subparsers.add_parser(
+        SEARCH_COMMAND,
+        help=SEARCH_HELP,
+        description=SEARCH_HELP,
+    )
+    ara.add_argument(
+        "query",
+        nargs="?",
+        default="",
+        metavar="sorgu",
+        help="Aranacak metin. Boş bırakılırsa hata verilir.",
+    )
+    ara.add_argument(
+        "--limit",
+        type=_valid_limit,
+        default=DEFAULT_LIMIT,
+        metavar="N",
+        help=f"En fazla N sonuç yazdır (varsayılan: {DEFAULT_LIMIT}).",
+    )
+    ara.add_argument(
+        "--no-ripgrep",
+        action="store_true",
+        help="rg'yi yok sayıp saf Python taramasını zorla (motor karşılaştırması için).",
+    )
+    _add_common_arguments(ara)
+
     return parser
+
+
+def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
+    """Palet seçeneklerini alt komuta da ekler, iki şekilde de yazılabilsin.
+
+    `default=SUPPRESS` şart: argparse alt komutun varsayılanını ana komuttaki
+    değerin üstüne yazar. `kp --config X ara <sorgu>` yazıldığında alt komut
+    `config=None` yazar ve `--config X` sessizce kaybolurdu.
+    """
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        dest="list_only",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        dest="config",
+        default=argparse.SUPPRESS,
+        help=argparse.SUPPRESS,
+    )
+
+
+def _valid_limit(value: str) -> int:
+    """Argparse hata mesajı düzgün olsun diye limiti burada doğruluyoruz."""
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError("limit pozitif bir tam sayı olmalı.")
+    return min(number, MAX_LIMIT)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -54,6 +129,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ConfigError as e:
         print(f"Hata: {e}", file=sys.stderr)
         return 1
+
+    if args.command == SEARCH_COMMAND:
+        return _search(config, args)
 
     items = build_items(config)
 
@@ -72,6 +150,51 @@ def main(argv: Sequence[str] | None = None) -> int:
         return CANCELLED_EXIT
 
     return _run(chosen)
+
+
+def _search(config: dict, args: argparse.Namespace) -> int:
+    """`kp ara` akışı: sorguyu doğrula, tara, biçimlendir.
+
+    Burada bilinçli olarak raise yok — boş sorgu ya da kök eksikliği kullanıcıya
+    ne yapması gerektiğini söyleyen bir mesajla, çıkış kodu 1 ile döner.
+    """
+    query = (getattr(args, "query", "") or "").strip()
+    if not query:
+        print("Sorgu boş. Örnek: kp ara telegram", file=sys.stderr)
+        return 1
+
+    roots = _search_roots(config)
+    if not roots:
+        print("search_roots boş — aranacak dizin tanımlı değil.", file=sys.stderr)
+        print("Config'e ekle (bkz. config.yaml.example):\n  search_roots:", file=sys.stderr)
+        for root in ("  - ~/Mt3Ui55OS", "  - ~/projeler"):
+            print(root, file=sys.stderr)
+        return 1
+
+    hits = search(query, roots, use_ripgrep=False if args.no_ripgrep else None)
+    if not hits:
+        print(f"'{query}' için eşleşme yok ({len(roots)} kök tarandı).", file=sys.stderr)
+        return 1
+
+    for hit in hits[: args.limit]:
+        print(format_hit(hit))
+    return 0
+
+
+def _search_roots(config: dict) -> list[str]:
+    """Config'teki arama kökleri; bozuk girdiler zaten config'de atıldı."""
+    roots = config.get("search_roots")
+    return [str(r) for r in roots if str(r).strip()] if isinstance(roots, list) else []
+
+
+def format_hit(hit: SearchHit) -> str:
+    """`[kök] /mutlak/yol.py:12: telegram botu çalıştır`
+
+    Kök etiketi başta: kullanıcı ilk bakışta sonucun vault'tan mı repodan mı
+    geldiğini görür, uzun yolun arasında aramak zorunda kalmaz.
+    """
+    line = hit.line.strip()
+    return f"[{hit.root_label}] {hit.path}:{hit.line_number}: {line}"
 
 
 def _pick(items: list[dict]) -> dict | None:

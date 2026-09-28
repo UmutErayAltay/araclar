@@ -34,3 +34,11 @@ items:
 discover_roots:
   - ~/projeler
   - ~/Desktop
+
+# `kp ara <sorgu>` bunların altındaki TÜM dosyalarda tam metin arar.
+# discover_roots'tan farklı: orada sadece .git'i olan klasörler aranır,
+# burada içerik taranır — yani vault notlarını da buraya yaz.
+search_roots:
+  - ~/Mt3Ui55OS          # not vault'u (Obsidian)
+  - ~/kule
+  - ~/projeler

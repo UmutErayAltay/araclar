@@ -4,12 +4,19 @@ questionary'nin interaktif seçim döngüsü burada test EDİLMEZ — UI katman�
 `main()` yalnızca subprocess çalıştırmadan önce durur: soru sorulmadan
 `--list` çıktısına, boş palet mesajına ve komutun cwd'de çalıştırılmasına
 bakılır.
+
+`kp ara` akışı da burada test edilir: aramanın kendisi search.py'de (onun
+testleri orada), CLI'nin sorumluluğu sorguyu doğrulamak, config'ten kökleri
+okumak ve sonuçları biçimlendirip sınırlamak. Bu yüzden burada `search`
+kısa devre edilir — gerçek dosya sistemi gerektiren senaryolar test_search.py'da.
 """
 from __future__ import annotations
 
+import pytest
 import yaml
 
 from kisayol import cli
+from kisayol.search import SearchHit
 
 
 def _write_config(tmp_path, data: dict):
@@ -26,6 +33,22 @@ def _config_with_repo(tmp_path):
         tmp_path,
         {"items": [{"label": "kule testleri", "cwd": str(workdir), "command": "echo merhaba"}]},
     )
+
+
+def _fake_search(monkeypatch, hits: list[SearchHit]) -> list[tuple]:
+    """`search`'i sahte sonuçlarla değiştirir, çağrı argümanlarını kaydeder.
+
+    Gerçek `search` de `main` üzerinden test_search.py'da deneniyor; buradaki
+    hedef CLI'nin bu sonuçları doğru biçimlendirdiği ve sınırladığı.
+    """
+    captured: list[tuple] = []
+
+    def fake(query, roots, *, use_ripgrep=None, max_per_file=None):
+        captured.append((query, list(roots), use_ripgrep))
+        return list(hits)
+
+    monkeypatch.setattr(cli, "search", fake)
+    return captured
 
 
 def test_list_prints_items_and_exits_zero(tmp_path, capsys):
@@ -187,3 +210,161 @@ def test_cancelled_selection_runs_nothing(tmp_path, monkeypatch):
     cfg = _write_config(tmp_path, {"items": [{"label": "x", "cwd": "", "command": "echo"}]})
 
     assert cli.main(["--config", str(cfg)]) == cli.CANCELLED_EXIT
+
+
+# --- kp ara ----------------------------------------------------------------
+
+
+def _search_config(tmp_path):
+    return _write_config(tmp_path, {"search_roots": [str(tmp_path / "vault")] + [str(tmp_path / "kule")]})
+
+
+def test_search_prints_root_label_path_and_line(tmp_path, capsys, monkeypatch):
+    _fake_search(
+        monkeypatch,
+        [SearchHit("/home/user/kule/app/main.py", 42, "  telegram botu burada", "kule")],
+    )
+    cfg = _search_config(tmp_path)
+
+    assert cli.main(["--config", str(cfg), "ara", "telegram"]) == 0
+
+    out = capsys.readouterr().out.strip()
+    assert out == "[kule] /home/user/kule/app/main.py:42: telegram botu burada"
+
+
+def test_search_passes_roots_and_query_through(tmp_path, monkeypatch):
+    captured = _fake_search(monkeypatch, [SearchHit("/x.py", 1, "telegram", "vault")])
+    cfg = _search_config(tmp_path)
+
+    cli.main(["--config", str(cfg), "ara", "telegram"])
+
+    query, roots, _ = captured[0]
+    assert query == "telegram"
+    assert roots == [str(tmp_path / "vault"), str(tmp_path / "kule")]
+
+
+def test_search_limit_truncates_output(tmp_path, capsys, monkeypatch):
+    _fake_search(
+        monkeypatch,
+        [SearchHit(f"/dosya{i}.py", i, "telegram satırı", "vault") for i in range(10)],
+    )
+    cfg = _search_config(tmp_path)
+
+    assert cli.main(["--config", str(cfg), "ara", "telegram", "--limit", "3"]) == 0
+
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lines) == 3
+    assert lines[0] == "[vault] /dosya0.py:0: telegram satırı"
+
+
+def test_search_defaults_to_fifty_results(tmp_path, capsys, monkeypatch):
+    _fake_search(
+        monkeypatch,
+        [SearchHit(f"/d{i}.py", 1, "telegram", "vault") for i in range(60)],
+    )
+    cfg = _search_config(tmp_path)
+
+    cli.main(["--config", str(cfg), "ara", "telegram"])
+
+    assert len(capsys.readouterr().out.strip().splitlines()) == 50
+
+
+def test_search_no_ripgrep_flag_forces_python_engine(tmp_path, monkeypatch):
+    captured = _fake_search(monkeypatch, [SearchHit("/x.py", 1, "telegram", "vault")])
+    cfg = _search_config(tmp_path)
+
+    cli.main(["--config", str(cfg), "ara", "telegram", "--no-ripgrep"])
+
+    assert captured[0][2] is False  # use_ripgrep=False → saf Python
+
+
+def test_search_without_flag_leaves_engine_choice_to_search_layer(tmp_path, monkeypatch):
+    captured = _fake_search(monkeypatch, [SearchHit("/x.py", 1, "telegram", "vault")])
+    cfg = _search_config(tmp_path)
+
+    cli.main(["--config", str(cfg), "ara", "telegram"])
+
+    assert captured[0][2] is None  # PATH'e bakan motor seçimi
+
+
+def test_empty_query_exits_one_without_searching(tmp_path, capsys, monkeypatch):
+    def explode(*args, **kwargs):
+        raise AssertionError("boş sorguda arama yapılmamalı")
+
+    monkeypatch.setattr(cli, "search", explode)
+    cfg = _search_config(tmp_path)
+
+    assert cli.main(["--config", str(cfg), "ara", ""]) == 1
+    assert "Sorgu boş" in capsys.readouterr().err
+
+
+def test_search_flag_without_query_exits_one(tmp_path, capsys, monkeypatch):
+    """`kp ara` (bayrak, sorgusuz) çökmemeli — anlamlı mesajla 1 ile çıkmalı."""
+    monkeypatch.setattr(cli, "search", lambda *a, **k: [])
+    cfg = _search_config(tmp_path)
+
+    assert cli.main(["--config", str(cfg), "ara"]) == 1
+    assert "Sorgu boş" in capsys.readouterr().err
+
+
+def test_missing_search_roots_exits_one_with_hint(tmp_path, capsys, monkeypatch):
+    def explode(*args, **kwargs):
+        raise AssertionError("search_roots yoksa arama yapılmamalı")
+
+    monkeypatch.setattr(cli, "search", explode)
+    cfg = _write_config(tmp_path, {"search_roots": []})
+
+    assert cli.main(["--config", str(cfg), "ara", "telegram"]) == 1
+
+    err = capsys.readouterr().err
+    assert "search_roots" in err
+    assert "config.yaml.example" in err
+
+
+def test_search_ignores_blank_search_roots(tmp_path, monkeypatch):
+    """Config'te kalan boş girdiler taranmaya çalışılmamalı.
+
+    Bozuk girdi (sayı, liste, sözlük) config yükleyicisinde elenmiş olmalı;
+    bu yüzden buradaki `42` bilinçli olarak *korunuyor* ve CLI onu olduğu gibi
+    geçiriyor — CLI'nin işi yeniden doğrulamak değil, config'in sözleşmesine
+    güvenmek.
+    """
+    captured = _fake_search(monkeypatch, [SearchHit("/x.py", 1, "telegram", "vault")])
+    cfg = _write_config(tmp_path, {"search_roots": [str(tmp_path / "kule"), "", "   "]})
+
+    cli.main(["--config", str(cfg), "ara", "telegram"])
+
+    assert captured[0][1] == [str(tmp_path / "kule")]
+
+
+def test_no_match_exits_one(tmp_path, capsys, monkeypatch):
+    _fake_search(monkeypatch, [])
+    cfg = _search_config(tmp_path)
+
+    assert cli.main(["--config", str(cfg), "ara", "hicbirsey"]) == 1
+    assert "eşleşme yok" in capsys.readouterr().err
+    assert capsys.readouterr().out == ""
+
+
+def test_search_broken_config_exits_one(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr(cli, "search", lambda *a, **k: [])
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("search_roots: [\n", encoding="utf-8")
+
+    assert cli.main(["--config", str(cfg), "ara", "telegram"]) == 1
+    assert "Hata" in capsys.readouterr().err
+
+
+def test_invalid_limit_is_rejected_by_argparse(tmp_path):
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(["ara", "telegram", "--limit", "0"])
+
+
+def test_palette_untouched_when_searching(tmp_path, capsys, monkeypatch):
+    """`kp ara` interaktif seçiciye düşmemeli: sorgu verilmişse palet yolu
+    hiç çalışmaz (questionary burada çağrılsaydı test asılı kalırdı)."""
+    _fake_search(monkeypatch, [SearchHit("/x.py", 1, "telegram", "vault")])
+    cfg = _search_config(tmp_path)
+
+    assert cli.main(["--config", str(cfg), "ara", "telegram"]) == 0
+    assert cli.CANCELLED_EXIT not in (0,)

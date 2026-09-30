@@ -70,6 +70,27 @@ ONEM_ETIKETLERI = {
     "bilgi": "bilgi",
 }
 
+#: README bayatlığı seviyeleri (Dalga D). Renk + METIN birlikte; renk
+#: korlugunde de ayirt edilir (rozet metni seviyenin kendisidir).
+SEVIYE_RENKLERI = {
+    "bayat": "#D55E00",     # Okabe-Ito turuncu-kirmizi (aciliyet)
+    "eskiyor": "#E69F00",   # Okabe-Ito turuncu (erken uyari)
+    "taze": "#009E73",      # Okabe-Ito yesil (iyi)
+    "yok": "#999999",       # Okabe-Ito gri (bilgi yok)
+}
+
+SEVIYE_ETIKETLERI = {
+    "bayat": "bayat",
+    "eskiyor": "eskiyor",
+    "taze": "taze",
+    "yok": "README yok",
+}
+
+#: `/` ozet kartinda "N bayat README" sayacinda KULLANILIR: yalniz "bayat"
+#: ve "eskiyor" SEVIYELERI sayilir. "taze" ve "yok" sayilmaz ("yok" = eksik
+#: veri, acik sorun degil; "bayat" = gercekten gecikmis).
+OZET_SAYILAN_SEVIYELER = ("bayat", "eskiyor")
+
 #: Bilinen turler (suzgec formu icin). Bilinmeyen tur de DB'den gelebilir.
 TUR_ETIKETLERI = {
     "api-anahtari": "API anahtarı",
@@ -184,6 +205,20 @@ def ozet_verisi(conn: sqlite3.Connection) -> dict[str, Any]:
 
     todo_toplam = int(conn.execute("SELECT COUNT(*) FROM todos").fetchone()[0])
 
+    # README bayatlığı (Dalga D). Tablo YOKSA (eski DB) sayılar 0'dır: ozet
+    # kartı "0 bayat README" der, sayfa bos durum gosterir.
+    readme_sayaclari = {seviye: 0 for seviye in SEVIYE_ETIKETLERI}
+    readme_toplam = 0
+    try:
+        for satir_r in conn.execute("SELECT seviye, COUNT(*) AS adet FROM readme_status GROUP BY seviye"):
+            anahtar = satir_r["seviye"] if satir_r["seviye"] in readme_sayaclari else None
+            if anahtar is not None:
+                readme_sayaclari[anahtar] += int(satir_r["adet"])
+        readme_toplam = int(conn.execute("SELECT COUNT(*) FROM readme_status").fetchone()[0])
+    except sqlite3.Error:  # tablo yoksa
+        pass
+    bayat_readme = sum(readme_sayaclari[s] for s in OZET_SAYILAN_SEVIYELER)
+
     return {
         "repo_sayisi": toplam,
         "kirli_repo": kirli,
@@ -192,6 +227,9 @@ def ozet_verisi(conn: sqlite3.Connection) -> dict[str, Any]:
         "bulgu_sayaclari": bulgu_sayaclari,
         "toplam_bulgu": toplam_bulgu,
         "toplam_todo": todo_toplam,
+        "readme_sayaclari": readme_sayaclari,
+        "readme_toplam": readme_toplam,
+        "bayat_readme": bayat_readme,
         "son_tarama": satir["son_tarama"],
         "veri_bayat": veri_bayat_mi(satir["son_tarama"]),
     }
@@ -429,6 +467,115 @@ def repo_detay(conn: sqlite3.Connection, repo_id: int) -> dict[str, Any] | None:
             }
             for t in todo_list
         ],
+        "readme": _readme_satiri(yol),
+        "ozet": _ozet_satiri(yol),
+    }
+
+
+# --------------------------------------------------------------------------
+# Dalga D: README bayatlığı + özet (panel SALT OKUNUR kalir)
+# --------------------------------------------------------------------------
+
+
+def _readme_satiri(yol: str) -> dict[str, Any] | None:
+    """Bir repo'nun readme_status satiri (web icin bicimlenmis).
+
+    Tablo/satir YOKSA `None`: `atlas readme` calistirilmamis demektir.
+    """
+    try:
+        satir = db_readme_status(yol)
+    except sqlite3.Error:
+        return None
+    if satir is None:
+        return None
+    seviye = satir["seviye"]
+    return {
+        "seviye": _temizle(seviye or ""),
+        "seviye_bilinen": seviye in SEVIYE_ETIKETLERI,
+        "seviye_etiket": _temizle(SEVIYE_ETIKETLERI.get(seviye, seviye or "bilinmiyor")),
+        "skor": satir["skor"],
+        "davranis_commit": satir["behavior_commits_after"],
+        "screenshot_age_days": satir["screenshot_age_days"],
+        "readme_yolu": _temizle(satir["readme_yolu"] or ""),
+        "neden": _temizle(satir["neden"] or ""),
+        "eksik_gorsel": satir["eksik_gorsel"],
+    }
+
+
+def db_readme_status(yol: str) -> Any:
+    """`readme_status` tek satir (modul seviyesi baglanti kullanir)."""
+    return _baglanti_al().execute(
+        "SELECT * FROM readme_status WHERE repo = ?", (yol,)
+    ).fetchone()
+
+
+def _ozet_satiri(yol: str) -> dict[str, Any] | None:
+    """Bir repo'nun SAKLI ozeti (varsa). Kaynagi ve tarihi yazilir.
+
+    Ozet metni LLM ciktisi olabilir: ekrana BASILMADAN once bir kez daha
+    `leaks.maske`'den gecer (savunma katmani).
+    """
+    satir = _baglanti_al().execute(
+        "SELECT * FROM summaries WHERE repo = ?", (yol,)
+    ).fetchone()
+    if satir is None:
+        return None
+    kaynak = satir["kaynak"]
+    kaynak_etiket = "yerel kural" if kaynak == "yerel" else "cor"
+    if kaynak == "cor" and satir["model"]:
+        kaynak_etiket = f"cor: {_temizle(satir['model'])}"
+    return {
+        "metin": _temizle(satir["metin"] or ""),
+        "kaynak_etiket": _temizle(kaynak_etiket),
+        "uretim": _temizle(satir["uretim"] or ""),
+    }
+
+
+def bayat_readme_verisi(conn: sqlite3.Connection) -> dict[str, Any]:
+    """`/bayat-readme` ve `/api/bayat-readme`: skora azalan repo listesi.
+
+    `/api/ozet` ile GERIYE UYUMLUDUR: yeni anahtarlar eklenir, eskiler silinmez.
+    """
+    try:
+        satirlar = conn.execute(
+            "SELECT rs.repo, r.rowid, rs.readme_yolu, rs.skor, rs.seviye, "
+            "       rs.behavior_commits_after, rs.screenshot_age_days, "
+            "       rs.eksik_gorsel, rs.neden "
+            "FROM readme_status rs "
+            "LEFT JOIN repos r ON r.path = rs.repo "
+            "ORDER BY CASE rs.seviye WHEN 'bayat' THEN 0 WHEN 'eskiyor' THEN 1"
+            "   WHEN 'taze' THEN 2 ELSE 3 END, COALESCE(rs.skor, 0) DESC,"
+            "   rs.repo COLLATE NOCASE"
+        ).fetchall()
+    except sqlite3.Error:  # tablo yoksa (eski DB): bos liste
+        satirlar = []
+
+    kayitlar = []
+    for s in satirlar:
+        seviye = s["seviye"]
+        kayitlar.append({
+            "id": s["rowid"],  # repo detay linki icin (yoksa None)
+            "repo": _temizle(_repo_adi(s["repo"])),
+            "seviye": _temizle(seviye or ""),
+            "seviye_bilinen": seviye in SEVIYE_ETIKETLERI,
+            "seviye_etiket": _temizle(SEVIYE_ETIKETLERI.get(seviye, seviye or "bilinmiyor")),
+            "skor": s["skor"],
+            "davranis_commit": s["behavior_commits_after"],
+            "gorsel_yasi": s["screenshot_age_days"],
+            "eksik_gorsel": s["eksik_gorsel"],
+            "neden": _temizle(s["neden"] or ""),
+        })
+
+    sayaclar = {seviye: 0 for seviye in SEVIYE_ETIKETLERI}
+    for k in kayitlar:
+        if k["seviye"] in sayaclar:
+            sayaclar[k["seviye"]] += 1
+
+    return {
+        "kayitlar": kayitlar,
+        "toplam": len(kayitlar),
+        "sayaclar": sayaclar,
+        "bayat_readme": sum(sayaclar[s] for s in OZET_SAYILAN_SEVIYELER),
     }
 
 
@@ -529,6 +676,15 @@ def app_olustur(db_yolu: Path | str) -> Flask:
     def borc_sayfasi() -> str:
         return render_template("borc.html", veri=borc_verisi(_baglanti_al()))
 
+    @uygulama.get("/bayat-readme")
+    def bayat_readme_sayfasi() -> str:
+        return render_template(
+            "bayat_readme.html",
+            veri=bayat_readme_verisi(_baglanti_al()),
+            seviye_renkleri=SEVIYE_RENKLERI,
+            seviye_etiketleri=SEVIYE_ETIKETLERI,
+        )
+
     @uygulama.get("/repo/<int:repo_id>")
     def repo_sayfasi(repo_id: int) -> str:
         detay = repo_detay(_baglanti_al(), repo_id)
@@ -539,6 +695,7 @@ def app_olustur(db_yolu: Path | str) -> Flask:
             repo=detay,
             onem_renkleri=ONEM_RENKLERI,
             tur_etiketleri=TUR_ETIKETLERI,
+            seviye_renkleri=SEVIYE_RENKLERI,
         )
 
     @uygulama.get("/saglik")
@@ -571,6 +728,10 @@ def app_olustur(db_yolu: Path | str) -> Flask:
     @uygulama.get("/api/borc")
     def api_borc() -> Response:
         return jsonify(borc_verisi(_baglanti_al()))
+
+    @uygulama.get("/api/bayat-readme")
+    def api_bayat_readme() -> Response:
+        return jsonify(bayat_readme_verisi(_baglanti_al()))
 
     return uygulama
 

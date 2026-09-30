@@ -69,6 +69,7 @@ KURGUSAL_REPOLAR = [
 KURGUSAL_BULGULAR = [
     ("/kurgusal/ornek-api", "api-anahtari", "yuksek", "app/yapilandirma.py", 18, None),
     ("/kurgusal/ornek-api", "ozel-anahtar", "yuksek", "certs/servis.pem", 1, "a1b2c3d"),
+    ("/kurgusal/ornek-api", "env-izlenen", "yuksek", ".env.local", None, None),
     ("/kurgusal/ornek-api", "e-posta", "dusuk", "ILETISIM.md", 42, None),
     ("/kurgusal/demo-arayuz", "env-izlenen", "yuksek", ".env.production", None, None),
     ("/kurgusal/demo-arayuz", "kisisel-yol", "orta", "belgeler/kurulum.md", 9, "e4f5a6b"),
@@ -78,6 +79,34 @@ KURGUSAL_BULGULAR = [
     ("/kurgusal/ornek-uygulama", "api-anahtari", "yuksek", "src/yapilandirma.ts", 33, None),
     ("/kurgusal/ornek-uygulama", "kisisel-yol", "orta", "docs/kurulum.md", 5, "9f8e7d6"),
     ("/kurgusal/ornek-arac", "env-izlenen", "yuksek", ".env", None, None),
+]
+
+#: Dalga D: kurgusal README bayatlığı. (yol, seviye, skor, davranis commit,
+#: gorsel yasi (gun), readme yolu, neden). Tarihler 2026-09'a kadar GECERLIDIR.
+KURGUSAL_READMELER = [
+    ("/kurgusal/ornek-api", "bayat", 13, 9, 45, "README.md", None),
+    ("/kurgusal/ornek-arac", "bayat", 8, 8, 0, "README.md", None),
+    ("/kurgusal/demo-arayuz", "eskiyor", 4, 4, None, "README.rst", None),
+    ("/kurgusal/ornek-notlar", "eskiyor", 6, 3, 30, "README.md", None),
+    ("/kurgusal/ornek-kutuphane", "taze", 1, 1, None, "README.md", None),
+    ("/kurgusal/demo-bibliyeka", "taze", 0, 0, None, "README.md", None),
+    ("/kurgusal/demo-servis", "yok", 0, 0, None, None, "readme-yok"),
+    ("/kurgusal/ornek-uygulama", "yok", 0, 0, None, "README.md", "readme-commitlenmemis"),
+]
+
+#: Dalga D: sakli "simdi ne yapmali" ozetleri. metin KURGUSAL ve kisa.
+KURGUSAL_OZETLER = [
+    ("/kurgusal/ornek-api", "yerel", None, "2026-09-30T09:16:00+00:00",
+     "- 3 yüksek şiddetli sızıntı bulgusu var → önce onu ele al\n"
+     "- 4 commit'lenmemiş değişiklik var → commit'le\n"
+     "- README bayat (skor 13) → güncelle"),
+    ("/kurgusal/ornek-arac", "cor", "sahte/ozet-modeli", "2026-09-30T09:16:00+00:00",
+     "- 7 commit'lenmemiş değişiklik var → commit'le\n"
+     "- README bayat (skor 8) → güncelle"),
+    ("/kurgusal/demo-arayuz", "yerel", None, "2026-09-30T09:16:00+00:00",
+     "- uzak takip bilgisi yok (git fetch gerekir); atlas fetch yapmaz"),
+    ("/kurgusal/ornek-kutuphane", "yerel", None, "2026-09-30T09:16:00+00:00",
+     "- 1 commit'lenmemiş değişiklik var → commit'le"),
 ]
 
 KURGUSAL_TODOLAR = [
@@ -143,6 +172,22 @@ def kurgusal_db_yaz(yol: Path) -> Path:
             con.execute(
                 "INSERT INTO todos (repo, file, line, text) VALUES (?, ?, ?, ?)",
                 (repo, dosya, satir, metin),
+            )
+        for repo, seviye, skor, davranis, yas, readme_yolu, neden in KURGUSAL_READMELER:
+            con.execute(
+                "INSERT OR REPLACE INTO readme_status "
+                "(repo, readme_commit, behavior_commits_after, screenshot_age_days,"
+                " readme_yolu, readme_commit_tarihi, skor, seviye, eksik_gorsel, neden, tarandi) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (repo, f"{skor:07x}" if seviye != "yok" else None, davranis, yas,
+                 readme_yolu, "2026-09-02T08:00:00+00:00" if seviye != "yok" else None,
+                 skor, seviye, 0, neden, 1),
+            )
+        for repo, kaynak, model, uretim, metin in KURGUSAL_OZETLER:
+            con.execute(
+                "INSERT OR REPLACE INTO summaries "
+                "(repo, uretim, kaynak, model, girdi_hash, metin) VALUES (?, ?, ?, ?, ?, ?)",
+                (repo, uretim, kaynak, model, "kurgusal-hash", metin),
             )
         con.commit()
     finally:
@@ -212,11 +257,16 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         taban = f"http://127.0.0.1:{port}"
+        # Dalga D: repo detay sayfasi (ozet + README satiri) bir repo id ile acilir.
+        repo_detay_yolu = "/repo/1"
         isler = [
             ("ozet-masaustu.png", "/", MASAUSTU),
             ("yarim-is.png", "/yarim-is", MASAUSTU),
             ("sizinti-masaustu.png", "/sizinti", MASAUSTU),
             ("borc.png", "/borc", MASAUSTU),
+            ("bayat-readme-masaustu.png", "/bayat-readme", MASAUSTU),
+            ("repo-detay-masaustu.png", repo_detay_yolu, MASAUSTU),
+            ("bayat-readme-mobil.png", "/bayat-readme", MOBIL),
             ("ozet-mobil.png", "/", MOBIL),
         ]
         with sync_playwright() as p:

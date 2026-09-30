@@ -60,11 +60,18 @@ def test_dalga_b_c_d_sutunlari_simdiden_hazir(tmp_path: Path):
         assert {r["name"] for r in conn.execute("PRAGMA table_info(findings)")} == {
             "id", "repo", "kind", "severity", "file", "line", "commit", "snippet_redacted"
         }
+        # `readme_status` artık Dalga D sütunlarını da İÇERİR (skor, seviye,
+        # gorsel yaşı vb.); eski sütunlar yerinde KALIR (geriye uyum).
         assert {r["name"] for r in conn.execute("PRAGMA table_info(readme_status)")} == {
-            "repo", "readme_commit", "behavior_commits_after", "screenshot_age_days"
+            "repo", "readme_commit", "behavior_commits_after", "screenshot_age_days",
+            "readme_yolu", "readme_commit_tarihi", "skor", "seviye",
+            "eksik_gorsel", "neden", "tarandi",
         }
         assert {r["name"] for r in conn.execute("PRAGMA table_info(todos)")} == {
             "id", "repo", "file", "line", "text"
+        }
+        assert "summaries" in {
+            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
     finally:
         conn.close()

@@ -160,6 +160,8 @@ def db_doldur(
     repos=(),
     findings=(),
     todos=(),
+    readmes=(),
+    summaries=(),
 ) -> Path:
     """Test DB'sine doğrudan (maskeli) satırlar yazar.
 
@@ -184,6 +186,26 @@ def db_doldur(
             conn.execute(
                 "INSERT INTO todos (repo, file, line, text) VALUES (?, ?, ?, ?)",
                 (t["repo"], t.get("file"), t.get("line"), t.get("text")),
+            )
+        for r in readmes:
+            conn.execute(
+                "INSERT OR REPLACE INTO readme_status "
+                "(repo, readme_commit, behavior_commits_after, screenshot_age_days,"
+                " readme_yolu, readme_commit_tarihi, skor, seviye, eksik_gorsel, neden, tarandi) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    r["repo"], r.get("readme_commit"), r.get("behavior_commits_after"),
+                    r.get("screenshot_age_days"), r.get("readme_yolu"),
+                    r.get("readme_commit_tarihi"), r.get("skor"), r.get("seviye"),
+                    r.get("eksik_gorsel", 0), r.get("neden"), r.get("tarandi", 1),
+                ),
+            )
+        for s in summaries:
+            db_mod.replace_summary(
+                conn, s["repo"], uretim=s.get("uretim", "2026-09-29T10:00:00+00:00"),
+                kaynak=s.get("kaynak", "yerel"), model=s.get("model"),
+                girdi_hash=s.get("girdi_hash", "kurgusal-hash"),
+                metin=s["metin"],
             )
         conn.commit()
     finally:

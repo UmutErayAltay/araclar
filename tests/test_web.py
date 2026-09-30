@@ -15,11 +15,24 @@ import pytest
 
 from conftest import db_doldur
 
+def _taze(zaman_saat_geri=1):
+    """`scanned_at` icin GORECELI zaman: test yarin da gecer.
+
+    Sabit tarih kullanmak "zaman bombasi" yaratir: 24 saat uzeri gecince
+    `veri_bayat` yanlislikla True olur ve "taze veri" testleri kirilir.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) - timedelta(hours=zaman_saat_geri)).isoformat(
+        timespec="seconds"
+    )
+
+
 from atlas import db as db_mod
 from atlas.web import app_olustur
 
-SAYFALAR = ["/", "/yarim-is", "/sizinti", "/borc"]
-APILER = ["/api/ozet", "/api/yarim-is", "/api/bulgular", "/api/borc", "/saglik"]
+SAYFALAR = ["/", "/yarim-is", "/sizinti", "/borc", "/bayat-readme"]
+APILER = ["/api/ozet", "/api/yarim-is", "/api/bulgular", "/api/borc", "/api/bayat-readme", "/saglik"]
 
 
 @pytest.fixture
@@ -31,13 +44,13 @@ def dolu_db(tmp_path: Path) -> Path:
         repos=[
             {"path": "/kurgusal/ornek-api", "name": "ornek-api", "dirty": 3,
              "unpushed": 2, "branch": "main", "last_commit_at": "2026-09-29T10:00:00+00:00",
-             "has_remote": 1, "scanned_at": "2026-09-29T10:00:00+00:00"},
+             "has_remote": 1, "scanned_at": _taze()},
             {"path": "/kurgusal/demo-arayuz", "name": "demo-arayuz", "dirty": 0,
              "unpushed": None, "branch": "feat/yeni", "last_commit_at": "2026-09-28T10:00:00+00:00",
-             "has_remote": 1, "scanned_at": "2026-09-29T10:00:00+00:00"},
+             "has_remote": 1, "scanned_at": _taze()},
             {"path": "/kurgusal/temiz-repo", "name": "temiz-repo", "dirty": 0,
              "unpushed": 0, "branch": "main", "last_commit_at": "2026-09-27T10:00:00+00:00",
-             "has_remote": 0, "scanned_at": "2026-09-29T10:00:00+00:00"},
+             "has_remote": 0, "scanned_at": _taze()},
         ],
         findings=[
             {"repo": "/kurgusal/ornek-api", "kind": "api-anahtari", "severity": "yuksek",
@@ -106,9 +119,11 @@ def test_bos_db_api_200(web_client, yol: str):
     assert isinstance(v, dict)
 
 
-def test_bayat_readme_dalga_d_yok(web_client):
-    """`/bayat-readme` Dalga D'nin isidir: EKLENMEZ (404)."""
-    assert web_client.get("/bayat-readme").status_code == 404
+def test_bayat_readme_dalga_d_var(web_client):
+    """`/bayat-readme` Dalga D ile eklendi: bos DB'de 200 + bos durum."""
+    r = web_client.get("/bayat-readme")
+    assert r.status_code == 200
+    assert "bos-durum" in r.data.decode("utf-8")
 
 
 def test_repo_sayfasi_200_ve_detay(dolu_client):
@@ -462,6 +477,7 @@ def test_navigasyon_her_sayfada_tam(dolu_client, yol: str):
     govde = dolu_client.get(yol).data.decode("utf-8")
     for hedef, etiket in [
         ("/", "Özet"), ("/yarim-is", "Yarım iş"), ("/sizinti", "Sızıntı"), ("/borc", "Borç"),
+        ("/bayat-readme", "Bayat README"),
     ]:
         assert f'href="{hedef}"' in govde
         assert etiket in govde
@@ -478,3 +494,179 @@ def test_static_dosyalar_servis_edilir(dolu_client):
         r = dolu_client.get(f"/static/{dosya}")
         assert r.status_code == 200
         assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+
+# --------------------------------------------------------------------------
+# Dalga D: /bayat-readme, README satırı ve özet (panel SALT OKUNUR)
+# --------------------------------------------------------------------------
+
+#: Kurgusal readme_status satırları (skora göre karışık sırada verilir; sayfa
+#: skora AZALAN sıralamalıdır).
+KURGUSAL_READMELER = [
+    {"repo": "/kurgusal/ornek-api", "skor": 9, "seviye": "bayat",
+     "behavior_commits_after": 9, "screenshot_age_days": 45, "readme_yolu": "README.md"},
+    {"repo": "/kurgusal/demo-arayuz", "skor": 4, "seviye": "eskiyor",
+     "behavior_commits_after": 4, "screenshot_age_days": None, "readme_yolu": "README.rst"},
+    {"repo": "/kurgusal/temiz-repo", "skor": 1, "seviye": "taze",
+     "behavior_commits_after": 1, "screenshot_age_days": None, "readme_yolu": "README.md"},
+]
+
+
+@pytest.fixture
+def dalga_d_client(tmp_path: Path):
+    """Dalga D verisi dolu panel (readme_status + summaries)."""
+    yol = tmp_path / "d.db"
+    db_doldur(
+        yol,
+        repos=[
+            {"path": "/kurgusal/ornek-api", "name": "ornek-api", "dirty": 2,
+             "unpushed": 1, "branch": "main", "last_commit_at": "2026-09-29T09:12:00+00:00",
+             "has_remote": 1, "scanned_at": _taze()},
+            {"path": "/kurgusal/demo-arayuz", "name": "demo-arayuz", "dirty": 0,
+             "unpushed": None, "branch": "main", "last_commit_at": "2026-09-28T09:00:00+00:00",
+             "has_remote": 1, "scanned_at": _taze()},
+            {"path": "/kurgusal/temiz-repo", "name": "temiz-repo", "dirty": 0,
+             "unpushed": 0, "branch": "main", "last_commit_at": "2026-09-27T09:00:00+00:00",
+             "has_remote": 0, "scanned_at": _taze()},
+        ],
+        readmes=KURGUSAL_READMELER,
+        summaries=[
+            {"repo": "/kurgusal/ornek-api", "kaynak": "yerel",
+             "metin": "- 2 commit'lenmemiş değişiklik var → commit'le\n"
+                      "- 1 push edilmemiş commit → push'la"},
+            {"repo": "/kurgusal/demo-arayuz", "kaynak": "cor", "model": "sahte/model",
+             "metin": "- Önce sızıntı bulgusunu ele al"},
+        ],
+    )
+    return app_olustur(yol).test_client()
+
+
+def test_bayat_readme_api_skora_gore_sirali(dalga_d_client):
+    v = _json(dalga_d_client.get("/api/bayat-readme"))
+    skorlar = [k["skor"] for k in v["kayitlar"]]
+    assert skorlar == sorted(skorlar, reverse=True), skorlar
+    assert v["toplam"] == 3
+    assert v["sayaclar"] == {"bayat": 1, "eskiyor": 1, "taze": 1, "yok": 0}
+    assert v["bayat_readme"] == 2, "bayat + eskiyor sayilir"
+
+
+def test_ozet_api_geriye_uyumlu(dalga_d_client):
+    """`/api/ozet` ESKI anahtarlarini korur, yeni anahtarlar EKLENIR."""
+    v = _json(dalga_d_client.get("/api/ozet"))
+    for eski in ("repo_sayisi", "kirli_repo", "push_bekleyen", "push_bilinmeyen",
+                 "bulgu_sayaclari", "toplam_bulgu", "toplam_todo", "son_tarama",
+                 "veri_bayat"):
+        assert eski in v, f"geriye uyumluluk bozuldu: {eski}"
+    assert v["bayat_readme"] == 2
+    assert v["readme_sayaclari"]["bayat"] == 1
+    assert v["readme_toplam"] == 3
+
+
+def test_bayat_readme_sayfasi_rozet_metinli(dalga_d_client):
+    """Seviye rozeti hem renk hem METIN tasir (yalnizca renk DEGIL)."""
+    govde = dalga_d_client.get("/bayat-readme").data.decode("utf-8")
+    for seviye in ("bayat", "eskiyor", "taze"):
+        assert f">{seviye}<" in govde, f"rozet metni yok: {seviye}"
+    assert 'class="rozet bayat"' in govde
+    assert 'class="rozet eskiyor"' in govde
+
+
+def test_bayat_readme_bos_durum(web_client):
+    """`readme_status` bosken anlamli bos durum (panel taramayi TETIKLEMEZ)."""
+    r = web_client.get("/bayat-readme")
+    assert r.status_code == 200
+    assert "Henüz README taraması yapılmamış" in r.data.decode("utf-8")
+
+
+def test_ozet_karti_bos_durumda_sifir(dolu_client):
+    v = _json(dolu_client.get("/api/ozet"))
+    assert v["bayat_readme"] == 0
+    assert v["readme_toplam"] == 0
+
+
+def test_repo_sayfasinda_readme_satiri(dalga_d_client):
+    import sqlite3 as s3
+
+    con = s3.connect(dalga_d_client.application.config["ATLAS_DB"])
+    con.row_factory = s3.Row
+    repo_id = con.execute("SELECT rowid FROM repos WHERE name='ornek-api'").fetchone()["rowid"]
+    con.close()
+    govde = dalga_d_client.get(f"/repo/{repo_id}").data.decode("utf-8")
+    assert "README" in govde
+    assert "bayat" in govde, "README seviyesi gorunmeli"
+    assert "9" in govde, "skor gorunmeli"
+    assert "45" in govde, "gorsel yasi gorunmeli"
+
+
+def test_repo_sayfasinda_ozet_gosterilir(dalga_d_client):
+    import sqlite3 as s3
+
+    con = s3.connect(dalga_d_client.application.config["ATLAS_DB"])
+    con.row_factory = s3.Row
+    repo_id = con.execute("SELECT rowid FROM repos WHERE name='ornek-api'").fetchone()["rowid"]
+    con.close()
+    govde = dalga_d_client.get(f"/repo/{repo_id}").data.decode("utf-8")
+    assert "Şimdi ne yapmalı" in govde
+    # Jinja autoescape `'` işaretini `&#39;` yapar; bu yüzden kesirli değil
+    # parçalarla ararız (özet metni doğru basılmış mı?).
+    assert "commit" in govde and "le" in govde
+    assert "değişiklik var" in govde
+    assert "yerel kural" in govde, "kaynak yazilmali"
+
+
+def test_repo_sayfasinda_ozet_maddesinde_cift_isaret_yok(dalga_d_client):
+    """Ozet satiri '- ' ile baslar; liste imi zaten var, metinde ikinci '-' gorunmemeli."""
+    import re
+    import sqlite3 as s3
+
+    con = s3.connect(dalga_d_client.application.config["ATLAS_DB"])
+    repo_id = con.execute("SELECT rowid FROM repos WHERE name='ornek-api'").fetchone()[0]
+    con.close()
+    govde = dalga_d_client.get(f"/repo/{repo_id}").data.decode("utf-8")
+    ogeler = re.findall(r"<li>\s*(.*?)\s*</li>", govde, re.S)
+    ozet = [o for o in ogeler if "değişiklik var" in o]
+    assert ozet, "ozet maddesi bulunamadi"
+    assert all(not o.lstrip().startswith(("-", "•", "*")) for o in ozet)
+
+
+def test_repo_sayfasinda_ozet_kaynagi_cor_model(dalga_d_client):
+    import sqlite3 as s3
+
+    con = s3.connect(dalga_d_client.application.config["ATLAS_DB"])
+    con.row_factory = s3.Row
+    repo_id = con.execute("SELECT rowid FROM repos WHERE name='demo-arayuz'").fetchone()["rowid"]
+    con.close()
+    govde = dalga_d_client.get(f"/repo/{repo_id}").data.decode("utf-8")
+    assert "cor: sahte/model" in govde, "cor kaynagi + model yazilmali"
+
+
+def test_repo_sayfasinda_ozet_yoksa_mesaj(dolu_client):
+    """Özet yoksa: 'henüz üretilmedi' + nasıl üretileceği YAZILIR."""
+    import sqlite3 as s3
+
+    con = s3.connect(dolu_client.application.config["ATLAS_DB"])
+    con.row_factory = s3.Row
+    repo_id = con.execute("SELECT rowid FROM repos WHERE name='ornek-api'").fetchone()["rowid"]
+    con.close()
+    govde = dolu_client.get(f"/repo/{repo_id}").data.decode("utf-8")
+    assert "Henüz özet üretilmedi" in govde
+    assert "atlas ozet" in govde
+
+
+def test_web_tarama_tetiklemez(dalga_d_client):
+    """Panel salt-okunur: istekler `readme_status`/`summaries` SAYISINI DEĞİŞTİRMEZ."""
+    import sqlite3 as s3
+
+    yol = dalga_d_client.application.config["ATLAS_DB"]
+    con = s3.connect(yol)
+    once = con.execute("SELECT COUNT(*) FROM readme_status").fetchone()[0]
+    once_s = con.execute("SELECT COUNT(*) FROM summaries").fetchone()[0]
+    con.close()
+    for yol_url in ("/", "/bayat-readme", "/api/bayat-readme", "/api/ozet"):
+        dalga_d_client.get(yol_url)
+    con = s3.connect(yol)
+    try:
+        assert con.execute("SELECT COUNT(*) FROM readme_status").fetchone()[0] == once
+        assert con.execute("SELECT COUNT(*) FROM summaries").fetchone()[0] == once_s
+    finally:
+        con.close()

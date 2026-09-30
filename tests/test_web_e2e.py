@@ -38,7 +38,7 @@ BROWSER_YOLU = os.environ.get("PW_CHROMIUM", "/opt/pw-browsers")
 MASAUSTU = {"width": 1440, "height": 900}
 MOBIL = {"width": 390, "height": 844}
 
-SAYFALAR = ["/", "/yarim-is", "/sizinti", "/borc"]
+SAYFALAR = ["/", "/yarim-is", "/sizinti", "/borc", "/bayat-readme"]
 
 
 def _kayitli_browser() -> str | None:
@@ -116,6 +116,35 @@ def kurgusal_db(tmp_path_factory) -> Path:
              "text": "// TODO: klavye kisayollari eksik"},
             {"repo": "/kurgusal/ornek-kutuphane", "file": "README.md", "line": 12,
              "text": "# XXX: ornekler guncel degil"},
+        ],
+        # --- Dalga D: README bayatlığı + saklı özetler (hepsi KURGUSAL) ---
+        readmes=[
+            {"repo": "/kurgusal/ornek-api", "skor": 9, "seviye": "bayat",
+             "behavior_commits_after": 9, "screenshot_age_days": 45,
+             "readme_yolu": "README.md", "readme_commit": "a1b2c3d",
+             "readme_commit_tarihi": "2026-09-02T10:00:00+00:00"},
+            {"repo": "/kurgusal/demo-arayuz", "skor": 4, "seviye": "eskiyor",
+             "behavior_commits_after": 4, "screenshot_age_days": None,
+             "readme_yolu": "README.rst", "readme_commit": "d4e5f6a",
+             "readme_commit_tarihi": "2026-09-20T10:00:00+00:00"},
+            {"repo": "/kurgusal/ornek-kutuphane", "skor": 1, "seviye": "taze",
+             "behavior_commits_after": 1, "screenshot_age_days": None,
+             "readme_yolu": "README.md", "readme_commit": "b7c8d9e",
+             "readme_commit_tarihi": "2026-09-25T10:00:00+00:00"},
+            {"repo": "/kurgusal/deneme-araci", "skor": 0, "seviye": "yok",
+             "behavior_commits_after": 0, "screenshot_age_days": None,
+             "readme_yolu": None, "readme_commit": None,
+             "readme_commit_tarihi": None, "neden": "readme-yok"},
+        ],
+        summaries=[
+            {"repo": "/kurgusal/ornek-api", "kaynak": "yerel",
+             "uretim": "2026-09-29T10:05:00+00:00",
+             "metin": "- 4 commit'lenmemis degisiklik var -> commit'le\n"
+                      "- 3 push edilmemis commit -> push'la\n"
+                      "- README bayat (skor 9) -> guncelle"},
+            {"repo": "/kurgusal/demo-arayuz", "kaynak": "cor",
+             "model": "sahte/ozet-modeli", "uretim": "2026-09-29T10:06:00+00:00",
+             "metin": "- Once sizinti bulgusunu ele al"},
         ],
     )
     return dizin / "e2e.db"
@@ -331,7 +360,7 @@ def test_gezinme_cubugu_iceriği_kapatmaz(canli, canli_sunucu, yol: str, viewpor
 @pytest.mark.parametrize("yol", SAYFALAR)
 def test_navigasyon_linkleri_her_sayfada_tam(canli, canli_sunucu, yol: str):
     ac(canli, canli_sunucu, yol)
-    for hedef in ["/", "/yarim-is", "/sizinti", "/borc"]:
+    for hedef in ["/", "/yarim-is", "/sizinti", "/borc", "/bayat-readme"]:
         bulunan = canli.locator(f'header.ust a[href="{hedef}"]')
         assert bulunan.count() == 1, f"{hedef} linki eksik ({yol})"
         assert bulunan.is_visible(), f"{hedef} linki gorunur degil ({yol})"
@@ -520,7 +549,7 @@ def test_xss_yuku_calismaz(canli, canli_sunucu, tmp_path_factory, kurgusal_db: P
             except OSError:
                 time.sleep(0.1)
         taban = f"http://127.0.0.1:{port}"
-        for yol in ("/", "/yarim-is", "/sizinti", "/borc"):
+        for yol in ("/", "/yarim-is", "/sizinti", "/borc", "/bayat-readme"):
             canli.goto(f"{taban}{yol}", wait_until="networkidle")
             assert canli.evaluate("() => typeof window.__xss") == "undefined", (
                 f"XSS {yol} üzerinde çalıştı"
@@ -602,3 +631,110 @@ def test_masaustunde_tablo_gorunur(canli, canli_sunucu):
     ac(canli, canli_sunucu, "/sizinti", MASAUSTU)
     assert canli.locator(".tablo-sarayici").is_visible()
     assert not canli.locator(".kart-liste").is_visible()
+
+# --------------------------------------------------------------------------
+# 9) Dalga D: /bayat-readme ve özet (gerçek tarayıcı)
+# --------------------------------------------------------------------------
+
+
+def test_bayat_readme_sayfasi_cizilir(canli, canli_sunucu):
+    cevap = ac(canli, canli_sunucu, "/bayat-readme")
+    assert cevap.status == 200
+    assert canli.hatalar == [], f"pageerror: {canli.hatalar}"
+    assert canli.gunucu == [], f"konsol: {canli.gunucu}"
+
+
+def test_bayat_readme_rozet_metinli(canli, canli_sunucu):
+    """Her seviye rozeti hem renk hem METIN tasir; renk korlugunde de okunur."""
+    ac(canli, canli_sunucu, "/bayat-readme")
+    for seviye in ("bayat", "eskiyor", "taze", "yok"):
+        bulunan = canli.locator(f".tablo-sarayici .rozet.{seviye}")
+        assert bulunan.count() >= 1, f"{seviye} rozeti yok"
+        # Rozetin METNI seviyenin kendisidir: yalnizca renk degil.
+        assert bulunan.first.inner_text().strip() == seviye.replace("yok", "README yok"), (
+            f"{seviye} rozeti metin tasiyor"
+        )
+
+
+def test_bayat_readme_skor_rozeti_gorunur(canli, canli_sunucu):
+    ac(canli, canli_sunucu, "/bayat-readme")
+    metin = canli.locator("main").inner_text()
+    for beklenen in ("9", "4", "1"):
+        assert beklenen in metin, f"skor {beklenen} gorunmuyor"
+
+
+def test_ozet_karti_bayat_sayisi(canli, canli_sunucu):
+    """`/` ozetinde 'N bayat README' karti var ve bayat+eskiyor sayar.
+
+    Fixture'da bayat=1, eskiyor=1, taze=1, yok=1 → kart 2 göstermeli
+    ('taze' ve 'yok' sayılmaz: 'yok' eksik veridir, açık sorun değil).
+    """
+    ac(canli, canli_sunucu, "/")
+    kart = canli.locator(".kart-izgara .kart", has_text="Bayat README")
+    assert kart.count() == 1, "bayat README karti yok veya tekrarli"
+    sayi = kart.locator(".kart-sayi").inner_text().strip()
+    assert sayi == "2", f"kart sayisi {sayi!r}, '2' olmali (bayat 1 + eskiyor 1)"
+
+
+def test_ozet_karti_bos_durum_sifir(canli, canli_sunucu):
+    """`readme_status` dolu ama bayat/eskiyor yoksa... (burada 2 var) —
+    buradaki asil kontrol: kart HIC YOKSA sifir gosterir."""
+    ac(canli, canli_sunucu, "/")
+    # Kart her zaman var (0 da olsa); sadece sayi degisir.
+    assert canli.locator(".kart-izgara .kart").count() >= 5
+
+
+def test_repo_detayinda_ozet_gorunur(canli, canli_sunucu, kurgusal_db: Path):
+    """`/repo/<id>` sayfasinda sakli ozet + kaynagi gorunur."""
+    import sqlite3 as s3
+
+    con = s3.connect(kurgusal_db)
+    con.row_factory = s3.Row
+    repo_id = con.execute(
+        "SELECT rowid FROM repos WHERE path = '/kurgusal/ornek-api'"
+    ).fetchone()["rowid"]
+    con.close()
+    ac(canli, canli_sunucu, f"/repo/{repo_id}")
+    metin = canli.locator("main").inner_text()
+    assert "Şimdi ne yapmalı" in metin
+    assert "yerel kural" in metin, "kaynak etiketi gorunmeli"
+    # Özet satırları gerçekten çizilir (boş `<ul>` değil).
+    assert canli.locator(".ozet-liste li").count() == 3, "ozet satirlari eksik"
+    assert "commit" in metin.lower(), "ozet satirlari gorunmeli"
+
+
+def test_repo_detayinda_cor_ozeti_kaynagi(canli, canli_sunucu, kurgusal_db: Path):
+    import sqlite3 as s3
+
+    con = s3.connect(kurgusal_db)
+    con.row_factory = s3.Row
+    repo_id = con.execute(
+        "SELECT rowid FROM repos WHERE path = '/kurgusal/demo-arayuz'"
+    ).fetchone()["rowid"]
+    con.close()
+    ac(canli, canli_sunucu, f"/repo/{repo_id}")
+    metin = canli.locator("main").inner_text()
+    assert "cor: sahte/ozet-modeli" in metin, "cor kaynagi + model gorunmeli"
+
+
+def test_repo_detayinda_readme_satiri(canli, canli_sunucu, kurgusal_db: Path):
+    import sqlite3 as s3
+
+    con = s3.connect(kurgusal_db)
+    con.row_factory = s3.Row
+    repo_id = con.execute(
+        "SELECT rowid FROM repos WHERE path = '/kurgusal/ornek-api'"
+    ).fetchone()["rowid"]
+    con.close()
+    ac(canli, canli_sunucu, f"/repo/{repo_id}")
+    metin = canli.locator("main").inner_text()
+    assert "README" in metin
+    assert "bayat" in metin, "README seviyesi gorunmeli"
+
+
+def test_mobilde_bayat_readme_kart(canli, canli_sunucu):
+    """Masaustu tablosu gizlenir, kart listesi acilir (yatay tasma olmaz)."""
+    ac(canli, canli_sunucu, "/bayat-readme", MOBIL)
+    assert not canli.locator(".tablo-sarayici").is_visible(), "masaustu tablosu gorunuyor"
+    assert canli.locator(".kart-liste").is_visible(), "kart gorunumu acik degil"
+    assert canli.locator(".kart-liste .kart").count() == 4

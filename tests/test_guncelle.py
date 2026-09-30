@@ -53,11 +53,13 @@ def test_guncelle_uc_tablu_doldurur(uc_tablolu_kok: Path, db_file: Path):
     assert sayi["todos"] == 1
 
 
-def test_guncelle_uc_asamayi_basar(uc_tablolu_kok: Path, db_file: Path):
+def test_guncelle_bes_asamayi_basar(uc_tablolu_kok: Path, db_file: Path):
     proc = run_module_cli("guncelle", "--root", str(uc_tablolu_kok), "--db", str(db_file))
-    assert "1/3: repo taramasi" in proc.stdout
-    assert "2/3: sizinti taramasi" in proc.stdout
-    assert "3/3: TODO/FIXME borcu" in proc.stdout
+    assert "1/5: repo taramasi" in proc.stdout
+    assert "2/5: sizinti taramasi" in proc.stdout
+    assert "3/5: TODO/FIXME borcu" in proc.stdout
+    assert "4/5: README bayatligi" in proc.stdout
+    assert "5/5: yerel 'simdi ne yapmali' ozeti (agsiz)" in proc.stdout
 
 
 def test_guncelle_salt_okunur(uc_tablolu_kok: Path, db_file: Path):

@@ -31,10 +31,19 @@ CREATE TABLE IF NOT EXISTS findings (
 );
 
 CREATE TABLE IF NOT EXISTS readme_status (
-    repo                    TEXT PRIMARY KEY,
-    readme_commit           TEXT,
+    repo                TEXT PRIMARY KEY,
+    readme_commit       TEXT,
     behavior_commits_after  INTEGER,
-    screenshot_age_days     INTEGER
+    screenshot_age_days     INTEGER,
+    -- Dalga D: bayatlik skoru ve seviyesi. `ek_sutunlar` ile eklenir; eski
+    -- DB'lerde bu sutunlar NULL kalir (veri KAYBOLMAZ, yeni sütunlar gelir).
+    readme_yolu         TEXT,
+    readme_commit_tarihi TEXT,
+    skor                INTEGER,
+    seviye              TEXT,
+    eksik_gorsel        INTEGER,
+    neden               TEXT,
+    tarandi             INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS todos (
@@ -45,17 +54,42 @@ CREATE TABLE IF NOT EXISTS todos (
     text  TEXT
 );
 
+CREATE TABLE IF NOT EXISTS summaries (
+    repo        TEXT PRIMARY KEY,
+    uretim      TEXT,      -- ISO8601 UTC
+    kaynak      TEXT CHECK(kaynak IN ('yerel','cor')),
+    model       TEXT,      -- 'yerel' icin NULL
+    girdi_hash  TEXT,      -- girdi degisince ozet yeniden uretilir
+    metin       TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_findings_repo ON findings(repo);
 CREATE INDEX IF NOT EXISTS idx_todos_repo    ON todos(repo);
 """
 
-#: `repos.unpushed` sutunu NULL kabul edecek sekilde cevrildi (A.1).
-#: 0 = eski sema (NOT NULL), 1 = gecerli sema.
-SCHEMA_VERSION = 1
+#: Surum gecisi:
+#:   0 = A oncesi (`repos.unpushed NOT NULL`)
+#:   1 = A.1 (`unpushed` NULL kabul eder)
+#:   2 = Dalga D (`readme_status` yeni sutunlar + `summaries` tablosu)
+SCHEMA_VERSION = 2
 
 #: 0'a cekilirsen `unpushed` yerine `COALESCE(unpushed, 0)` yazilir; boylece
 #: A.1 oncesinden kalma DB'ler de anlamli gorunur, ama yeni semayi zorlamaz.
 UNKNOWN_AS_ZERO_SQL = "COALESCE(unpushed, 0)"
+
+#: Dalga D'de `readme_status`'a eklenen sutunlar (eski semada YOKTUR).
+#: `ALTER TABLE ADD COLUMN` ile eklenir: mevcut satirlar NULL kalir, hicbir veri
+#: silinmez/yazilmaz. Yeni sutunlarin tamami NULL'a izinlidir, bu yuzden ALTER
+#: her zaman guvenlidir.
+README_YENI_SUTUNLAR: tuple[tuple[str, str], ...] = (
+    ("readme_yolu", "TEXT"),
+    ("readme_commit_tarihi", "TEXT"),
+    ("skor", "INTEGER"),
+    ("seviye", "TEXT"),
+    ("eksik_gorsel", "INTEGER"),
+    ("neden", "TEXT"),
+    ("tarandi", "INTEGER"),
+)
 
 
 def _repos_unpushed_notnull(conn: sqlite3.Connection) -> bool:
@@ -67,6 +101,11 @@ def _repos_unpushed_notnull(conn: sqlite3.Connection) -> bool:
     return any(
         row[3] for row in conn.execute("PRAGMA table_info(repos)") if row[1] == "unpushed"
     )
+
+
+def _tablo_sutunlari(conn: sqlite3.Connection, tablo: str) -> set[str]:
+    """Tablo mevcutsa sutun kumesi, yoksa BOS KUME (goc tetiklenir)."""
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({tablo})")}
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -91,8 +130,25 @@ def _migrate(conn: sqlite3.Connection) -> None:
         )
         conn.execute("DROP TABLE repos_eski")
 
+    _readme_sutun_gocu(conn)
+
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     conn.commit()
+
+
+def _readme_sutun_gocu(conn: sqlite3.Connection) -> None:
+    """`readme_status`'a Dalga D sutunlarini EKLER (veri KAYBOLMAZ).
+
+    `ALTER TABLE … ADD COLUMN` yalnızca NULL'a izin veren sutunlar icin
+    guvenlidir ve mevcut satirlari oldugu gibi birakir. Ayni surumde iki kez
+    cagrilirsa (idempotanslik) sutunlar zaten vardir ve HIC BIR sey yapilmaz.
+    """
+    mevcut = _tablo_sutunlari(conn, "readme_status")
+    if not mevcut:
+        return  # tablo yoksa `SCHEMA` zaten sifirdan kurdu
+    for ad, tip in README_YENI_SUTUNLAR:
+        if ad not in mevcut:
+            conn.execute(f"ALTER TABLE readme_status ADD COLUMN {ad} {tip}")
 
 
 def utc_now() -> str:
@@ -322,4 +378,136 @@ def todos_ozet(conn: sqlite3.Connection) -> list[sqlite3.Row]:
             "ORDER BY adet DESC, repo COLLATE NOCASE"
         )
     )
+
+
+# --------------------------------------------------------------------------
+# README bayatlığı (Dalga D)
+# --------------------------------------------------------------------------
+
+#: Yazilacak sutunlar. Yeni sutunlar sona eklenir; `readme_status` PRIMARY
+#: KEY'i `repo`'dur (COZUMLENMEZSE yeni satir eklenir).
+README_COLUMNS = (
+    "repo", "readme_commit", "behavior_commits_after", "screenshot_age_days",
+    "readme_yolu", "readme_commit_tarihi", "skor", "seviye", "eksik_gorsel",
+    "neden", "tarandi",
+)
+
+#: `readme_stale.ReadmeDurumu` alan adi -> DB sutun adi eslemesi.
+#: (eski semada `behavior_commits_after` Turkce adi degil; korunur.)
+README_ALAN_ESLEME = {
+    "repo": "repo",
+    "readme_commit": "readme_commit",
+    "davranis_commit": "behavior_commits_after",
+    "screenshot_age_days": "screenshot_age_days",
+    "readme_yolu": "readme_yolu",
+    "readme_commit_tarihi": "readme_commit_tarihi",
+    "skor": "skor",
+    "seviye": "seviye",
+    "eksik_gorsel": "eksik_gorsel",
+    "neden": "neden",
+    "tarandi": "tarandi",
+}
+
+#: Yeniden taramada o repo'nun eski satiri ONCEDEN silinir (ayni transaction).
+ONREADME_SIL_SQL = "DELETE FROM readme_status WHERE repo = ?"
+
+#: Seviye sirasi: skora azalan; `yok`/NULL en sona.
+SEVIYE_SIRASI_SQL = (
+    "ORDER BY CASE seviye WHEN 'bayat' THEN 0 WHEN 'eskiyor' THEN 1"
+    " WHEN 'taze' THEN 2 ELSE 3 END, COALESCE(skor, 0) DESC, repo COLLATE NOCASE"
+)
+
+
+def replace_readme_status(
+    conn: sqlite3.Connection, durumlar: Sequence[Any]
+) -> int:
+    """Repo basina readme_status satiri ATIP yeniler; doner: yazilan satir sayisi.
+
+    `durumlar` `readme_stale.ReadmeDurumu` ya da sozluk olabilir. Silme +
+    yazma TEK transaction'dadir: yarim kalan bir durum olusmaz.
+    """
+    def _deger(d: Any, alan: str) -> Any:
+        if isinstance(d, dict):
+            return d.get(alan)
+        return getattr(d, alan, None)
+
+    sutun_sirasi = list(README_ALAN_ESLEME)  # alan adi sirasi
+    satirlar = [
+        tuple(_deger(d, alan) for alan in sutun_sirasi) for d in durumlar
+    ]
+    repo_indeks = sutun_sirasi.index("repo")
+    with conn:
+        for satir in satirlar:
+            conn.execute(ONREADME_SIL_SQL, (satir[repo_indeks],))
+        if satirlar:
+            conn.executemany(
+                f"INSERT INTO readme_status ({', '.join(README_COLUMNS)}) "
+                f"VALUES ({', '.join('?' * len(README_COLUMNS))})",
+                satirlar,
+            )
+    return len(satirlar)
+
+
+def list_readme_status(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Tum readme_status satirlari, skora AZALAN sirada."""
+    return list(conn.execute(f"SELECT * FROM readme_status {SEVIYE_SIRASI_SQL}"))
+
+
+def readme_status_for(conn: sqlite3.Connection, repo: str) -> sqlite3.Row | None:
+    """Tek repo'nun readme_status satiri (yoksa `None`)."""
+    return conn.execute(
+        "SELECT * FROM readme_status WHERE repo = ?", (repo,)
+    ).fetchone()
+
+
+def readme_seviye_sayaci(conn: sqlite3.Connection) -> dict[str, int]:
+    """seviye -> adet. Bilinmeyen (NULL) seviye `yok` sayilir."""
+    sayaclar = {seviye: 0 for seviye in ("taze", "eskiyor", "bayat", "yok")}
+    for satir in conn.execute("SELECT seviye, COUNT(*) AS adet FROM readme_status GROUP BY seviye"):
+        anahtar = satir["seviye"] if satir["seviye"] in sayaclar else "yok"
+        sayaclar[anahtar] += int(satir["adet"])
+    return sayaclar
+
+
+def count_readme_status(conn: sqlite3.Connection) -> int:
+    return int(conn.execute("SELECT COUNT(*) FROM readme_status").fetchone()[0])
+
+
+# --------------------------------------------------------------------------
+# Özetler (Dalga D)
+# --------------------------------------------------------------------------
+
+SUMMARY_COLUMNS = ("repo", "uretim", "kaynak", "model", "girdi_hash", "metin")
+
+#: Yeniden uretimde o repo'nun eski ozeti ATIP degisir (ayni transaction).
+ONSUMMARY_SIL_SQL = "DELETE FROM summaries WHERE repo = ?"
+
+
+def replace_summary(
+    conn: sqlite3.Connection, repo: str, *, uretim: str, kaynak: str, model: str | None,
+    girdi_hash: str, metin: str,
+) -> None:
+    """Bir repo'nun ozetini ATIP degistirir. `kaynak` yalniz 'yerel'|'cor'."""
+    if kaynak not in ("yerel", "cor"):  # CHECK kisitini Python'da da geceriz
+        raise ValueError(f"gecersiz kaynak: {kaynak!r}")
+    with conn:
+        conn.execute(ONSUMMARY_SIL_SQL, (repo,))
+        conn.execute(
+            f"INSERT INTO summaries ({', '.join(SUMMARY_COLUMNS)}) "
+            f"VALUES ({', '.join('?' * len(SUMMARY_COLUMNS))})",
+            (repo, uretim, kaynak, model, girdi_hash, metin),
+        )
+
+
+def list_summaries(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """Tum ozetler, repo adina gore sirali."""
+    return list(conn.execute("SELECT * FROM summaries ORDER BY repo COLLATE NOCASE"))
+
+
+def get_summary(conn: sqlite3.Connection, repo: str) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM summaries WHERE repo = ?", (repo,)).fetchone()
+
+
+def count_summaries(conn: sqlite3.Connection) -> int:
+    return int(conn.execute("SELECT COUNT(*) FROM summaries").fetchone()[0])
 

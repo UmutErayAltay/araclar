@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from . import __version__, config, db, leaks, scan, todo
+from . import __version__, config, db, leaks, readme_stale, scan, summary, todo
 
 #: Yazilari terminal genisligine gore sutunlara dizer.
 _MIN_WIDTH = 8
@@ -122,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     guncelle = sub.add_parser(
         "guncelle",
-        help="tara + sizinti + borc: uclu tabloyu tek komutta doldurur",
+        help="tara + sizinti + borc + readme: dort tabloyu tek komutta doldurur",
     )
     guncelle.add_argument("--root", action="append", metavar="DIZIN", help="tarama koku (birden fazla olabilir)")
     guncelle.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
@@ -130,6 +130,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--gecmis", type=int, default=VARSAYILAN_GECMIS, metavar="N",
         help=f"sizinti gecmisi icin son N commit (varsayilan: {VARSAYILAN_GECMIS})",
     )
+
+    readme = sub.add_parser(
+        "readme",
+        help="README bayatligini olcer (skora gore sirali tablo)",
+    )
+    readme.add_argument("--root", action="append", metavar="DIZIN", help="tarama koku (birden fazla olabilir)")
+    readme.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
+    readme.add_argument("--repo", metavar="AD", help="yalnizca bu repo taranir (adi veya yolu)")
+    readme.add_argument("--json", action="store_true", help="makine tarafinin okunabilir cikti")
+
+    ozet = sub.add_parser(
+        "ozet",
+        help="repo basina 'simdi ne yapmali' ozeti uret (varsayilan: ağa cikmaz)",
+    )
+    ozet.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
+    ozet.add_argument("--repo", metavar="AD", help="yalnizca bu repo icin ozet (adi veya yolu)")
+    ozet.add_argument(
+        "--cor", action="store_true",
+        help="ozeti yerel cor proxy'sine sor (VARSAYILAN DEGILDIR; dar veri kumesi gonderilir)",
+    )
+    ozet.add_argument(
+        "--kuru", action="store_true",
+        help="hicbir icerik gostermeden gidecek alan turlerini ve toplam karakteri yaz",
+    )
+    ozet.add_argument("--json", action="store_true", help="makine tarafinin okunabilir cikti")
 
     web = sub.add_parser("web", help="salt-okunur web panelini baslat (yalnizca 127.0.0.1)")
     web.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
@@ -358,25 +383,255 @@ def _cmd_borc(args: argparse.Namespace) -> int:
 
 
 def _cmd_guncelle(args: argparse.Namespace) -> int:
-    """`tara` + `sizinti` + `borc` — mevcut komutlarin davranisi DEGISTIRILMEZ.
+    """`tara` + `sizinti` + `borc` + `readme` + yerel `ozet`.
 
-    Uc komut da ayni koklerle, sirasiyla cagrilir; her biri kendi ciktisini
-    basar. `guncelle` yalnizca birlesiktir: yeni bir tarama YONTEMI degildir.
+    Mevcut komutlarin davranisi DEGISTIRILMEZ; `guncelle` yalnizca onlari
+    sirayla cagirir. Yeni adim `readme` ve YEREL `ozet` ile tamamlanir;
+    `ozet` AGSIZ calisir (--cor YOKTUR, cor'a HICBIR istek gitmez).
     """
     kokler = [Path(r) for r in args.root] if args.root else config.load_roots()
     kok_metni = [str(k) for k in kokler]
     db_yol = str(Path(args.db) if args.db else config.default_db_path())
     cikis = 0
 
-    print("== 1/3: repo taramasi ==")
+    print("== 1/5: repo taramasi ==")
     cikis |= _cmd_tara(_alt(args, komut="tara", root=kok_metni, db=db_yol, derinlik=config.DEFAULT_DEPTH))
     print()
-    print("== 2/3: sizinti taramasi ==")
+    print("== 2/5: sizinti taramasi ==")
     cikis |= _cmd_sizinti(_alt(args, komut="sizinti", root=kok_metni, db=db_yol, gecmis=args.gecmis, repo=None))
     print()
-    print("== 3/3: TODO/FIXME borcu ==")
+    print("== 3/5: TODO/FIXME borcu ==")
     cikis |= _cmd_borc(_alt(args, komut="borc", root=kok_metni, db=db_yol, repo=None))
+    print()
+    print("== 4/5: README bayatligi ==")
+    cikis |= _cmd_readme(_alt(args, komut="readme", root=kok_metni, db=db_yol, repo=None, json=False))
+    print()
+    print("== 5/5: yerel 'simdi ne yapmali' ozeti (agsiz) ==")
+    cikis |= _cmd_ozet(_alt(args, komut="ozet", db=db_yol, repo=None, cor=False, kuru=False, json=False))
     return cikis
+
+
+# --------------------------------------------------------------------------
+# Dalga D: README bayatligi
+# --------------------------------------------------------------------------
+
+#: `atlas readme` tablosunda gorsel yasi yerine gosterilen metin.
+GORSEL_YOK_ISARETI = "-"
+
+
+def _readme_satiri_olustur(durum: readme_stale.ReadmeDurumu) -> list[str]:
+    """Tek repo'nun tablo satiri (yazar, seviye, skor, davranis, gorsel yasi)."""
+    seviye = durum.seviye or "bilinmiyor"
+    if durum.neden:
+        seviye = f"{seviye} ({durum.neden})"
+    yas = (
+        GORSEL_YOK_ISARETI
+        if durum.screenshot_age_days is None
+        else str(durum.screenshot_age_days)
+    )
+    return [
+        Path(durum.repo).name or durum.repo,
+        seviye,
+        str(durum.skor),
+        str(durum.davranis_commit),
+        yas,
+    ]
+
+
+def _readme_tara(
+    args: argparse.Namespace,
+) -> tuple[list[readme_stale.ReadmeDurumu], list[tuple[Path, str]]]:
+    """`--repo` filtresi varsa yalniz o repo, yoksa koklerin tumu.
+
+    Doner: (durumlar, hatalar).
+    """
+    kokler = [Path(r) for r in args.root] if args.root else config.load_roots()
+    if getattr(args, "repo", None):
+        repo = _tek_repo_coz(args.repo, kokler)
+        if repo is None:
+            return [], [(Path(args.repo), "repo bulunamadi")]
+        return [readme_stale.tara_repo(repo)], []
+    sonuc, hatalar = readme_stale.tara_roots(kokler)
+    return list(sonuc.values()), hatalar
+
+
+def _cmd_readme(args: argparse.Namespace) -> int:
+    """README bayatligini tarar, DB'ye yazar, skora azalan tablo basar.
+
+    Repolara HICBIR SEY yazmaz (yalniz `git log`/`ls-files` okunur).
+    """
+    db_path = Path(args.db) if args.db else config.default_db_path()
+    durumlar, hatalar = _readme_tara(args)
+
+    conn = db.connect(db_path)
+    try:
+        if durumlar:
+            db.replace_readme_status(conn, durumlar)
+    finally:
+        conn.close()
+
+    sirali = readme_stale.sirala(durumlar)
+    if getattr(args, "json", False):
+        import json as _json
+
+        print(_json.dumps([d._asdict() for d in sirali], ensure_ascii=False, indent=2))
+    else:
+        print(f"Taranan repo: {len(durumlar) + len(hatalar)}")
+        if not sirali:
+            print("README taranacak repo yok.")
+        else:
+            print()
+            print(render_table(
+                ["Repo", "Seviye", "Skor", "Davranis commit", "Gorsel yasi (gun)"],
+                [_readme_satiri_olustur(d) for d in sirali],
+            ))
+            sayaclar = {s: 0 for s in readme_stale.SEVIYELER}
+            for d in sirali:
+                if d.seviye in sayaclar:
+                    sayaclar[d.seviye] += 1
+            dagilim = " · ".join(f"{s}: {sayaclar[s]}" for s in readme_stale.SEVIYELER)
+            print(f"\nToplam: {len(sirali)}")
+            print(f"Seviye dagilimi: {dagilim}")
+            print(
+                f"Eskikler: skor {readme_stale.TAZE_UST_SINIR} alti 'taze', "
+                f"{readme_stale.ESKIYOR_UST_SINIR}+ 'bayat'."
+            )
+        print(f"Veritabani: {db_path}")
+    for path, err in hatalar:
+        print(f"  ! atlandi: {path}: {err}", file=sys.stderr)
+    if hatalar:
+        print(f"Hatali repo: {len(hatalar)}", file=sys.stderr)
+    return 0
+
+
+# --------------------------------------------------------------------------
+# Dalga D: repo basina ozet
+# --------------------------------------------------------------------------
+
+#: `--cor` basarisiz olursa cikis kodu (0 DEGILDIR: basari gibi GORUNMEZ).
+COR_HATASI_CIKIS = 3
+
+KAYNAK_ETIKETI = {"yerel": "yerel kural", "cor": "cor"}
+
+
+def _ozet_satirlari(conn) -> list[tuple[Any, list, int, Any]]:
+    """(repo satiri, bulgular, todo adedi, readme satiri) listesi."""
+    out = []
+    for r in db.list_repos(conn):
+        bulgular = conn.execute(
+            "SELECT kind, severity FROM findings WHERE repo = ?", (r["path"],)
+        ).fetchall()
+        todo = int(conn.execute(
+            "SELECT COUNT(*) FROM todos WHERE repo = ?", (r["path"],)
+        ).fetchone()[0])
+        readme = db.readme_status_for(conn, r["path"])
+        out.append((r, bulgular, todo, readme))
+    return out
+
+
+def _cmd_ozet(args: argparse.Namespace) -> int:
+    """Repo basina ozet uretir ve DB'ye yazar.
+
+    VARSAYILAN: kural tabanli YEREL ozet — AGA CIKMAZ. `--cor` yalnizca acikca
+    istenirse LLM'e gider; basarisiz olursa stderr'a acik uyari, YEREL ozet
+    yazilir ve cikis kodu `COR_HATASI_CIKIS` (3) olur (basari gibi GORUNMEZ).
+    """
+    import json as _json
+
+    db_path = Path(args.db) if args.db else config.default_db_path()
+    if not db_path.exists():
+        print(f"Veritabani yok: {db_path}", file=sys.stderr)
+        print("Once 'atlas guncelle' calistir.", file=sys.stderr)
+        return 1
+
+    conn = db.connect(db_path)
+    try:
+        satirlar = _ozet_satirlari(conn)
+        if args.repo:
+            coz = _tek_repo_coz(args.repo, config.load_roots())
+            if coz is None:
+                print(f"Repo bulunamadi: {args.repo}", file=sys.stderr)
+                return 1
+            hedef = str(coz)
+            satirlar = [s for s in satirlar if s[0]["path"] == hedef] or [
+                ({"path": hedef, "name": Path(hedef).name, "dirty": 0, "unpushed": None,
+                  "branch": None, "last_commit_at": None}, [], 0, None)
+            ]
+
+        llm = None
+        cor_uyari = None
+        if args.cor:
+            from .llm import CorLLMClient, LLMError
+
+            try:
+                llm = CorLLMClient()
+            except LLMError as exc:
+                cor_uyari = str(exc)
+                llm = None
+
+        uretilen: list[dict] = []
+        cor_hata_sayisi = 0
+        for repo_row, bulgular, todo_adet, readme_row in satirlar:
+            girdi = summary.girdi_olustur(
+                repo_row, bulgular=bulgular, todo_adet=todo_adet, readme_row=readme_row
+            )
+            ad = leaks.maske(repo_row["name"] or Path(repo_row["path"]).name)
+            if args.kuru:
+                # HICBIR ICERIK gosterilmez: yalniz turler + karakter toplami.
+                turler, toplam = summary.kuru_rapor(girdi)
+                uretilen.append({
+                    "repo": ad, "alan_turleri": turler, "toplam_karakter": toplam,
+                    "kaynak": "cor" if args.cor else "yerel",
+                })
+                continue
+
+            metin, kaynak, model = summary.ozet_uret(girdi, llm=llm, cor=bool(args.cor))
+            if args.cor and kaynak != "cor":
+                cor_hata_sayisi += 1
+            db.replace_summary(
+                conn, repo_row["path"], uretim=db.utc_now(), kaynak=kaynak, model=model,
+                girdi_hash=summary.girdi_hash(girdi), metin=metin,
+            )
+            uretilen.append({
+                "repo": ad, "kaynak": kaynak, "model": model, "metin": metin,
+            })
+    finally:
+        conn.close()
+
+    if args.json:
+        print(_json.dumps(uretilen, ensure_ascii=False, indent=2))
+    else:
+        print(f"Repo: {len(uretilen)}")
+        if args.kuru:
+            print("(kuru kip: icerik GOSTERILMEZ; yalniz alan turleri ve karakter sayisi)")
+            for kayit in uretilen:
+                print(f"  {kayit['repo']}: {kayit['alan_turleri']} "
+                      f"= {kayit['toplam_karakter']} karakter")
+            print(f"\nToplam gidecek karakter: {sum(k['toplam_karakter'] for k in uretilen)}")
+        elif not uretilen:
+            print("Ozet uretilecek repo yok.")
+        else:
+            for kayit in uretilen:
+                kaynak = KAYNAK_ETIKETI.get(kayit["kaynak"], kayit["kaynak"])
+                if kayit["kaynak"] == "cor" and kayit["model"]:
+                    kaynak = f"{kaynak}: {leaks.maske(kayit['model'])}"
+                print()
+                print(f"  {kayit['repo']}  [{kaynak}]")
+                for satir in kayit["metin"].splitlines():
+                    print(f"    {satir}")
+        if not args.kuru:
+            print(f"\nVeritabani: {db_path}")
+
+    if cor_uyari:
+        print(f"  ! cor: {cor_uyari}", file=sys.stderr)
+    if cor_hata_sayisi:
+        print(
+            f"  ! cor ozeti {cor_hata_sayisi} repoda basarisiz; yerel kural ozeti yazildi.",
+            file=sys.stderr,
+        )
+    if (cor_uyari or cor_hata_sayisi) and not args.kuru:
+        return COR_HATASI_CIKIS
+    return 0
 
 
 def _alt(args: argparse.Namespace, **degistir) -> argparse.Namespace:
@@ -436,6 +691,10 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_borc(args)
         if args.komut == "guncelle":
             return _cmd_guncelle(args)
+        if args.komut == "readme":
+            return _cmd_readme(args)
+        if args.komut == "ozet":
+            return _cmd_ozet(args)
         if args.komut == "web":
             return _cmd_web(args)
     except BrokenPipeError:  # pragma: no cover

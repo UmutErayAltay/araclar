@@ -20,7 +20,41 @@
     </dd>
     <dt>Remote</dt><dd>{{ "var" if repo.has_remote else "yok" }}</dd>
     <dt>Son commit</dt><dd>{{ repo.last_commit_at or "-" }}</dd>
+    <dt>README</dt>
+    <dd>
+      {% if repo.readme and repo.readme.seviye_bilinen %}
+        <span class="rozet {{ repo.readme.seviye }}">{{ repo.readme.seviye_etiket }}</span>
+        <span class="ikincil">skor {{ repo.readme.skor }} ·
+          {{ repo.readme.davranis_commit }} davranış commit{% if repo.readme.screenshot_age_days is not none %} ·
+          görsel {{ repo.readme.screenshot_age_days }} gün{% endif %}</span>
+      {% elif repo.readme %}
+        <span class="rozet bilgi">{{ repo.readme.seviye_etiket }}</span>
+        {% if repo.readme.neden %}<span class="ikincil">{{ repo.readme.neden }}</span>{% endif %}
+      {% else %}
+        <span class="ikincil">taranmamış — <code>atlas readme</code> çalıştırın</span>
+      {% endif %}
+    </dd>
   </dl>
+</section>
+
+<section class="bolum">
+  <h2>Şimdi ne yapmalı</h2>
+  {% if repo.ozet %}
+    {# Özet metni LLM çıktısı olabilir: sunucu tarafında bir kez daha maskelendi. #}
+    <ul class="ozet-liste">
+    {% for satir in repo.ozet.metin.splitlines() %}
+      <li>{{ satir.lstrip('-•* ') }}</li>
+    {% endfor %}
+    </ul>
+    <p class="lejant-not">Kaynak: {{ repo.ozet.kaynak_etiket }} · üretim: {{ repo.ozet.uretim }}</p>
+  {% else %}
+    <div class="bos-durum">
+      <h3>Henüz özet üretilmedi</h3>
+      <p>Bu repo için özet yok. <code>atlas ozet</code> çalıştırın.
+        Varsayılan özet ağa çıkmaz (yerel kural); <code>--cor</code> ile
+        yerel LLM'e sorulabilir.</p>
+    </div>
+  {% endif %}
 </section>
 
 <section class="bolum">

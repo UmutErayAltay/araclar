@@ -133,8 +133,9 @@ def run_anlat(args: argparse.Namespace) -> int:
         f"{len(scan.documents)} doküman tarandı."
     )
 
-    client = CorLLMClient(base_url=args.base_url, model=args.model)
     try:
+        # İstemci kurulumu da `try` içinde: loopback dışı `--base-url` burada NarratorError verir.
+        client = CorLLMClient(base_url=args.base_url, model=args.model)
         result = generate_narration(scan, client)
     except NarratorError as exc:
         print(f"Hata: {exc}", file=sys.stderr)
@@ -178,8 +179,9 @@ def run_sesli(args: argparse.Namespace) -> int:
         f"{len(scan.documents)} doküman tarandı."
     )
 
-    client = CorLLMClient(base_url=args.base_url, model=args.model)
     try:
+        # İstemci kurulumu da `try` içinde: loopback dışı `--base-url` burada NarratorError verir.
+        client = CorLLMClient(base_url=args.base_url, model=args.model)
         result = generate_narration(scan, client)
     except NarratorError as exc:
         print(f"Hata: {exc}", file=sys.stderr)

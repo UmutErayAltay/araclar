@@ -117,4 +117,25 @@ def test_narrator_error_ortak_llm_error_alt_sinifi() -> None:
 def test_varsayilanlar_korundu() -> None:
     c = CorLLMClient()
     assert (c.model, c.timeout, c.max_retries, c.retry_backoff) == (narrator.DEFAULT_MODEL, 300.0, 3, 3.0)
-    assert c.izinli_konaklar is None  # bugünkü davranış: konak denetimi yok (açık karar)
+    assert c.izinli_konaklar == narrator.IZINLI_KONAKLAR  # loopback dışı adresler reddedilir
+
+
+@pytest.mark.parametrize(
+    "adres", ["http://ornek.com:8787", "http://192.168.1.10:8787", "http://0.0.0.0:8787", "https://api.ornek.com"]
+)
+def test_loopback_disi_adres_narrator_error_ile_reddedilir(adres: str) -> None:
+    """Kurulumda reddedilir ve hata `NarratorError`'dır (CLI `except NarratorError` ile yakalar)."""
+    with pytest.raises(NarratorError, match="loopback"):
+        CorLLMClient(base_url=adres)
+
+
+def test_gecersiz_sema_narrator_error() -> None:
+    with pytest.raises(NarratorError):
+        CorLLMClient(base_url="ftp://127.0.0.1:8787")
+
+
+@pytest.mark.parametrize(
+    "adres", ["http://127.0.0.1:8787", "http://localhost:8787", "http://[::1]:8787", "http://LOCALHOST:8787"]
+)
+def test_loopback_adresler_kabul(adres: str) -> None:
+    assert CorLLMClient(base_url=adres).base_url == adres

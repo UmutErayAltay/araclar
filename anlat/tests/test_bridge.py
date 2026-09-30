@@ -540,3 +540,18 @@ def test_cli_sesli_reports_missing_login_distinctly(
     assert "girişi yapılmamış" in err
     assert "npm run setup-auth" in err
     assert not (sample_repo / "ANLATI.md").exists()
+
+
+def test_sesli_uzak_base_url_hata_mesaji_ve_kod_1(
+    fake_bridge: FakeBridgeServer, sample_repo: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from cli import main
+
+    fake_bridge.route("GET", "/health", {"success": True, "data": {"status": "ok", "authenticated": True}})
+
+    kod = main(["sesli", str(sample_repo), "--bridge-url", fake_bridge.base_url, "--base-url", "http://ornek.com:8787"])
+
+    err = capsys.readouterr().err
+    assert kod == 1
+    assert "Hata:" in err and "loopback" in err
+    assert not (sample_repo / "ANLATI.md").exists()

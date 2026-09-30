@@ -27,6 +27,10 @@ DEFAULT_MODEL = "stealth/space-bunny-alpha"
 
 MAX_TOKENS = 8000
 
+#: Bağlanılabilecek konak adları. cor YERELDİR; depo geçmişi/dokümanları başka bir makineye gitmesin
+#: diye loopback dışı adresler kuruluşta reddedilir.
+IZINLI_KONAKLAR = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
+
 REQUIRED_SECTIONS = (
     "## Özellikler ve Zaman Çizelgesi",
     "## Teknoloji Seçimleri ve Nedenleri",
@@ -50,7 +54,7 @@ class CorLLMClient(_corclient.CorLLMClient):
     Neden HTTP ve `cor claude -p` subprocess'i değil: proxy zaten Anthropic uyumlu
     `/v1/messages` ucunu (kimlik doğrulama gerekmeden) sunuyor; subprocess'e göre
     test edilebilir, zaman aşımları ve hata mesajları doğrudan kontrol edilebilir.
-    Ortak istemcinin her hatası `NarratorError`'a çevrilir (çağıran kod değişmez).
+    Ortak istemcinin her hatası (kurulumdaki konak denetimi dahil) `NarratorError`'a çevrilir.
     """
 
     def __init__(
@@ -61,16 +65,21 @@ class CorLLMClient(_corclient.CorLLMClient):
         max_retries: int = 3,
         retry_backoff: float = 3.0,
     ) -> None:
-        super().__init__(
-            base_url,
-            model,
-            timeout,
-            max_retries,
-            retry_backoff,
-            max_tokens=MAX_TOKENS,
-            izinli_konaklar=None,  # bugünkü davranış: konak denetimi yok (açık karar)
-            baslat_ipucu="cor claude",
-        )
+        try:
+            super().__init__(
+                base_url,
+                model,
+                timeout,
+                max_retries,
+                retry_backoff,
+                max_tokens=MAX_TOKENS,
+                izinli_konaklar=IZINLI_KONAKLAR,
+                baslat_ipucu="cor claude",
+            )
+        except NarratorError:
+            raise
+        except _corclient.LLMError as hata:  # loopback dışı / geçersiz adres
+            raise NarratorError(str(hata), status=hata.status) from hata
 
     def _post_once(self, prompt: str) -> str:
         try:

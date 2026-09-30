@@ -99,7 +99,7 @@ Yararlı seçenekler:
 | `--dil` | `tr` | Sesli özetin dili. Sunucu reddederse `--dil ""` ile boş bırakılabilir |
 | `--out` | `<repo>/ANLATI.mp3` | Ses dosyasının nereye yazılacağı |
 | `--timeout` | `900` | Köprü istekleri için zaman aşımı (saniye) |
-| `--base-url`, `--model` | — | Yazılı anlatıyı üreten LLM bağlantısı |
+| `--base-url`, `--model` | — | Yazılı anlatıyı üreten LLM bağlantısı. Adres yerel (loopback: `127.0.0.1`, `localhost`, `::1`) olmalı; başka bir adres `Hata:` ile reddedilir |
 
 ---
 

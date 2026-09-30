@@ -187,7 +187,7 @@ verdi (`git subtree add`, commit geçmişi korunarak; `danis` artık özel). Son
   `NarratorError`'ı var; `NarratorError`, `LLMError`'un alt sınıfı yapıldı ve `_post_once` her `LLMError`'u
   `NarratorError`'a çevirir (çağıran kod ve yeniden deneme mantığı değişmedi). Tek davranış farkı boş yanıt mesajının
   metni ("Sahte anlatı…" → "Sahte yanıt…"); gövde (8000 token), timeout (300 sn), hata türü ve deneme sayısı aynı.
-  Konak denetimi bilerek kapalı (`izinli_konaklar=None`), karar Umut'un.
+  Konak denetimi başta bilerek kapalıydı (`izinli_konaklar=None`); sonra Umut açtı (aşağıdaki not).
 
 ## 9. ne-izlesem monorepo'dan çıkarıldı (2026-09-30, sonradan)
 
@@ -200,3 +200,9 @@ Bu repodan kaldırıldı; geçmişte (2. bölümdeki taşıma commit'leri) izi d
   `python3 tools/sync.py ../ne-izlesem/app/_corclient.py` (klasör yan yana klonluysa), sonra o repoda commit.
   Bu kopyanın güncelliği artık `tests/test_monorepo_kopyalar.py` kapsamında DEĞİL; yalnızca ne-izlesem'in kendi
   senkron testi (elle düzenleme) onu korur. Bu, bilerek kabul edilen bir zayıflamadır.
+
+**anlat'ta loopback açıldı (2026-09-30, sonradan):** `izinli_konaklar=IZINLI_KONAKLAR`. Denetim kurucuda çalıştığı
+ve CLI istemciyi `try` DIŞINDA kuruyordu; bu yüzden (1) kabuk kurulumdaki `LLMError`'u `NarratorError`'a çevirir,
+(2) `cli.py` iki yerde (`anlat`, `sesli`) istemci kurulumunu `try` içine aldı (yoksa uzak `--base-url` traceback verirdi).
+Testler: kurucu reddi, CLI `Hata:` + kod 1 + `ANLATI.md` yazılmaması; denetimi kapatma, dönüşümü kaldırma ve
+kurucuyu `try` dışına alma mutasyonlarının üçü de testleri kırar. Artık tüm projeler loopback dışı adresi reddeder.

@@ -56,15 +56,13 @@ farkı hash'i bozmaz.
 | harita | `stealth/space-bunny-alpha` | 2000 | 60 | loopback + `0.0.0.0` | `cor start` |
 | orkestra | `nvidia/nemotron-3-ultra-550b-a55b:free` | 4000 | 120 | loopback | `cor start` |
 | danis | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor` |
-| anlat | `stealth/space-bunny-alpha` | 8000 | 300 | **yok** (açık karar, aşağıda) | `cor claude` |
+| anlat | `stealth/space-bunny-alpha` | 8000 | 300 | loopback | `cor claude` |
 
 Loopback denetimi, kullanıcı verisi yanlışlıkla başka bir makineye gitmesin diye cor adresi
 `127.0.0.1`/`localhost`/`::1` dışındaysa istemciyi kurarken hata verir. `COR_BASE_URL` ve
-`COR_MODEL` ortam değişkenleri varsayılanları değiştirir (`anlat` bunları okumaz, `--base-url`/`--model` bayraklarını kullanır).
+`COR_MODEL` ortam değişkenleri varsayılanları değiştirir (`anlat` bunları okumaz, `--base-url`/`--model` bayraklarını kullanır; adres yine loopback olmalı).
 
-`anlat`'ta konak denetimi bugünkü davranış korunarak kapalı bırakıldı (`--base-url` ile uzak adres verilebilir).
-Kapatmak tek satır: `anlat/generator/narrator.py` içinde `izinli_konaklar=None` → `IZINLI_KONAKLAR`; ama
-uzak cor kullanan bir kurulumu kırar, bu yüzden Umut'un kararına bırakıldı.
+`anlat`'ta da konak denetimi açık: loopback dışı `--base-url` CLI'da `Hata:` mesajı ve çıkış kodu 1 verir (traceback yok).
 
 ## CI
 

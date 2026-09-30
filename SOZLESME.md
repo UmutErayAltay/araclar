@@ -1,6 +1,6 @@
 # corclient — sözleşme (v0.1)
 
-Amaç: `atlas`, `harita`, `orkestra`, `danis`, `ne-izlesem` repolarında **5 ayrı kopya**
+Amaç: `atlas`, `harita`, `orkestra`, `danis`, `ne-izlesem` (+ sonradan `anlat`) repolarında **5 ayrı kopya**
 olarak yaşayan yerel-cor LLM istemcisini (`llm.py`, ~120-146 satır) TEK kaynağa indirmek.
 **Davranış değiştirmeyen refactor**: her repo kendi mevcut test paketiyle, TEST DEĞİŞTİRİLMEDEN
 geçmeli.
@@ -188,3 +188,15 @@ verdi (`git subtree add`, commit geçmişi korunarak; `danis` artık özel). Son
   `NarratorError`'a çevirir (çağıran kod ve yeniden deneme mantığı değişmedi). Tek davranış farkı boş yanıt mesajının
   metni ("Sahte anlatı…" → "Sahte yanıt…"); gövde (8000 token), timeout (300 sn), hata türü ve deneme sayısı aynı.
   Konak denetimi bilerek kapalı (`izinli_konaklar=None`), karar Umut'un.
+
+## 9. ne-izlesem monorepo'dan çıkarıldı (2026-09-30, sonradan)
+
+Kapsam tutarsızdı: `ne-izlesem` (film/kitap takip uygulaması) araç değil ayrı bir ürün ve diğer projelerle bağı
+yalnızca ortak istemci. `git subtree split` ile geçmişi ayrıştırıldı, sıkılaştırma (loopback) dahil güncel hali
+kendi reposuna hızlı-ileri (fast-forward) push edildi (orijinal commit zincirinin devamı; eski repo silinmemeli).
+Bu repodan kaldırıldı; geçmişte (2. bölümdeki taşıma commit'leri) izi durur.
+
+- `ne-izlesem` kendi `app/_corclient.py` kopyasını taşımaya devam eder. Güncellemek için bu repodan:
+  `python3 tools/sync.py ../ne-izlesem/app/_corclient.py` (klasör yan yana klonluysa), sonra o repoda commit.
+  Bu kopyanın güncelliği artık `tests/test_monorepo_kopyalar.py` kapsamında DEĞİL; yalnızca ne-izlesem'in kendi
+  senkron testi (elle düzenleme) onu korur. Bu, bilerek kabul edilen bir zayıflamadır.

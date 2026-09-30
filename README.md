@@ -4,7 +4,7 @@ Yerel **cor** proxy'sine (`POST /v1/messages`) konuşan küçük Python araçlar
 deposu. Ortak parça, hepsinin kullandığı **tek LLM istemcisidir** (`corclient.py`);
 araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 
-> Not: Depo adı yalnızca istemciyi anlatıyor; içinde istemciyi kullanan 6 uygulama da var.
+> Not: Depo adı yalnızca istemciyi anlatıyor; içinde istemciyi kullanan 5 uygulama da var.
 > GitHub'da adı değiştirilebilir (Settings → Rename; eski bağlantılar yönlenir).
 
 ## İçindekiler
@@ -16,8 +16,10 @@ araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 | `harita/` | Markdown vault'unu not grafiği, arama ve haftalık özet olarak gösterir |
 | `orkestra/` | Ajan görev kuyruğu, kota takibi, kanıt değerlendirme ve web panel |
 | `danis/` | Terminalde hata asistanı + "bu dosyayı cor'a sor" (Windows `.exe` derlemesi var) |
-| `ne-izlesem/` | Film/dizi/kitap takip listesi + ruh haline göre öneri |
 | `anlat/` | Git deposunun geçmişinden Türkçe teknik anlatı üretir; NotebookLM ile sesli özet hazırlar |
+
+Bu depoda olmayan ama aynı istemciyi kullanan projeler: `ne-izlesem` (film/kitap takip ürünü, ayrı repoda; kopyası
+`python3 tools/sync.py ../ne-izlesem/app/_corclient.py` ile güncellenir) ve `readbunny` (kendi istemcisi var).
 
 Her klasör **bağımsız bir projedir**: kendi `README.md`, `pyproject.toml` ve testi var.
 Testler klasörün içinden koşulur (kökteki `pytest` yalnızca ortak istemciyi sınar):
@@ -54,7 +56,6 @@ farkı hash'i bozmaz.
 | harita | `stealth/space-bunny-alpha` | 2000 | 60 | loopback + `0.0.0.0` | `cor start` |
 | orkestra | `nvidia/nemotron-3-ultra-550b-a55b:free` | 4000 | 120 | loopback | `cor start` |
 | danis | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor` |
-| ne-izlesem | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor claude` |
 | anlat | `stealth/space-bunny-alpha` | 8000 | 300 | **yok** (açık karar, aşağıda) | `cor claude` |
 
 Loopback denetimi, kullanıcı verisi yanlışlıkla başka bir makineye gitmesin diye cor adresi

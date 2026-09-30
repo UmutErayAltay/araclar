@@ -16,13 +16,19 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, Response, abort, current_app, g, jsonify, render_template, request
 
 from .. import leaks
+from ..durum import (
+    ONEMLER,
+    OZET_SAYILAN_SEVIYELER,
+    SEVIYE_ETIKETLERI,
+    db_ac,
+    ozet_verisi,
+)
 
 # DNS rebinding korumasi: yalnizca gercek loopback adresleri.
 HOST_DESENI = re.compile(r"^(127\.0\.0\.1|localhost)(:\d{1,5})?$", re.IGNORECASE)
@@ -51,9 +57,9 @@ OKABE_ITO = (
     "#999999",
 )
 
-#: Onem sirasi (yuksek -> bilgi). Gosterge hem renk hem METIN yazar; rozet
-#: yalnizca renge dayanmaz.
-ONEMLER = ("yuksek", "orta", "dusuk", "bilgi")
+#: `ONEMLER`, `SEVIYE_ETIKETLERI`, `OZET_SAYILAN_SEVIYELER`, `db_ac` ve
+#: `ozet_verisi` `atlas.durum`den gelir: ozet sayilari web paneli ve
+#: `atlas durum` icin TEK KAYNAKTAN uretilir (kod kopyalanmaz).
 
 ONEM_RENKLERI = {
     "yuksek": "#D55E00",  # Okabe-Ito turuncu-kirmizi
@@ -79,18 +85,6 @@ SEVIYE_RENKLERI = {
     "yok": "#999999",       # Okabe-Ito gri (bilgi yok)
 }
 
-SEVIYE_ETIKETLERI = {
-    "bayat": "bayat",
-    "eskiyor": "eskiyor",
-    "taze": "taze",
-    "yok": "README yok",
-}
-
-#: `/` ozet kartinda "N bayat README" sayacinda KULLANILIR: yalniz "bayat"
-#: ve "eskiyor" SEVIYELERI sayilir. "taze" ve "yok" sayilmaz ("yok" = eksik
-#: veri, acik sorun degil; "bayat" = gercekten gecikmis).
-OZET_SAYILAN_SEVIYELER = ("bayat", "eskiyor")
-
 #: Bilinen turler (suzgec formu icin). Bilinmeyen tur de DB'den gelebilir.
 TUR_ETIKETLERI = {
     "api-anahtari": "API anahtarı",
@@ -103,9 +97,6 @@ TUR_ETIKETLERI = {
 
 #: `/sizinti` sayfa basi bulgu.
 SAYFA_BOYUTU = 100
-
-#: Veri 24 saatten eskiyse panel uyari gosterir.
-BAYAT_ESIK_SAAT = 24
 
 
 def guvenli_basliklar(cevap: Response) -> Response:
@@ -120,12 +111,7 @@ def guvenli_basliklar(cevap: Response) -> Response:
 # -- salt-okunur veritabani -------------------------------------------------
 
 
-def db_ac(yol: Path | str) -> sqlite3.Connection:
-    """DB'yi `mode=ro` ile acar; hicbir kosulda yazmaz."""
-    yol = Path(yol).expanduser()
-    baglanti = sqlite3.connect(f"file:{yol}?mode=ro", uri=True)
-    baglanti.row_factory = sqlite3.Row
-    return baglanti
+#: `db_ac` `atlas.durum`den gelir; web modulu kendi kopyasini tutmaz.
 
 
 def _baglanti_al() -> sqlite3.Connection:
@@ -175,78 +161,6 @@ def _sayfa_gecerli(deger: str | None) -> int:
     except (TypeError, ValueError):
         return 1
     return sayfa if sayfa >= 1 else 1
-
-
-def ozet_verisi(conn: sqlite3.Connection) -> dict[str, Any]:
-    """`/` ve `/api/ozet`: ozet kartlari."""
-    satir = conn.execute(
-        "SELECT COUNT(*) AS toplam, "
-        "SUM(CASE WHEN dirty > 0 THEN 1 ELSE 0 END) AS kirli, "
-        "SUM(CASE WHEN unpushed IS NULL THEN 1 ELSE 0 END) AS bilinmeyen, "
-        "SUM(CASE WHEN unpushed > 0 AND has_remote = 1 THEN 1 ELSE 0 END) AS push_bekleyen, "
-        "MAX(scanned_at) AS son_tarama "
-        "FROM repos"
-    ).fetchone()
-    toplam = int(satir["toplam"] or 0)
-    kirli = int(satir["kirli"] or 0)
-    bilinmeyen = int(satir["bilinmeyen"] or 0)
-    push_bekleyen = int(satir["push_bekleyen"] or 0)
-
-    bulgu_sayaclari = {
-        onem: 0 for onem in ONEMLER
-    }
-    for satir_b in conn.execute(
-        "SELECT severity, COUNT(*) AS adet FROM findings GROUP BY severity"
-    ):
-        onem = satir_b["severity"]
-        if onem in bulgu_sayaclari:
-            bulgu_sayaclari[onem] = int(satir_b["adet"])
-    toplam_bulgu = sum(bulgu_sayaclari.values())
-
-    todo_toplam = int(conn.execute("SELECT COUNT(*) FROM todos").fetchone()[0])
-
-    # README bayatlığı (Dalga D). Tablo YOKSA (eski DB) sayılar 0'dır: ozet
-    # kartı "0 bayat README" der, sayfa bos durum gosterir.
-    readme_sayaclari = {seviye: 0 for seviye in SEVIYE_ETIKETLERI}
-    readme_toplam = 0
-    try:
-        for satir_r in conn.execute("SELECT seviye, COUNT(*) AS adet FROM readme_status GROUP BY seviye"):
-            anahtar = satir_r["seviye"] if satir_r["seviye"] in readme_sayaclari else None
-            if anahtar is not None:
-                readme_sayaclari[anahtar] += int(satir_r["adet"])
-        readme_toplam = int(conn.execute("SELECT COUNT(*) FROM readme_status").fetchone()[0])
-    except sqlite3.Error:  # tablo yoksa
-        pass
-    bayat_readme = sum(readme_sayaclari[s] for s in OZET_SAYILAN_SEVIYELER)
-
-    return {
-        "repo_sayisi": toplam,
-        "kirli_repo": kirli,
-        "push_bekleyen": push_bekleyen,
-        "push_bilinmeyen": bilinmeyen,
-        "bulgu_sayaclari": bulgu_sayaclari,
-        "toplam_bulgu": toplam_bulgu,
-        "toplam_todo": todo_toplam,
-        "readme_sayaclari": readme_sayaclari,
-        "readme_toplam": readme_toplam,
-        "bayat_readme": bayat_readme,
-        "son_tarama": satir["son_tarama"],
-        "veri_bayat": veri_bayat_mi(satir["son_tarama"]),
-    }
-
-
-def veri_bayat_mi(son_tarama: str | None) -> bool:
-    """Son tarama 24 saatten eski mi (ya da hic yok mu)?"""
-    if not son_tarama:
-        return True
-    try:
-        dt = datetime.fromisoformat(son_tarama)
-    except ValueError:
-        return True
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    yas = (datetime.now(timezone.utc) - dt).total_seconds()
-    return yas > BAYAT_ESIK_SAAT * 3600
 
 
 def yarim_is_verisi(conn: sqlite3.Connection) -> dict[str, list[dict[str, Any]]]:

@@ -433,6 +433,42 @@ başarı gibi görünmez.
 "henüz üretilmedi — `atlas ozet` çalıştır" der. **Web paneli cor'a asla
 gitmez**: tüm rotalar GET'tir, panel tarama tetiklemez ve DB'yi `mode=ro` açar.
 
+## `durum --json` (kule entegrasyonu)
+
+`atlas durum --json` makine tarafı için **tek bir JSON nesnesi** basar: kontrol
+kulesi paneli (`kule`) atlas'ı yalnızca **sayı ve durum** için okur.
+
+```console
+$ atlas durum --json
+{"surum": 1, "kaynak": "atlas", "son_tarama": "2026-09-30T13:00:32+00:00", "veri_bayat": false, "repo_sayisi": 3, "kirli_repo": 1, "push_bekleyen": 1, "push_bilinmeyen": 1, "bayat_readme": 2, "bulgu_toplam": 5, "todo_toplam": 4, "bulgu_onem": {"yuksek": 3, "orta": 0, "dusuk": 1, "bilgi": 1}}
+```
+
+**Kurallar (bağlayıcı):**
+
+- Başarıda **çıkış kodu 0**, hatada **1**. Hatada da stdout'a JSON basılır:
+  `{"surum": 1, "kaynak": "atlas", "hata": "<sabit kod>"}`.
+- `hata` **sabit bir koddur** (`db_yok`, `okunamadi`); istisna metni, dosya
+  yolu, SQL veya kullanıcı içeriği **hiçbir yere** girmez.
+- Sadece **sayı, bool, kısa sabit etiket ve ISO-8601 zaman** dışa çıkar.
+  Bulgunun kendisi (dosya, satır, eşleşen metin), repo yolu, dal adı ve commit
+  başlığı **çıktıda yoktur** — test bunu sahte "gizli" bir diziyle kanıtlar.
+- **Ağa çıkmaz**, cor/LLM çağırmaz, DB'ye **yazmaz** (`mode=ro`), hiçbir
+  tarama/indeksleme **tetiklemez**; yalnızca mevcut durumu okur.
+- **DB yoksa** `hata: "db_yok"`. **DB var ama tablo boşsa** sayılar `0`,
+  `son_tarama: null`, `veri_bayat: true` (bilinmeyen için `0` değil `null`).
+- Eski şemada `readme_status` tablosu yoksa sayılar `0` çıkar, **hata değildir**.
+
+`--json` verilmezse tek satırlık insan özeti basılır (aynı sayılardan):
+
+```console
+$ atlas durum
+repo 3 · kirli 1 · push bekleyen 1 · bilinmeyen 1 · bayat README 2 · bulgu 5 · todo 4 · veri taze
+```
+
+Sayılar **tek kaynaktan** gelir: `atlas/durum.py::ozet_verisi` hem bu komutu hem
+web panelinin `/` ve `/api/ozet` rotasını besler; kod kopyalanmaz. Bu yüzden
+`/api/ozet` çıktı şekli bu eklemeyle **değişmez**.
+
 ## Bilinen sınırlar
 
 - **Windows doğrulanmadı.** Yeni kodda `pathlib` kullanılır ve `\` ayracı

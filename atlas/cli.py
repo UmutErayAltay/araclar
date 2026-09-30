@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from . import __version__, config, db, leaks, readme_stale, scan, summary, todo
+from . import __version__, config, db, durum, leaks, readme_stale, scan, summary, todo
 
 #: Yazilari terminal genisligine gore sutunlara dizer.
 _MIN_WIDTH = 8
@@ -155,6 +155,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="hicbir icerik gostermeden gidecek alan turlerini ve toplam karakteri yaz",
     )
     ozet.add_argument("--json", action="store_true", help="makine tarafinin okunabilir cikti")
+
+    durum = sub.add_parser(
+        "durum",
+        help="salt-okunur durum ozeti (kule entegrasyonu; --json sozlesme bicimi)",
+    )
+    durum.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
+    durum.add_argument(
+        "--json", action="store_true",
+        help="sozlesme JSON'unu bas (kule bu bicimi okur)",
+    )
 
     web = sub.add_parser("web", help="salt-okunur web panelini baslat (yalnizca 127.0.0.1)")
     web.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
@@ -634,6 +644,65 @@ def _cmd_ozet(args: argparse.Namespace) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# `atlas durum` — kule entegrasyonu (sozlesme v1)
+# --------------------------------------------------------------------------
+
+
+def _cmd_durum(args: argparse.Namespace) -> int:
+    """Salt-okunur durum ozeti. Varsayilan cikti sozlesme JSON'idir.
+
+    DB `mode=ro` ile ACILIR: yazmaz, sema kurmaz, tarama TETIKLEMEZ, aga
+    cikmaz, cor/LLM cagirmaz. `--json` verilmezse tek satirlik insan ozeti
+    basilir (sozlesmenin izin verdigi sekil).
+    """
+    import json as _json
+
+    db_path = Path(args.db) if args.db else config.default_db_path()
+    # DB yoksa: sabit hata kodu. Istisna metni/yol HICBIR YERDE basilmaz.
+    if not db_path.is_file():
+        return _durum_hata(_json, args, durum.HATA_DB_YOK)
+    try:
+        conn = durum.db_ac(db_path)
+    except sqlite3.Error:
+        return _durum_hata(_json, args, durum.HATA_OKUNAMADI)
+    try:
+        # Bozuk/okunamayan dosyada SQLite'in `OperationalError` metaji dosya
+        # YOLU tasiyabilir; bu yuzden mesaj ATILIR, sabit kod dondurulur.
+        govde = durum.durum_sozlesmesi(durum.ozet_verisi(conn))
+    except sqlite3.Error:
+        return _durum_hata(_json, args, durum.HATA_OKUNAMADI)
+    finally:
+        conn.close()
+
+    if args.json:
+        print(_json.dumps(govde, ensure_ascii=True, sort_keys=False))
+    else:
+        print(_durum_tek_satir(govde))
+    return 0
+
+
+def _durum_hata(_json, args, kod: str) -> int:
+    """Hata govdesini basar ve cikis kodu 1 doner (`--json` de verilse)."""
+    govde = durum.hata_sozlesmesi(kod)
+    if getattr(args, "json", False):
+        print(_json.dumps(govde, ensure_ascii=True))
+    else:
+        print(f"atlas durumu okunamadi: {kod}")
+    return 1
+
+
+def _durum_tek_satir(govde: dict) -> str:
+    """Insan-okur tek satir. Yalniz SAYI ve sabit etiket icerir."""
+    return (
+        f"repo {govde['repo_sayisi']} · kirli {govde['kirli_repo']} · "
+        f"push bekleyen {govde['push_bekleyen']} · bilinmeyen {govde['push_bilinmeyen']} · "
+        f"bayat README {govde['bayat_readme']} · bulgu {govde['bulgu_toplam']} · "
+        f"todo {govde['todo_toplam']} · "
+        f"{'veri bayat' if govde['veri_bayat'] else 'veri taze'}"
+    )
+
+
 def _alt(args: argparse.Namespace, **degistir) -> argparse.Namespace:
     """Mevcut bir komutun Namespace'ini turetilir (`guncelle` bunu kullanir)."""
     yeni = argparse.Namespace(**vars(args))
@@ -695,6 +764,8 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_readme(args)
         if args.komut == "ozet":
             return _cmd_ozet(args)
+        if args.komut == "durum":
+            return _cmd_durum(args)
         if args.komut == "web":
             return _cmd_web(args)
     except BrokenPipeError:  # pragma: no cover

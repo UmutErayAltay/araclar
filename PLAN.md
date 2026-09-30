@@ -12,7 +12,7 @@ bunny/nemotron/deepseek ajanlarına görev kuyruğu + web panel. Bugüne kadar a
 başlatıldı; kota (nemotron 50/gün, paylaşımlı), kesintide (internet gidince 502) yarım kalan işler ve
 "ajan raporu yalan söyledi mi" kontrolü hep ana oturumun sırtındaydı. Orkestra bunları sisteme çeker.
 
-**Durum:** planlandı, kod yok. Repo adı önerisi: `orkestra`.
+**Durum:** Dalga A tamam (2026-09-30, 159 test yeşil: kuyruk, durum makinesi, guard, FakeRunner, CLI). Sıradaki: Dalga B (ClaudeRunner). Karar (2026-09-30): durum adları DB'de ASCII kalır; `runs.cikti_yolu` B dalgasında gerçek dosya yoluna dönüşecek (şimdilik çıktı metnini tutuyor).
 Bağlantılar: [[ne-izlesem-delegasyon-modeli-ajan-kendi-dogrular]], [[cor-bulut-oturumu-agent-tool-erisimsizligi-headless-cozum]].
 Ders (2026-09-30): ajan raporu "hizalama mükemmel" derken ekran görüntüsünde metinler üst üste biniyordu; ajan
 kendi çıktısına bakmamıştı. Orkestra "ajan kendi doğrular" raporunu ayrıştırır ama KANIT (ekran görüntüsü yolu, test çıktısı) ister.

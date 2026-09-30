@@ -721,10 +721,14 @@ def test_web_sunucusu_gercek_surec_loopback_dinler(mini_vault: Path, tmp_path: P
             assert cevap.status == 200
         # Aynı port 0.0.0.0 üzerinden dışarıdan da erişilemez: adres zaten
         # loopback'e bağlı, bu yüzden yerel olmayan arayüzden bağlantı reddedilir.
-        dis_adresler = _dis_adresler()
-        if dis_adresler:
-            with pytest.raises((urllib.error.URLError, OSError)):
-                urllib.request.urlopen(f"http://{dis_adresler}:{port}/saglik", timeout=3)
+        # `_dis_adresler()` bir LİSTE döner (yinelenenler olabilir, ör. CI çalıştırıcıları);
+        # her dış adres ayrı ayrı denenir. (Eskiden liste URL'e gömülüyordu: dış arayüzü
+        # olmayan konteynerde liste hep boştu, bu dal hiç koşmamış ve hata CI'da çıktı.)
+        # TCP seviyesinde denenir: HTTP ile denemek Flask'ın `Host` başlığı denetimini (403)
+        # "reddedildi" sanıp sunucu 0.0.0.0'a bağlı olsa bile geçerdi.
+        for dis_adres in dict.fromkeys(_dis_adresler()):
+            with pytest.raises(OSError):
+                socket.create_connection((dis_adres, port), timeout=3).close()
     finally:
         surec.terminate()
         try:

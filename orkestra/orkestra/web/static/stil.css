@@ -1,0 +1,597 @@
+/* orkestra paneli — koyu tema.
+   Bağlayıcı kurallar:
+     * CSP satır içi script/stil YASAKLAR: burada her şey sınıflarla biçimlenir.
+     * Tarayıcı varsayılanı BEYAZ buton/kontrol görünmemeli: `button`, `input`,
+       `select`, `a` hepsi koyu temaya uyumlu renklenir.
+     * 390 px'de tablolar kart olur; yatay kaydırma çubuğu ÇIKMAZ.
+     * Renk körü-güvenli Okabe-Ito paleti durum/model renklerinde kullanılır.
+     * Durum rozeti yalnızca renge dayanmaz: metin de yazar. */
+
+:root {
+  --zemin: #0f1115;
+  --yazi: #e6e6e6;
+  --ikincil: #9aa3b2;
+  --kenar: #232833;
+  --vurgu: #56b4E9;
+  --panel: #151922;
+  --panel-acik: #1c2130;
+  --bos: #7a8496;
+  --uyari: #E69F00;
+  /* Dalga D: `--hata` #D55E00 idi; `--panel-acik` üzerinde 4.15:1 çıkıyordu
+     (eşik 4.5). Metin taşıyan rozetler bu zeminde de okunmalı — koyu turuncu
+     kırmızıya (#E85D1C) yükseltildi: panel-acik 4.59:1, zemin 5.41:1. */
+  --hata: #E85D1C;
+  --basari: #009E73;
+
+  /* Okabe-Ito */
+  --oi1: #E69F00;
+  --oi2: #56B4E9;
+  --oi3: #009E73;
+  --oi4: #F0E442;
+  --oi5: #0072B2;
+  /* Dalga D: kanıt rozetleri bu değişkeni kullanıyordu; #D55E00 koyu temada
+     `--panel-acik` üzerinde 4.15:1 (eşik 4.5). #E85D1C ile 4.59:1'e çıkarıldı.
+     `--hata` ile aynı değer: iki yol da aynı renge gidiyor. */
+  --oi6: #E85D1C;
+  --oi7: #CC79A7;
+  --oi8: #999999;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--zemin);
+  color: var(--yazi);
+  font: 14px/1.55 ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Yatay taşma olmasın. */
+  overflow-x: hidden;
+}
+
+a { color: var(--vurgu); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a:focus-visible,
+button:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+code, pre, .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* ------------------------------------------------------------------ üst şerit */
+
+.ust {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--kenar);
+}
+
+.ust-sol { min-width: 0; }
+
+.ust h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.ozet {
+  margin: 2px 0 0;
+  color: var(--ikincil);
+  font-size: 13px;
+}
+
+.ust-sag {
+  margin-left: auto;
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.ust-sag a[aria-current="page"] {
+  color: var(--yazi);
+  font-weight: 600;
+  border-bottom: 2px solid var(--vurgu);
+  padding-bottom: 2px;
+}
+
+/* ------------------------------------------------------------------- içerik */
+
+main {
+  padding: 18px 20px 40px;
+  max-width: 1180px;
+}
+
+h2 {
+  margin: 26px 0 10px;
+  font-size: 15px;
+  font-weight: 620;
+}
+
+h2:first-child { margin-top: 0; }
+
+.aciklama {
+  color: var(--ikincil);
+  font-size: 13px;
+  margin: 0 0 14px;
+  max-width: 78ch;
+}
+
+/* ------------------------------------------------------------------- rozetler */
+
+.rozet {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  /* Renk körlüğünde de ayırt edilebilsin diye kenarlık + metin birlikte çalışır. */
+  border: 1px solid currentColor;
+  background: var(--panel-acik);
+}
+
+.rozet::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+/* Renk sınıfları şablon tarafından `data-durum` üzerinden eklenir. */
+.rozet.bekliyor { color: var(--oi1); }
+.rozet.calisiyor { color: var(--oi2); }
+.rozet.bitti { color: var(--oi3); }
+.rozet.hata { color: var(--oi6); }
+.rozet.onay-bekliyor { color: var(--oi7); }
+.rozet.iptal { color: var(--oi8); }
+
+/* Dalga D kanıt rozetleri. Renk körlüğünde de ayırt edilebilmesi için
+   her rozet `border: 1px solid currentColor` + METİN taşır; renge tek
+   başına dayanılmaz. */
+.rozet.kanit-kanitli { color: var(--oi3); }
+.rozet.kanit-kanitsiz { color: var(--oi1); }
+.rozet.kanit-basarisiz { color: var(--oi6); }
+.rozet.kanit-reddedildi-suphesi { color: var(--oi7); }
+.rozet.kanit-degerlendirilmedi { color: var(--oi8); }
+
+/* Uyarı taşıyan kanıt: kalın kenarlıkla da vurgulanır (metne ek olarak). */
+.rozet.vurgulu { border-width: 2px; font-weight: 700; }
+
+.rozet.uyari { color: var(--oi1); }
+.rozet.asildi { color: var(--oi6); }
+.rozet.normal { color: var(--oi3); }
+.rozet.limitsiz { color: var(--oi8); }
+
+/* -------------------------------------------------------------------- filtre */
+
+.filtre {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 16px;
+}
+
+.filtre a {
+  padding: 5px 11px;
+  border: 1px solid var(--kenar);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ikincil);
+  font-size: 12.5px;
+}
+
+.filtre a:hover { color: var(--yazi); border-color: var(--ikincil); text-decoration: none; }
+
+.filtre a.etkin {
+  color: var(--yazi);
+  border-color: var(--vurgu);
+  background: var(--panel-acik);
+}
+
+/* -------------------------------------------------------------------- tablo */
+
+.tablo-sarayici { overflow: visible; }
+
+table.tablo {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.tablo th,
+table.tablo td {
+  padding: 9px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--kenar);
+  vertical-align: top;
+}
+
+table.tablo th {
+  color: var(--ikincil);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+table.tablo tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+td.sayi, th.sayi { text-align: right; font-variant-numeric: tabular-nums; }
+
+.sutun-id { width: 52px; }
+.sutun-ajan { width: 168px; }
+/* Durum sütunu sabit genişlikte olsun: rozet metni ("onay bekliyor") taşmasın. */
+th.sutun-durum, td.sutun-durum { width: 156px; }
+th.sutun-kanit, td.sutun-kanit { width: 150px; }
+.th, td.th { white-space: nowrap; }
+/* Log yolu sütunu: monospace uzun yollar hücreyi şişirmesin. */
+td.mono { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
+
+.ajan { font-weight: 600; }
+.zaman { color: var(--ikincil); font-size: 12.5px; white-space: nowrap; }
+
+/* İstem önizlemesi: 100 karakter, tek satırda kesilir (taşma yok).
+   `max-width` üst sınırdır; tablo kalan genişliği bu sütuna verir ama
+   diğer sütunlar sabit genişlikte olduğu için denge bozulmaz. */
+.istem {
+  color: var(--yazi);
+  display: block;
+  max-width: 52ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- kart görünümü */
+
+.kart-liste { display: none; }
+
+.kart {
+  border: 1px solid var(--kenar);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.kart-ust {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.kart-ust .ajan { flex: 1 1 auto; min-width: 0; }
+
+.kart .istem {
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  color: var(--yazi);
+}
+
+.kart-alt {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--kenar);
+  color: var(--ikincil);
+  font-size: 12.5px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* -------------------------------------------------------------- görev detayı */
+
+.bolum {
+  border: 1px solid var(--kenar);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.bolum h2 { margin: 0 0 10px; }
+
+.alan {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 4px 14px;
+  font-size: 13px;
+}
+
+.alan dt { color: var(--ikincil); }
+.alan dd { margin: 0; word-break: break-word; }
+
+.istem-tam {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--panel-acik);
+  border: 1px solid var(--kenar);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+/* Log içeriği: güvenilmeyendir, ama AUTOESCAPE + <pre> ile güvenle basılır. */
+.log {
+  margin: 0;
+  padding: 12px;
+  background: #0b0d12;
+  border: 1px solid var(--kenar);
+  border-radius: 6px;
+  max-height: 460px;
+  overflow-y: auto;
+  overflow-x: auto;
+  white-space: pre;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--yazi);
+}
+
+.hata-metni {
+  color: var(--hata);
+  word-break: break-word;
+}
+
+/* --------------------------------------------------------------- kota kartları */
+
+.kota-izgara {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(268px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.kota-kart {
+  border: 1px solid var(--kenar);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 13px 14px;
+  min-width: 0;
+}
+
+.kota-kart h3 {
+  margin: 0 0 2px;
+  font-size: 13.5px;
+  font-weight: 620;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.kota-kart .model-yolu {
+  margin: 0 0 10px;
+  color: var(--ikincil);
+  font-size: 11.5px;
+  word-break: break-all;
+}
+
+.kota-sayi {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.kota-sayi b {
+  font-size: 24px;
+  font-weight: 660;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.kota-sayi span { color: var(--ikincil); font-size: 12.5px; }
+
+/* İlerleme çubuğu: renk + metin birlikte anlam taşır. */
+.ilerleme {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--panel-acik);
+  border: 1px solid var(--kenar);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.ilerleme i {
+  display: block;
+  height: 100%;
+  background: currentColor;
+}
+
+.kota-durum {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ikincil);
+  /* Rozet metni ("sınır altında") dar kartta kırpılmasın. */
+  flex-wrap: wrap;
+}
+
+.kota-durum > span:last-child { white-space: nowrap; }
+
+/* -------------------------------------------------------------------- grafik */
+
+.graf-kap {
+  border: 1px solid var(--kenar);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 14px 16px 10px;
+}
+
+.graf-baslik {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.graf-baslik h3 { margin: 0; font-size: 13.5px; font-weight: 620; }
+
+.lejant {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 12px;
+  color: var(--ikincil);
+}
+
+.lejant span { display: inline-flex; align-items: center; gap: 5px; }
+
+.lejant i {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+/* SVG sabit taban genişliğiyle BÜYÜTÜLMEZ: büyütülürse 11 px yazı ölçek
+   küçülür ve etiketler okunmaz olurdu. `max-width` grafı taşmayı da engeller. */
+svg.graf {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  overflow: visible;
+}
+
+.graf-eksen { stroke: var(--kenar); stroke-width: 1; }
+.graf-cizgi { stroke: var(--hata); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.graf-etiket { fill: var(--ikincil); font-size: 11px; }
+.graf-etiket.buyuk { fill: var(--yazi); font-size: 11px; font-weight: 600; }
+.graf-bar { rx: 2; }
+.graf-bar-gun { fill: var(--kenar); }
+
+/* --------------------------------------------------------------- boş durum */
+
+.bos-durum {
+  border: 1px dashed var(--kenar);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 34px 24px;
+  text-align: center;
+  color: var(--ikincil);
+}
+
+.bos-durum h2 { margin: 0 0 6px; color: var(--yazi); font-size: 15px; }
+.bos-durum p { margin: 0 auto; max-width: 52ch; font-size: 13px; }
+
+/* ------------------------------------------------------------------- dipnot */
+
+.dipnot {
+  margin-top: 26px;
+  padding-top: 14px;
+  border-top: 1px solid var(--kenar);
+  color: var(--bos);
+  font-size: 12px;
+  max-width: 82ch;
+}
+
+/* ----------------------------------------------------------------- mobil 390 */
+
+@media (max-width: 700px) {
+  main { padding: 14px 12px 34px; }
+  .ust { padding: 11px 12px; gap: 6px 12px; }
+  .ust-sag { margin-left: 0; width: 100%; gap: 12px; }
+
+  /* Tablo gizlenir, kart görünümü açılır. */
+  .tablo-sarayici { display: none; }
+  .kart-liste { display: block; }
+
+  .alan { grid-template-columns: 1fr; gap: 2px; }
+  .alan dt { font-size: 12px; }
+
+  .kota-izgara { grid-template-columns: 1fr; }
+  .istem { max-width: 100%; }
+  .log { max-height: 320px; font-size: 11.5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+
+
+/* ------------------------------------------------------- kanıt ayrıntısı (D) */
+
+.kanit-izgara {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+  margin: 10px 0 4px;
+}
+
+.kanit-kutu {
+  background: var(--panel);
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.kanit-kutu h3 {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  font-weight: 620;
+}
+
+.kanit-liste {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.kanit-liste li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  /* Uzun yollar tabloyu TAŞIRMASIN diye kırılır. */
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kanit-liste li.gecerli { color: var(--basari); }
+.kanit-liste li.gecersiz { color: var(--hata); }
+.kanit-liste li.beyan { color: var(--ikincil); }
+.kanit-liste li.uyari-metin { color: var(--uyari); }
+
+.kanit-liste .isaret {
+  font-weight: 700;
+  /* İşaret KENDİSİ de metin: ekran okuyucu ✓/✗ okur. */
+  flex: 0 0 auto;
+}
+
+.kanit-liste .isaret-metin {
+  font-size: 12px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.kanit-liste .aciklama { flex: 1 1 100%; margin: 0; }
+
+.gerekce-liste li .mono { color: var(--vurgu); }

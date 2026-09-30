@@ -1,6 +1,6 @@
-"""`harita` komut satırı arayüzü (Dalga A).
+"""`harita` komut satırı arayüzü (Dalga A + Dalga B).
 
-Alt komutlar: indeksle, kirik, yetim, etiketler.
+Alt komutlar: indeksle, kirik, yetim, etiketler, web.
 """
 
 from __future__ import annotations
@@ -73,17 +73,30 @@ def komut_kirik(args: argparse.Namespace) -> int:
 def komut_yetim(args: argparse.Namespace) -> int:
     baglanti = _db_ac(_db_yolu(args))
     try:
-        yetim = indeks_modulu.yetim_notlar(baglanti)
+        bolum = indeks_modulu.yetim_ayir(baglanti)
+        hepsi = indeks_modulu.yetim_notlar(baglanti)
     finally:
         baglanti.close()
-    if not yetim:
+
+    # Varsayılan: yalnız GERÇEK yetimler. `--tumu` Dalga A davranışını verir
+    # (daily/ günlükleri ve kök dosyaları da listeler).
+    if args.tumu:
+        kayitlar = list(hepsi)
+        baslik_satiri = f"Yetim not: {len(kayitlar)}"
+    else:
+        kayitlar = [(yol, baslik) for _, yol, baslik in bolum.gercek]
+        baslik_satiri = f"Yetim not: {len(kayitlar)}"
+        if len(bolum.yok_sayilabilir):
+            baslik_satiri += f" (yok sayılabilir: {len(bolum.yok_sayilabilir)}, `--tumu` ile gör)"
+
+    if not kayitlar:
         print("Yetim not yok.")
         return 0
-    print(f"Yetim not: {len(yetim)}")
-    for yol, baslik in yetim[: args.ilk] if args.ilk else yetim:
-        print(f"  {yol}{BOSLUK}({baslik})")
-    if args.ilk and len(yetim) > args.ilk:
-        print(f"  ... ve {len(yetim) - args.ilk} tane daha")
+    print(baslik_satiri)
+    for yol, baslik_ad in kayitlar[: args.ilk] if args.ilk else kayitlar:
+        print(f"  {yol}{BOSLUK}({baslik_ad})")
+    if args.ilk and len(kayitlar) > args.ilk:
+        print(f"  ... ve {len(kayitlar) - args.ilk} tane daha")
     return 0
 
 
@@ -99,6 +112,40 @@ def komut_etiketler(args: argparse.Namespace) -> int:
     en_genis = max((str(adet) for _, adet in etiketler), key=len)
     for etiket, adet in etiketler:
         print(f"  {adet:>{len(en_genis)}}  #{etiket}")
+    return 0
+
+
+def komut_web(args: argparse.Namespace) -> int:
+    """Grafi sunar. Sunucu ADRESİ KODDA SABİTTİR: yalnız 127.0.0.1.
+
+    `VAULT` verilirse önce indekslenir (salt okunur); sonra DB `mode=ro` ile
+    açılır. `--host` seçeneği BİLEREK YOKTUR: dışarıya açmak için kod
+    değiştirmek gerekir.
+    """
+    from .web import sunucu  # Flask yalnızca bu komutta yüklenir
+
+    db_yolu = _db_yolu(args)
+    if args.vault:
+        vault = Path(args.vault)
+        if not vault.is_dir():
+            print(f"Hata: vault bulunamadı: {vault}", file=sys.stderr)
+            return 2
+        ozet = indeks_modulu.indeksle(vault, db_yolu)
+        print(f"İndeks: {db_yolu}")
+        print(ozet.ozet_metni())
+    elif not db_yolu.exists():
+        print(
+            f"Hata: indeks bulunamadı: {db_yolu}\n"
+            "Önce `harita indeksle VAULT` ya da `harita web VAULT` çalıştır.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(f"harita web → http://127.0.0.1:{args.port}  (yalnızca yerel; Ctrl+C ile dur)")
+    try:
+        sunucu.calistir(db_yolu, args.port)
+    except KeyboardInterrupt:  # pragma: no cover
+        print("\nDurduruldu.")
     return 0
 
 
@@ -131,11 +178,21 @@ def arg_parser() -> argparse.ArgumentParser:
 
     p = alt.add_parser("yetim", parents=[ortak], help="Ne link alan ne link veren notları listele")
     p.add_argument("--ilk", type=int, default=None, help="Yalnızca ilk N kaydı göster")
+    p.add_argument(
+        "--tumu",
+        action="store_true",
+        help="`daily/` günlükleri ve kökteki tek-bileşenli dosyalar (yok sayılabilirler) dahil listele",
+    )
     p.set_defaults(fonksiyon=komut_yetim)
 
     p = alt.add_parser("etiketler", parents=[ortak], help="Etiketleri sıklığa göre listele")
     p.add_argument("--ilk", type=int, default=None, help="Yalnızca ilk N etiketi göster")
     p.set_defaults(fonksiyon=komut_etiketler)
+
+    p = alt.add_parser("web", parents=[ortak], help="Grafiği 127.0.0.1 üzerinde sun")
+    p.add_argument("vault", nargs="?", help="Verilirse önce salt-okunur indeksler")
+    p.add_argument("--port", type=int, default=8765, help="Dinlenecek port (varsayılan: 8765)")
+    p.set_defaults(fonksiyon=komut_web)
 
     return parser
 

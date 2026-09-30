@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yetim notlar — harita</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='stil.css') }}">
+</head>
+<body class="liste-sayfa">
+<header class="ust">
+  <div class="ust-sol">
+    <h1>Yetim notlar</h1>
+    <p class="ozet">{{ gercek|length }} gerçek yetim · {{ yok_sayilabilir|length }} yok sayılabilir</p>
+  </div>
+  <nav class="ust-sag">
+    <a href="/">Graf</a>
+    <a href="/kirik">Kırıklar</a>
+  </nav>
+</header>
+
+<main class="liste">
+  <section class="bolum">
+    <h2>Gerçek yetim <span class="adet">{{ gercek|length }}</span></h2>
+    <p class="bolum-not">Ne link alan ne de link veren notlar. Grafın uçlarıdır; bağlanmayı beklerler.</p>
+    {% if gercek %}
+    <ul class="not-listesi">
+      {% for kayit in gercek %}
+      <li>
+        <a href="/?not={{ kayit[0] }}">{{ kayit[2] }}</a>
+        <span class="yol">{{ kayit[1] }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="bos-durum">
+      <h2>Gerçek yetim yok</h2>
+      <p>Her not ya bir bağlantı veriyor ya da alıyor.</p>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="bolum">
+    <h2>Yok sayılabilir <span class="adet">{{ yok_sayilabilir|length }}</span></h2>
+    <p class="bolum-not">
+      <code>daily/</code> günlükleri ve kökteki tek-bileşenli her <code>.md</code> dosyası
+      (README, CLAUDE, 1.md, AUDIT_REPORT.md …). Yapıları gereği tek başına dururlar; kusur sayılmaz.
+    </p>
+    {% if yok_sayilabilir %}
+    <ul class="not-listesi">
+      {% for kayit in yok_sayilabilir %}
+      <li>
+        <a href="/?not={{ kayit[0] }}">{{ kayit[2] }}</a>
+        <span class="yol">{{ kayit[1] }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="bos-durum">
+      <h2>Yok sayılabilir not yok</h2>
+    </div>
+    {% endif %}
+  </section>
+</main>
+</body>
+</html>

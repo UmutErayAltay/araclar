@@ -9,6 +9,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from . import parse as ayristirici
 
@@ -92,6 +93,15 @@ def baglan(db_yolu: Path | str) -> sqlite3.Connection:
     yol = Path(db_yolu).expanduser()
     yol.parent.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(yol)
+
+
+def baglan_salt_okunur(db_yolu: Path | str) -> sqlite3.Connection:
+    """`mode=ro` ile açar: yazma denemeleri `sqlite3.OperationalError` verir.
+
+    Web sunucusu yalnızca bu yolu kullanır; indeks DB'si buradan değiştirilemez.
+    """
+    yol = Path(db_yolu).expanduser()
+    return sqlite3.connect(f"file:{quote(yol.as_posix())}?mode=ro", uri=True)
 
 
 def sema_olustur(baglanti: sqlite3.Connection) -> None:
@@ -327,6 +337,62 @@ def yetim_notlar(baglanti: sqlite3.Connection) -> list[tuple[str, str]]:
     ]
 
 
+# "Yok sayılabilir" iki YAPISAL kuraldır (Dalga B.1 kararı Q2/Q3):
+#   1) Kökteki tek-bileşenli HER `.md` dosyası. Sabit isim listesi
+#      (`README`, `CLAUDE`…) kalktı: gerçek vault'ta `1.md`,
+#      `AUDIT_REPORT.md` gibi kök notları gerçek yetim sayıyordu.
+#   2) `daily/` ile başlayan yol (`daily/v3/` dahil) — günlük kaydıdır.
+# Kökteki ALT KLASÖR (`klasor/not.md`) yalnız kalıyorsa GERÇEK yetimdir.
+YOK_SAYILABILIR_KLASORLER: tuple[str, ...] = ("daily",)
+
+
+def yok_sayilabilir_mi(yol: str) -> bool:
+    """Yol, yapı gereği "yalnız" kalan bir not mu?
+
+    Kökteki tek-bileşenli `.md` dosyası ya da `daily/` altındaki bir yol
+    `True` döner. Diğer her şey gerçek yetimdir.
+    """
+    parcalar = yol.split("/")
+    if len(parcalar) == 1:
+        return parcalar[0].lower().endswith(".md")
+    return parcalar[0] in YOK_SAYILABILIR_KLASORLER
+
+
+@dataclass
+class YetimBolum:
+    """`yetim_ayir` sonucu: gerçek yetimler ve yapı gereği yalnız kalanlar."""
+
+    gercek: list[tuple[int, str, str]]  # (id, yol, başlık)
+    yok_sayilabilir: list[tuple[int, str, str]]
+
+    @property
+    def toplam(self) -> int:
+        return len(self.gercek) + len(self.yok_sayilabilir)
+
+
+def yetim_ayir(baglanti: sqlite3.Connection) -> YetimBolum:
+    """Yetimleri ikiye ayırır (Dalga B kararı).
+
+    `yetim_notlar` ile aynı küme, yalnızca sınıflandırılır: "gerçek yetim"
+    (grafın uçları, gerçekten bağlantısız) ve "yok sayılabilir" (`daily/`
+    günlükleri, kök dosyaları).
+    """
+    gercek: list[tuple[int, str, str]] = []
+    yok_sayilabilir: list[tuple[int, str, str]] = []
+    for not_id, yol, baslik in baglanti.execute(
+        """
+        SELECT n.id, n.yol, n.baslik
+        FROM notes n
+        WHERE NOT EXISTS (SELECT 1 FROM links g WHERE g.hedef_id = n.id)
+          AND NOT EXISTS (SELECT 1 FROM links c WHERE c.kaynak_id = n.id)
+        ORDER BY n.yol
+        """
+    ):
+        kayit = (int(not_id), yol, baslik)
+        (yok_sayilabilir if yok_sayilabilir_mi(yol) else gercek).append(kayit)
+    return YetimBolum(gercek=gercek, yok_sayilabilir=yok_sayilabilir)
+
+
 def etiket_sikligi(baglanti: sqlite3.Connection, ilk: int | None = None) -> list[tuple[str, int]]:
     """(etiket, adet) — sıklığa göre azalan."""
     sql = """
@@ -356,3 +422,161 @@ def not_ozet(baglanti: sqlite3.Connection, not_id: int) -> dict[str, object]:
             )
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Web (Dalga B) sorguları — hepsi yalnızca indeks DB'sini okur.
+# ---------------------------------------------------------------------------
+
+KOK_ETIKET = "(kök)"
+OZET_KARAKTER = 600
+
+
+def klasor_ad(yol: str) -> str:
+    """Yolun en üst klasörü; kökteki notlar için `"(kök)"`."""
+    parcalar = yol.split("/")
+    return parcalar[0] if len(parcalar) > 1 else KOK_ETIKET
+
+
+def graf_dugumleri(baglanti: sqlite3.Connection) -> list[dict[str, object]]:
+    """Graf için düğüm listesi: id, başlık, yol, klasör, etiketler, derece.
+
+    Derece = gelen + giden çözülmüş link sayısı. Kırık linkler kenarda yok,
+    bu yüzden dereceye katılmaz.
+    """
+    etiketler: dict[int, list[str]] = {}
+    for not_id, etiket in baglanti.execute("SELECT not_id, etiket FROM tags ORDER BY not_id, etiket"):
+        etiketler.setdefault(int(not_id), []).append(etiket)
+
+    dugumler: list[dict[str, object]] = []
+    for not_id, yol, baslik in baglanti.execute("SELECT id, yol, baslik FROM notes ORDER BY id"):
+        # Gelen linkler KAYNAK NOTA GÖRE tekrarsız sayılır (bir not birden çok
+        # linkle aynı hedefe bağlanabilir); böylece derece, paneldeki
+        # `giden + gelen` uzunluğuyla birebir tutarlıdır. Kendine bağlanan
+        # (`[[kendi]]`) linkler graf kenarı olmadığı için dereceye girmez.
+        gelen = baglanti.execute(
+            "SELECT COUNT(DISTINCT kaynak_id) FROM links WHERE hedef_id = ? AND kaynak_id <> hedef_id",
+            (not_id,),
+        ).fetchone()[0]
+        giden = baglanti.execute(
+            "SELECT COUNT(*) FROM links "
+            "WHERE kaynak_id = ? AND hedef_id IS NOT NULL AND hedef_id <> kaynak_id",
+            (not_id,),
+        ).fetchone()[0]
+        dugumler.append(
+            {
+                "id": int(not_id),
+                "baslik": baslik,
+                "yol": yol,
+                "klasor": klasor_ad(yol),
+                "etiketler": etiketler.get(int(not_id), []),
+                "derece": int(gelen) + int(giden),
+            }
+        )
+    return dugumler
+
+
+def graf_kenarlari(baglanti: sqlite3.Connection) -> list[dict[str, int]]:
+    """Çözülmüş linklerden graf kenarları (kaynak_id, hedef_id).
+
+    Aynı çift için tekrarlanan linkler tek kenara indirgenir; ağırlık kaybı
+    kabul, çizim hızı kazanımı için bilinçli tercihtir.
+    """
+    return [
+        {"kaynak": int(kaynak), "hedef": int(hedef)}
+        for kaynak, hedef in baglanti.execute(
+            """
+            SELECT DISTINCT kaynak_id, hedef_id FROM links
+            WHERE hedef_id IS NOT NULL AND hedef_id <> kaynak_id
+            ORDER BY kaynak_id, hedef_id
+            """
+        )
+    ]
+
+
+def not_detay(baglanti: sqlite3.Connection, not_id: int) -> dict[str, object] | None:
+    """`/api/not/<id>` gövdesi: özet, etiketler, giden/gelen linkler, kırıklar.
+
+    `ozet` yalnızca `chunks` tablosundan okunur — ham vault dosyası ASLA
+    yeniden açılmaz, böylece gizlilik süzümü tek noktada kalır.
+    """
+    satir = baglanti.execute(
+        "SELECT id, yol, baslik FROM notes WHERE id = ?", (not_id,)
+    ).fetchone()
+    if satir is None:
+        return None
+    not_id, yol, baslik = int(satir[0]), satir[1], satir[2]
+
+    parcalar = [m for (m,) in baglanti.execute(
+        "SELECT metin FROM chunks WHERE not_id = ? ORDER BY sira", (not_id,)
+    )]
+    ozet = "\n\n".join(parcalar)[:OZET_KARAKTER].strip()
+    # Karar Q4: kesildiyse panel bunu gösterir ("… (devamı notta)").
+    ozet_kesildi = len(ozet) >= OZET_KARAKTER
+
+    giden: list[dict[str, object]] = []
+    kirik: list[str] = []
+    for hedef_id, hedef_metin in baglanti.execute(
+        "SELECT hedef_id, hedef_metin FROM links WHERE kaynak_id = ? ORDER BY rowid", (not_id,)
+    ):
+        if hedef_id is None:
+            kirik.append(hedef_metin)
+            continue
+        # Kendine bağlanan link graf kenarı değildir; dereceye de girmemeli.
+        if int(hedef_id) == not_id:
+            continue
+        giden.append({"id": int(hedef_id), "baslik": _baslik_id(baglanti, int(hedef_id))})
+
+    gelen = [
+        {"id": int(kaynak_id), "baslik": _baslik_id(baglanti, int(kaynak_id))}
+        for (kaynak_id,) in baglanti.execute(
+            "SELECT DISTINCT kaynak_id FROM links "
+            "WHERE hedef_id = ? AND kaynak_id <> hedef_id ORDER BY kaynak_id",
+            (not_id,),
+        )
+    ]
+
+    return {
+        "id": not_id,
+        "baslik": baslik,
+        "yol": yol,
+        "klasor": klasor_ad(yol),
+        "etiketler": [e for (e,) in baglanti.execute(
+            "SELECT etiket FROM tags WHERE not_id = ? ORDER BY etiket", (not_id,)
+        )],
+        "ozet": ozet,
+        "ozet_kesildi": ozet_kesildi,
+        "giden": giden,
+        "gelen": gelen,
+        "kirik": kirik,
+    }
+
+
+def _baslik_id(baglanti: sqlite3.Connection, not_id: int) -> str:
+    satir = baglanti.execute("SELECT baslik FROM notes WHERE id = ?", (not_id,)).fetchone()
+    return satir[0] if satir else ""
+
+
+def kirik_linkler_detayli(baglanti: sqlite3.Connection) -> list[dict[str, object]]:
+    """`/kirik` listesi için (kaynak_id, kaynak yol, kaynak başlık, hedef metin)."""
+    return [
+        {"kaynak_id": int(kaynak_id), "yol": yol, "baslik": baslik, "hedef": hedef}
+        for kaynak_id, yol, baslik, hedef in baglanti.execute(
+            """
+            SELECT k.id, k.yol, k.baslik, l.hedef_metin
+            FROM links l JOIN notes k ON k.id = l.kaynak_id
+            WHERE l.hedef_id IS NULL
+            ORDER BY k.yol, l.rowid
+            """
+        )
+    ]
+
+
+def toplam_sayaclar(baglanti: sqlite3.Connection) -> dict[str, int]:
+    """Üst özet şeridi için: not, link ve kırık link sayıları."""
+    notlar = int(baglanti.execute("SELECT COUNT(*) FROM notes").fetchone()[0])
+    linkler = int(baglanti.execute("SELECT COUNT(*) FROM links").fetchone()[0])
+    kirik = int(
+        baglanti.execute("SELECT COUNT(*) FROM links WHERE hedef_id IS NULL").fetchone()[0]
+    )
+    return {"not": notlar, "link": linkler, "kirik": kirik}

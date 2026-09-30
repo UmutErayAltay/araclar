@@ -99,7 +99,15 @@ def test_yetim_alt_komutu(mini_vault: Path, tmp_path: Path) -> None:
     sonuc = calistir("yetim", "--db", str(db))
     assert sonuc.returncode == 0
     assert "Yetim not:" in sonuc.stdout
-    assert "gizlilik-sırları.md" in sonuc.stdout
+    # Alt klasördeki bağlantısız not GERÇEK yetimdir.
+    assert "📁 Klasör/ayrilmis-not.md" in sonuc.stdout
+    # Dalga B.1 kararı Q2: kökteki tek-bileşenli HER `.md` "yok sayılabilir"dır,
+    # sabit isim listesi kalktı — `gizlilik-sırları.md` artık varsayılan
+    # çıktının DIŞINDA, yalnız `--tumu` ile görünür.
+    assert "gizlilik-sırları.md" not in sonuc.stdout
+    assert "yok sayılabilir" in sonuc.stdout
+    tumu = calistir("yetim", "--tumu", "--db", str(db))
+    assert "gizlilik-sırları.md" in tumu.stdout
 
 
 def test_etiketler_alt_komutu_ilk_n(mini_vault: Path, tmp_path: Path) -> None:
@@ -125,7 +133,9 @@ def test_bos_vault_ve_bos_ciktilar(tmp_path: Path) -> None:
     db = tmp_path / "bos.db"
     assert calistir("indeksle", str(vault), "--db", str(db)).returncode == 0
     assert "Kırık link yok." in calistir("kirik", "--db", str(db)).stdout
+    # Dalga B: varsayılan yalnız GERÇEK yetimleri sorar; `--tumu` hepsini.
     assert "Yetim not yok." in calistir("yetim", "--db", str(db)).stdout
+    assert "Yetim not yok." in calistir("yetim", "--tumu", "--db", str(db)).stdout
     assert "Etiket yok." in calistir("etiketler", "--db", str(db)).stdout
 
 

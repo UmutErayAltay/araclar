@@ -12,7 +12,7 @@ Bu vault'u (Markdown + çift köşeli parantezli wikilink'ler) okuyup web'de gra
 "bu hafta ne yaptım" özeti üreten salt-okunur araç. Obsidian'ın grafı `search` filtresi yüzünden
 düğümleri gizlemişti (2026-09-21); aynı sorunları kendi aracımızla görünür kılmak istiyoruz.
 
-**Durum:** Dalga A tamam (2026-09-30; 115 test yeşil; gerçek vault salt-okunur indekslendi: 296 not, 516 link, 7 kırık (hepsi gerçek), 135 yetim, 1,5 sn). Kararlar: `receipts/` kapsam dışı kalır (o linkler kırık sayılır); klasör linkleri kırık sayılır; indeks DB konumu ve yetim/"yok sayılabilir" ayrımı Dalga B'de. Ders: `sk-` deseni sol sınırsız `flask-` gibi kelimelerde yanlış pozitif verir, sol sınır şart. Sıradaki: Dalga B. Repo adı önerisi: `harita`.
+**Durum:** Dalga A ve B (+B.1) tamam (2026-09-30, 254 test; web graf: kuvvet yerleşimi, sığdır, panel; ilk çizim <1 sn/1200 not). Bilinen kalan görsel kusurlar (ana oturum ekran görüntülerinden): etiketler daire üzerine biniyor, mobilde kenarda kırpılıyor / lejantın arkasında kalıyor, seçili düğüm üst çubuğa değiyor; Dalga C'nin 0. görevi. Sıradaki: Dalga C (haftalık özet + vault↔repo tutarlılığı).
 Bağlantılar: `vault-durum` skill'i (`.agents/skills/vault-durum/SKILL.md`, kırık link/yetim not mantığı için okunur),
 [[cor-bulut-oturumu-agent-tool-erisimsizligi-headless-cozum]], [[ne-izlesem-delegasyon-modeli-ajan-kendi-dogrular]].
 
@@ -46,13 +46,14 @@ Vault'a yazma (not düzenleme/oluşturma yok), Obsidian eklentisi, senkronizasyo
 - `/` graf (sürükle/yakınlaştır, düğüme tıkla → not özeti + bağlantılar), `/kirik`, `/yetim`. Sol hizalı, koyu tema.
 - Kabul: Playwright ekran görüntüsü KURGUSAL mini-vault ile alınır ve okunur (gerçek not başlığı görüntüye girmez); 1000+ düğümde çizim 3 sn altında.
 
-**Dalga C — arama**
+**Dalga C — haftalık özet + vault↔repo tutarlılığı** (sıra 2026-09-30'da değişti: graf/arama Obsidian'da zaten var, Obsidian'ın yapamadığı işler öne alındı)
+- `harita ozet --hafta`: son 7 günün daily/Threads/Last-Session'ı → cor özeti. Varsayılan hiçbir şey dışarı göndermez (ham liste); cor'a yalnızca açık `--cor` bayrağıyla gider; `Kurallar.md`/`Core.md`/kimlik notları HER ZAMAN hariç, sır satırları süzülür. Özet vault'a yazılmaz.
+- `harita tutarlilik`: proje notlarının durumu (`status:`/`**Durum:**`) ve `Threads.md` ile atlas DB'sindeki gerçek repo durumu (commit, dirty, son commit tarihi) çelişiyor mu? Salt okunur, öneri metni üretir.
+- Kabul: sahte LLM ile testler; gerçek vault + gerçek atlas DB üzerinde çalıştırılıp bulgular incelenir, yanlış pozitifler ayıklanır.
+
+**Dalga D — arama** (isteğe bağlı; yalnızca Obsidian aramasından belirgin iyiyse)
 - BM25 tam-metin + `harita ara "sorgu"`; web arama kutusu, sonuçta parça vurgusu.
 - Kabul: fixture'da sorgu → beklenen not ilk 3'te; Türkçe İ/ı büyük-küçük harf normalizasyonu testli.
-
-**Dalga D — haftalık özet**
-- `harita ozet --hafta` : son 7 günün daily/Threads/Last-Session'ı → cor özeti. cor yoksa madde işaretli ham liste.
-- Kabul: sahte LLM ile test; cor açıksa gerçek denemede çıktı okunup değerlendirilir.
 
 ## Bulut oturumu talimatı
 Vault bulut oturumuna repo olarak gelir (`Mt3Ui55OS`). İlk mesaj örneği: "Mt3Ui55OS vault'unu oku, `Vault-Zihin-Haritasi.md` Dalga A'yı `/home/user/harita`'da yap; indeksi gerçek vault üzerinde de dene."

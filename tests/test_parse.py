@@ -345,3 +345,36 @@ def test_emoji_ve_turkce_dosya_adi(tmp_path: Path) -> None:
     not_ = not_ayristir(tmp_path / "🧠 Bilgi/ızgara-şeması.md", tmp_path)
     assert not_.baslik == "Şema"
     assert not_.yol.as_posix() == "🧠 Bilgi/ızgara-şeması.md"
+
+
+# ---------------------------------------------------------------------------
+# Köşeli parantez içeren hedefler (Dalga B'de bulundu)
+# ---------------------------------------------------------------------------
+
+
+def test_hedef_icinde_kapatici_parantez_bolunmez() -> None:
+    r"""`[[<b>x</b>]]` gibi bir hedef İKİ kırık linke bölünmemeli.
+
+    Sınırsız `[^\[\]]*?` deseni `…>` ve boş hedef olmak üzere ikiye ayırıyordu;
+    Obsidian'da hedef içinde `]` geçersizdir.
+    """
+    assert linkleri_cikar("[[<b>hic-boyle-not</b>]]") == [("<b>hic-boyle-not</b>", "link")]
+
+
+def test_boş_hedef_ve_kapatici_parantez() -> None:
+    assert linkleri_cikar("[[]]") == []
+    assert linkleri_cikar("[[]] [[]]") == []
+
+
+def test_gomulu_kapatici_parantezli_hedef() -> None:
+    assert linkleri_cikar("![[<b>resim</b>]]") == [("<b>resim</b>", "gomulu")]
+
+
+def test_normal_linkler_ayri_kalir() -> None:
+    """Düzeltme normal wikilinkleri etkilemez."""
+    metin = "[[bir]] ve [[iki/üç|d]] ve ![[dort]]"
+    assert linkleri_cikar(metin) == [
+        ("bir", "link"),
+        ("iki/üç", "link"),
+        ("dort", "gomulu"),
+    ]

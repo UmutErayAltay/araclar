@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zihin haritası — harita</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='stil.css') }}">
+</head>
+<body data-acik-not="{{ acik_not }}">
+<header class="ust">
+  <div class="ust-sol">
+    <h1>Zihin haritası</h1>
+    <p class="ozet">
+      <span class="sayac"><b id="sayac-not">{{ sayaclar.not }}</b> not</span>
+      <span class="ayrac">·</span>
+      <span class="sayac"><b id="sayac-link">{{ sayaclar.link }}</b> link</span>
+      <span class="ayrac">·</span>
+      <a class="sayac kirik-sayac" href="/kirik"><b>{{ sayaclar.kirik }}</b> kırık link</a>
+    </p>
+  </div>
+  <nav class="ust-sag">
+    <a href="/yetim">Yetimler</a>
+    <a href="/kirik">Kırıklar</a>
+  </nav>
+</header>
+
+<main id="sahne">
+  <svg id="graf" role="img" aria-label="Not bağlantı grafiği" preserveAspectRatio="xMidYMid meet"></svg>
+  <div id="bos-durum" class="bos-durum" hidden>
+    <h2>İndekte not yok</h2>
+    <p>Bu veritabanında henüz not bulunmuyor. Önce <code>harita indeksle VAULT</code> çalıştırın.</p>
+  </div>
+  <div id="yukleniyor" class="yukleniyor">Graf yükleniyor…</div>
+  <div id="lejant" class="lejant" aria-label="Klasör renkleri"></div>
+  <button id="sigdir" type="button" class="sigdir" hidden>Sığdır</button>
+
+  <!-- Panel `#sahne` İÇİNDE yerleşir: `position: absolute` göreli kapsayıcısı
+       sahne olmalıdır, yoksa üst şeridin altında kalır (B.1). -->
+  <aside id="panel" class="panel" hidden aria-label="Not ayrıntısı">
+    <button id="panel-kapat" type="button" class="panel-kapat" aria-label="Paneli kapat">×</button>
+    <div id="panel-icerik"></div>
+  </aside>
+</main>
+
+<script src="{{ url_for('static', filename='graf.js') }}"></script>
+</body>
+</html>

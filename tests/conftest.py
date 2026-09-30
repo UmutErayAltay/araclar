@@ -107,3 +107,86 @@ title: Özet
 Yönlendirme: [[gömülü-görsel]] ve [[ızgara]]
 """)
     return vault
+
+
+def yetim_vault(kok: Path) -> Path:
+    """Yalnız notların "gerçek yetim / yok sayılabilir" ayrımını sınayan vault.
+
+    Gerçek yetim: `proje/plan.md` ve `kose/not.md` (alt klasör, hiç bağlantı yok).
+    Yok sayılabilir: `daily/` günlüğü, kök dosyaları (`README`, `CLAUDE`).
+    `serbest-not.md` link ALDIĞI için yetim değildir — ayrımın sınır burada.
+    """
+    vault = kok / "yetim-vault"
+    vault.mkdir(parents=True, exist_ok=True)
+    yaz(vault, "bagli-not.md", "# Bağlı Not\n[[serbest-not]]\n")
+    yaz(vault, "serbest-not.md", "# Serbest Not\n")
+    yaz(vault, "README.md", "# README\n")
+    yaz(vault, "CLAUDE.md", "# CLAUDE\n")
+    yaz(vault, "daily/2026-01-01.md", "# Günlük\n")
+    yaz(vault, "proje/plan.md", "# Plan\n")
+    yaz(vault, "kose/not.md", "# Köşe Not\n")
+    return vault
+
+
+@pytest.fixture
+def yetim_vault_fixture(tmp_path: Path) -> Path:
+    """Pytest fixture sarmalayıcısı (e2e testleri doğrudan da kurabilir)."""
+    return yetim_vault(tmp_path)
+
+
+# Gerçek kullanıcı verisi sızmaması için XSS yükleri kurgusal; hiçbir gerçek
+# yol, e-posta veya anahtar içermez.
+XSS_BASLIK = "<script>window.__xss=1</script>"
+XSS_BASLIK2 = '"><img src=x onerror=window.__xss2=1>'
+# Öyle bir NOT OLMAYAN kırık link yükü: `/kirik` tablosunda kaçışlı basılır.
+XSS_HEDEF = "<b>hic-boyle-not</b>"
+
+
+@pytest.fixture
+def xss_vault(tmp_path: Path) -> Path:
+    """Başlıkları saldırı yükü içeren kurgusal vault (XSS testleri için).
+
+    Kaçış yüzeyleri:
+      * `kutu/kaynak.md` / `kutu/kaynak2.md`: kirli notlara link VERİR, bu yüzden
+        bağlantısız kalmazlar ve başlıkları HTML'e girmez.
+      * Gövde satırındaki düz `[[XSS_HEDEF]]` yükü: öyle bir not YOKTUR, bu
+        yüzden GERÇEK kırık linktir ve `/kirik` tablosunda kaçışlı basılır.
+      * `kutu/temiz-not.md`: hiç link vermeyen tek not — `/yetim` listesinde
+        KENDİ bağlantısı olmayan not başlığı olarak görünür (ayrım testi).
+    """
+    vault = tmp_path / "xss-vault"
+    vault.mkdir()
+    yaz(vault, f"kutu/{XSS_BASLIK}.md", f"---\ntitle: {XSS_BASLIK}\n---\n# Zararli\n")
+    yaz(vault, f"kutu/{XSS_BASLIK2}.md", f"---\ntitle: {XSS_BASLIK2}\n---\n# Zararli 2\n")
+    yaz(vault, "kutu/hedef.md", "# Hedef\n")
+    yaz(vault, "kutu/kaynak.md", f"---\ntitle: Kaynak\n---\nKaynak → [[{XSS_BASLIK}]]\n")
+    yaz(vault, "kutu/kaynak2.md", f"---\ntitle: Kaynak 2\n---\nKaynak 2 → [[{XSS_BASLIK2}]]\n")
+    # Yalnız bu satır KIRIK link üretir ve yükün kendisini `/kirik` tablosuna taşır.
+    yaz(vault, "kutu/kaynak3.md", f"Kaynak 3 → [[{XSS_HEDEF}]]\n[[yok-boyle-not]]\n")
+    yaz(vault, "kutu/temiz-not.md", "# Temiz Not\n")
+    return vault
+
+
+def sentetik_vault(kok: Path, not_sayisi: int = 1200, link_ortalamasi: int = 2) -> Path:
+    """ÇALIŞMA ZAMANINDA üretilen sentetik vault (performans testi için).
+
+    İçerik tamamen kurgusal ve sayısal; gerçek vault'tan hiçbir şey girmez.
+    Klasörler 10 adet, notlar `not-0001.md` biçiminde.
+    """
+    vault = kok / "sentetik"
+    vault.mkdir(parents=True, exist_ok=True)
+    for i in range(not_sayisi):
+        klasor = vault / f"konu-{i % 10:02d}"
+        klasor.mkdir(parents=True, exist_ok=True)
+        govde = [f"# Sentetik Not {i:05d}", "", "Bu not performans ölçümü içindir. #sentetik"]
+        for k in range(link_ortalamasi):
+            hedef = (i * 7 + k * 13 + 1) % not_sayisi
+            govde.append(f"Bağlantı: [[not-{hedef:05d}]]")
+        (klasor / f"not-{i:05d}.md").write_text("\n".join(govde) + "\n", encoding="utf-8")
+    return vault
+
+
+@pytest.fixture(scope="session")
+def buyuk_vault(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Oturum boyunca bir kez üretilen 1200 notluk sentetik vault."""
+    return sentetik_vault(tmp_path_factory.mktemp("perf"))

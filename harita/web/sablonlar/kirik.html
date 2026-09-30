@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kırık linkler — harita</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='stil.css') }}">
+</head>
+<body class="liste-sayfa">
+<header class="ust">
+  <div class="ust-sol">
+    <h1>Kırık linkler</h1>
+    <p class="ozet">{{ kayitlar|length }} çözülemeyen bağlantı</p>
+  </div>
+  <nav class="ust-sag">
+    <a href="/">Graf</a>
+    <a href="/yetim">Yetimler</a>
+  </nav>
+</header>
+
+<main class="liste">
+{% if kayitlar %}
+  <table class="tablo">
+    <thead>
+      <tr><th>Kaynak not</th><th>Hedef metin</th></tr>
+    </thead>
+    <tbody>
+    {% for kayit in kayitlar %}
+      <tr>
+        <td>
+          <a href="/?not={{ kayit.kaynak_id }}">{{ kayit.baslik }}</a>
+          <span class="yol">{{ kayit.yol }}</span>
+        </td>
+        <td><code class="hedef">[[{{ kayit.hedef }}]]</code></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <div class="bos-durum">
+    <h2>Kırık link yok</h2>
+    <p>İndeksteki tüm bağlantılar çözülebiliyor.</p>
+  </div>
+{% endif %}
+</main>
+</body>
+</html>

@@ -4,17 +4,24 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "harita"
-version = "0.1.0"
-description = "Markdown vault'unu okuyup not grafiğini indeksleyen salt-okunur araç"
+version = "0.2.0"
+description = "Markdown vault'unu okuyup not grafiğini indeksleyen ve web grafiğinde gösteren salt-okunur araç"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["flask>=3.0"]
 
 [project.scripts]
 harita = "harita.cli:main"
 
 [tool.setuptools]
-packages = ["harita"]
+packages = ["harita", "harita.web"]
+
+[tool.setuptools.package-data]
+"harita.web" = ["sablonlar/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+  "e2e: gerçek tarayıcı (Playwright/Chromium) gerektiren testler; yoksa atlanır",
+  "perf: büyük sentetik vault ile performans ölçümü (yavaş)",
+]

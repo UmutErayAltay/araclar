@@ -46,7 +46,10 @@ _KOD_ACILIS = re.compile(r"^[ \t]{0,3}(?P<isaret>`{3,}|~{3,})")
 _SATIR_KOD = re.compile(r"(?<!`)(?P<ticks>`+)(?!`)(?P<icerik>[^\n]+?)(?<!`)(?P=ticks)(?!`)")
 
 # Obsidian biçimleri: [[hedef]], [[hedef#başlık]], [[hedef|görünen]] ve gömülü ![[...]].
-_LINK_GOVDE = re.compile(r"!?\[\[(?P<ic>[^\[\]]*?)\]\]")
+# `ic` içinde `]` YASAKTIR: Obsidian'da köşeli parantez kapatıcısını içeren
+# hedef geçersizdir. Sınırsız `[^\[\]]*?` deseni bir `<script>]]` yazısını
+# iki AYRI kırık linke bölüyordu.
+_LINK_GOVDE = re.compile(r"!?\[\[(?P<ic>[^\[\]]*)\]\]")
 
 # Etiket: # işareti, sonra harf veya alt çizgi ile başlayan, harf/rakam/-/_/Türkçe
 # harflerden oluşan gövde. `##` (başlık), `#123`, `#!` ve `foo#bar` sayılmaz.

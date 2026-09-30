@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from harita.index import indeksle
+
 # pytest pythonpath=["."] ayarını kullanmadan da çalışabilsin.
 KOK = Path(__file__).resolve().parents[1]
 if str(KOK) not in sys.path:
@@ -190,3 +192,86 @@ def sentetik_vault(kok: Path, not_sayisi: int = 1200, link_ortalamasi: int = 2) 
 def buyuk_vault(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Oturum boyunca bir kez üretilen 1200 notluk sentetik vault."""
     return sentetik_vault(tmp_path_factory.mktemp("perf"))
+
+
+# ---------------------------------------------------------------------------
+# Dalga D — arama (BM25) kurgusal vault'ları
+# ---------------------------------------------------------------------------
+
+GIZLI_ANAHTAR = "sk-abcdefghijklmnopqrstuvwxyz0123456789"
+
+
+@pytest.fixture
+def arama_vault(tmp_path: Path) -> Path:
+    """Kurgusal arama vault'u: Türkçe katlama, kök/ek, alan ağırlığı, gizlilik.
+
+    Sıralama kasıtlıdır ve TESTLERDE NEDEN O NOT ÜSTTE OLDUĞU yorumla yazılır:
+      * `baslik-agirligi.md` başlığında aranan sözcük, gövdesinde değil.
+      * `uzun-not.md` aynı terimi çok kez içerir ama çok uzundur (`b` cezası).
+      * `gizli.md` gizli satır içerir — indeksde ve alıntıda ASLA görünmez.
+    """
+    vault = tmp_path / "arama-vault"
+    vault.mkdir()
+    yaz(
+        vault,
+        "proje/guvenlik.md",
+        """---
+title: Güvenlik Sırları
+tags: [gizlilik, proje]
+---
+# Güvenlik Sırları
+
+Güvenlik politikası burada. Borsa modeli başarısız oldu.
+
+Bu satır sızdırabilir: sk-abcdefghijklmnopqrstuvwxyz0123456789
+password: gizli-sifre
+""",
+    )
+    yaz(
+        vault,
+        "finans/borsa.md",
+        """---
+title: Borsa Analizi
+aliases: [borsa modeli]
+tags: [finans]
+---
+# Borsa Analizi
+
+Borsanın verisi bozuk. Borsada işlem hacmi düştü.
+""",
+    )
+    yaz(
+        vault,
+        "isik/isparta.md",
+        """---
+title: IŞIK Projesi
+---
+# IŞIK Projesi
+
+Isparta ışık ölçümü yapıldı. Isik haritası çizildi.
+""",
+    )
+    # Aynı terimi ÇOK kez içeren UZUN not: `b` cezasıyla geriye düşmeli.
+    yaz(
+        vault,
+        "uzun-not.md",
+        """---
+title: Uzun Not
+---
+# Uzun Not
+
+""" + ("güvenlik güvenlik güvenlik güvenlik güvenlik. " * 12)
+        + "\nGüvenlik cümlesi burada biter.\n",
+    )
+    yaz(vault, "proje/plan.md", "---\ntitle: Plan\n---\n# Plan\n\nGüvenlik planı ve borsa planı.\n")
+    # Hariç tutulan klasördeki not: sonuçta GÖRÜNMEMELİ.
+    yaz(vault, "receipts/alis-notu.md", "# Alış Notu\n\nGüvenlik özel notu.\n")
+    return vault
+
+
+@pytest.fixture
+def arama_db(arama_vault: Path, tmp_path: Path) -> Path:
+    """`arama_vault` indekslenmiş DB (arama tabloları dahil)."""
+    db = tmp_path / "arama.db"
+    indeksle(arama_vault, db)
+    return db

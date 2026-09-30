@@ -38,6 +38,16 @@ harita yetim             # GERÇEK yetimler (aşağıya bak)
 harita yetim --tumu      # daily/ günlükleri ve kök dosyaları da dahil
 harita etiketler --ilk 10 # en sık etiketler
 
+# tam-metin arama (BM25) — YEREL, ağa çıkmaz
+harita ara "güvenlik"                  # varsayılan 10 sonuç
+harita ara "veri sızıntısı" --ilk 20
+harita ara '"tam ifade"'               # tırnaklı ifade (ardışık geçmeli)
+harita ara "güvenlik -plan"            # -terim: hariç tut
+harita ara "test etiket:proje"         # etiket filtresi
+harita ara "not klasor:finans"         # klasör/yol öneki filtresi
+harita ara "borsanın" --tam            # kök kesme KAPALI (tam sözcük)
+harita ara "güvenlik" --json
+
 # web grafı — DAİMA 127.0.0.1'de
 harita web /path/to/vault            # önce indeksler, sonra sunar
 harita web --db /tmp/harita.db       # hazır indeksi sun
@@ -80,6 +90,9 @@ durur". Kökteki **alt klasör** (`klasor/not.md`) yalnız kalıyorsa gerçek
 yetimdir.
 
 ## Web arayüzü
+
+Rotalar: `/` graf, `/ara` arama, `/kirik`, `/yetim`, `/api/*`. Tümü **yalnızca
+GET**, hepsi 127.0.0.1 üzerinde.
 
 `harita web` grafı `http://127.0.0.1:8765` adresinde açar.
 
@@ -146,6 +159,27 @@ Lejant **`<details>`** ile gelir ve **≤600 px'de KAPALI** başlar (tek satırl
 bir "Klasör" düğmesi) — böylece grafın alanını kaplamaz. Kullanıcı açarsa
 satırlar iki sütuna bölünür ve lejantın üstüne binen etiketler gizlenir.
 Masaüstünde lejant açıktır.
+
+### Arama sayfası (`/ara`)
+
+Yalnızca GET. Arama kutusu, sonuç sayısı, sonuç listesi (başlık, yol, etiket
+rozetleri, **vurgulu alıntı**), boş durum ve her sonuçtan **"grafta göster"**
+bağlantısı (mevcut `/?not=<id>` deseni).
+
+CSP `form-action 'none'` HTML formunu sessizce öldürür; bu yüzden form
+gönderimi **JS `location.assign` ile** yapılır — CSP **gevşetilmez**. JS
+kapalıyken bile `?q=` ile doğrudan açılan sayfa **sunucu tarafında** render
+edilir ve sonuçları gösterir.
+
+`/api/ara?q=` aynı kısıtları taşır (yalnız GET, `ilk` üst sınırı 50).
+Vurgu XSS-güvenlidir: `<mark>` yalnızca sunucunun ürettiği aralıklarda oluşur,
+kalan metin autoescape ile kaçışlıdır.
+
+Masaüstü ve mobil düzen, koyu tema ve Okabe-Ito paleti (`<mark>` zemini
+`#F0E442`, metni `#0f1115` → kontrast **14.3:1**) ölçülebilir olarak sınanır:
+yatay kaydırma yok, metin görünür alanın dışında değil, yazı ≥ 11 px, beyaz
+varsayılan kontrol yok.
+
 
 ## Haftalık özet (`harita ozet`)
 
@@ -260,9 +294,192 @@ Yol, vault'a **göreli** ve tırnak içinde yazılır. Başka bir yol için
 
 ### Çıktı
 
-Bölümler: **Uyarılar** / **Bilgiler** / **Kontrol edilemeyenler**; her bulguda
-önem, güven, gerekçe ve tek satır öneri. `--json` ile makine okunur çıktı,
-`--kati` ile uyarı varsa **çıkış kodu 1** (varsayılan 0).
+Bölümler: **Kontrol edilenler** / **Uyarılar** / **Bilgiler** /
+**Kontrol edilemeyenler**; her bulguda önem, güven, gerekçe ve tek satır
+öneri. `--json` ile makine okunur çıktı, `--kati` ile uyarı varsa **çıkış
+kodu 1** (varsayılan 0).
+
+#### Kontrol edilenler: "0 uyarı" ne demek?
+
+"0 uyarı" iki anlama gelebilir: **tutarlı** ya da **hiçbir şeyi
+eşleştiremedi**. Çıktının başındaki **Kontrol edilenler** bölümü bunu
+ayırt eder ve neye bakıldığını gösterir:
+
+- Eşleşen **not↔repo çifti** sayısı, güven düzeyine göre (yüksek/orta).
+- Çift başına: **not yolu → repo adı**, **eşleme kaynağı**
+  (frontmatter / eşleme dosyası / backtick-tahmin) ve güven.
+- **Çalıştırılan kural sayısı** ve her kuralın **kaç çift üzerinde
+  değerlendirildiği** (`değerlendirilen/aday`, kaç bulgu üretti).
+- Eşleşmeyen not sayısı (bulgu üretmez, yalnız sayılır).
+
+`--json` çıktısının `kontrol_edilenler` alanında aynı bilgiler
+(`cift_sayisi`, `guven`, `eslesme_yontemi`, `eslesmeyen_not`, `ciftler`,
+`kurallar`) yer alır. **Bulgular bu eklemeyle DEĞİŞMEZ.**
+
+---
+
+## Arama (`harita ara`) — BM25 tam-metin
+
+Obsidian'ın aramasını taklit etmeyi amaçlamaz; ondan **alaka sıralaması**,
+**Türkçe'ye uygun eşleme** ve **not + vurgulu parça** konusunda iyiyi. Arama
+**tamamen yereldir**: hiçbir koşulda ağa çıkmaz, `cor`'u çağırmaz, gömülü bir
+ağ istemcisi yoktur (test: arama sırasında soket açılırsa test düşer).
+
+### Sözdizimi
+
+| Biçim | Anlamı | Örnek |
+|---|---|---|
+| `sözcük sözcük` | **VEYA**-ağırlıklı BM25; hepsini içeren belge doğal olarak üste çıkar | `veri temizleme` |
+| `"tam ifade"` | Tırnaklı ifade **filtresi**: katlanmış metinde **ardışık** geçmeli | `"anahtar dönüşümü"` |
+| `-terim` | **Hariç** tutar (kök hâline getirilir) | `güvenlik -planlama` |
+| `etiket:ad` | Etiket filtresi | `test etiket:proje` |
+| `klasor:ad` | Yol öneki veya klasör adı filtresi | `not klasor:finans` |
+| `--ilk N` | En fazla N sonuç (varsayılan 10, üst sınır 50) | `--ilk 20` |
+| `--tam` | Kök kesmeyi **kapatır**; tam sözcük eşleşmesi | `ara "borsanın" --tam` |
+| `--json` | Makine okunur çıktı | — |
+
+Bozuk sözdizimi **çökmez**: boş sorgu net bir kullanım hatasıdır (çıkış kodu
+2); **tek** tırnak düz karakter sayılır; kapanmamış tırnak kalan metni tek bir
+ifade olarak yutar. Sonuç yoksa net mesaj basılır ve **çıkış kodu 0**'dır —
+yalnızca gerçek hatalar sıfırdan farklıdır.
+
+Sözcükler `\w+` ile bulunur ve **uzunluğu 2'den küçükse terim olmaz**; bu
+yüzden tek harfli parçalar (`-x`, `x`) yok sayılır. Tırnaklı ifadedeki
+kelimeler de aday havuzunu besler (aksi halde "sadece ifade" sorgusu tüm
+vault'u taramak zorunda kalırdı), ama **ardışık geçme** şartı yine de süzgeç
+olarak uygulanır.
+
+### Türkçe eşleme kuralları
+
+1. **NFC** normalizasyonu (birleşik `â` = `a` + U+0302).
+2. **Türkçe küçük harf**: `İ` → `i`, `I` → `ı` (Python'un `str.lower()`'ı bu
+   ikisini yanlış çevirdiği için elle eşlenir), kalan büyük harfler küçülür.
+3. **Katlama**: `ı ç ğ ö ş ü` → `i c g o s u`.
+
+Sorgu ve belge **aynı** işlemden geçer:
+
+| Sorgu | Not | Sonuç |
+|---|---|---|
+| `guvenlik` | `Güvenlik` | ✅ |
+| `ışık` / `IŞIK` / `isik` | `IŞIK` | ✅ üçü de |
+| `ISPARTA` / `Isparta` / `ısparta` / `İsparta` | `Isparta` | ✅ dördü de |
+
+### Kök modu ve bilinen yanlış eşleşmeler
+
+Varsayılan **kök mod**: katlanmış sözcük 5 karakterden uzunsa **ilk 5
+karakteri** terimdir (klasik F5 kök kesme). `borsanın` / `borsada` / `Borsa` →
+hepsi `borsa`. İndeks her sözcüğü **hem kök hem tam** olarak tutar; `--tam`
+kök kesmeyi kapatır ve yalnız tam sözcüğe bakar.
+
+**Bu kuralın bilinen yanlış eşleşmeleri** (bilinçli bir ödün, `k1`/alan
+ağırlıklarıyla yumuşatılır ama yok edilmez):
+
+- F5 kuralı **her** 5+ karakterli sözcüğü kısaltır, tam kelimeyi de:
+  `güvenlik` → `guven`, `güvenlikte` → `guven`, `politika` → `polit`.
+- Farklı sözcükler aynı ilk 5 harfi paylaşabilir: `veriler`/`verimsiz` →
+  `veril`/`verim` (bunlar ayrı kalır), ama örneğin `kullanıcı`/`kullanım` →
+  `kulla` **çakışır**.
+- 4 ve daha kısa sözcükler kök üretmez, kendileriyle aranır (`plan`, `veri`).
+  Bu yüzden `veri` sorgusu `verisi`/`veriler`'yi bulmaz; `veri` kökü 5
+  karakter eşiğine takılır. Çözüm: `--tam` ya da daha uzun terim.
+
+`--tam` bu yanlış eşleşmeleri kapatır ama ek/kök yakınlığını da kapatır
+(`borsa` sorgusu `borsanın`'i bulmaz).
+
+### Sıralama
+
+BM25 (`k1=1.2`, `b=0.75`, modül sabitleri) + **alan ağırlıkları** (BM25F'e
+benzer basit toplama: alan tf'si ağırlıkla çarpılıp toplanır):
+
+| Alan | Ağırlık |
+|---|---|
+| başlık | ×4 |
+| alias (takma ad) | ×4 |
+| etiket | ×3 |
+| yol / klasör adları | ×1.5 |
+| gövde | ×1 |
+
+Nadir terim yaygın terimden ağır (IDF), uzun belge kısa belgeye cezalıdır
+(`b`), tekrarlayan terim doygunluğa yaklaşır (`k1`). Sıralama **deterministiktir**:
+puan azalan, eşitlikte yol artan.
+
+### Sonuç biçimi
+
+Her sonuç = **tek not** + **en iyi parça** + **~200 karakterlik vurgulu alıntı**.
+En iyi parça, sorgu terimlerini en çok içeren chunk'tır (eşitlikte küçük `sira`).
+Alıntı eşleşmenin çevresinden **kelime sınırında** kesilir; terminalde eşleşmeler
+**kalın** (stdout TTY ise) ya da `«...»` ile vurgulanır, kontrol karakterleri
+temizlenir.
+
+### Gizlilik: yerel, süzülmüş, hariç kümesi
+
+- **Yerel.** Arama ağa çıkmaz; gömülü ağ istemcisi yoktur.
+- **İndeks sırasında süzülür.** Gövde metni `chunks` tablosundan gelir; Dalga
+  A'nın gizli satır süzümü (`sk-…`, `password=`, `api_key=…`, PRIVATE KEY)
+  indekslemeden önce çalışır, süzülmüş satırlar terim olmaz.
+- **Alıntı katmanı ikinci savunmadır.** Alıntı üretilirken satırlar
+  `parse.gizli_satir_mi` ile **yeniden** elenir; indeks zaten süzülmüş olsa da
+  gizli satır alıntıya asla girmez.
+- **Hariç kümesi aynıdır.** `VARSAYILAN_HARIC_TUTULANLAR` geçerlidir:
+  **indekste olmayan not aramada da yoktur.** Dalga A'nın gizlilik kararı
+  genişletilmez.
+
+### Sıralama değerlendirmesi: BM25 vs. naif arama
+
+> **(A) naif taban bir VEKİLDİR.** "Terimleri alt-dize olarak içeren notlar,
+> toplam geçiş sayısına göre" sıralanır — Obsidian tarzı düz arama davranışının
+> makul bir temsili. **Obsidian ölçülmüştür** iddiası YOKTUR; hiçbir Obsidian
+> sürümü çalıştırılmamıştır.
+
+52 notluk kurgusal vault'ta 54 sorgu, ölçüt **MRR** ve **ilk-3 isabeti**:
+
+```bash
+python3 scripts/ara_degerlendirme.py            # tablo
+python3 scripts/ara_degerlendirme.py --detay    # sorgu sorgu
+python3 scripts/ara_degerlendirme.py --json
+```
+
+| Sınıf | N | A MRR | B MRR | A ilk-3 | B ilk-3 |
+|---|---|---|---|---|---|
+| nadir_terim | 10 | 0.950 | **1.000** | 1.000 | **1.000** |
+| baslik_agirligi | 23 | 0.957 | **1.000** | 1.000 | **1.000** |
+| turkce_eslesme | 5 | 0.700 | **1.000** | 0.800 | **1.000** |
+| uzun_belge | 1 | 1.000 | 1.000 | 1.000 | 1.000 |
+| yaygin_nadir_karisim | 8 | 0.237 | **0.812** | 0.375 | **0.875** |
+| yaygin_tek_terim | 5 | 0.667 | **0.700** | 0.800 | 0.800 |
+| cok_terimli | 2 | 0.417 | **0.750** | 1.000 | 1.000 |
+| **TOPLAM** | **54** | **0.779** | **0.935** | **0.870** | **0.963** |
+
+**Dürüst yorum.** B (BM25) A'dan **belirgin biçimde iyidir**: toplam MRR
+0.779 → 0.935, ilk-3 isabet 0.870 → 0.963.
+
+- **B'nin ölçülebilir farkı en büyük sınıfta:** `yaygin_nadir_karisim`
+  (yaygın sözcük + nadir sözcük birlikte verildiğinde) A 0.237 / ilk-3 0.375,
+  B 0.812 / 0.875. Naif taban "toplam geçiş" saydığı için yaygın sözcüğü çok
+  kez içeren rakip notu öne alır; BM25 nadir tereme odaklanır.
+- **Türkçe eşlemede B belirgin üstün:** 0.700 → 1.000. A katlama yapmaz, "ışık"
+  yazınca `isik`/`IŞIK` notlarını bulamaz.
+- **B'nin kaybettiği sınıf:** `yaygin_tek_terim` — tek bir yaygın sözcükte
+  fark çok az (0.667 → 0.700) ve bu sınıfta **bir sorguda B geride kaldı**
+  (`günlük`: A 1., B 2.). İki yöntem de tek yaygın sözcükte belirsizdir.
+- **Eşit olan sınıflar:** `uzun_belge` (tek sorgu) ve `cok_terimli` (ilk-3
+  eşit 1.000).
+- **Bu değerlendirme tek bir yazara özgüdür.** Sonuçlar yazara ve sorgu
+  kümesine bağlıdır; genel bir doğruluk iddiası değildir. Gerçek vault'ta
+  8 gerçek-benzeri sorguyla da ölçüldü (aşağıya bak).
+
+### Performans
+
+1200 notluk **sentetik** vault (`conftest.sentetik_vault`):
+
+| Ölçüm | Değer |
+|---|---|
+| Arama indeksi terim sayısı | ~238 bin terim / 299 belgede (gerçek vault) |
+| Tek sorgu gecikmesi (sentetik, sıcak DB) | medyan ~6 ms, **p95 ~37 ms** |
+| Hedef (p95 < 150 ms) | **karşılandı** |
+
+Gerçek vault'ta (299 not) 8 gerçek-benzeri sorgu: medyan ~7 ms, **p95 ~10 ms**,
+hiçbir alıntıda gizli satır deseni eşleşmedi (0 / 160 ölçüm).
 
 ---
 
@@ -296,6 +513,21 @@ kenardan en az 16 px içeridedir.*
 *390 × 844 — graf ekranı doldurur, etiketler okunur; lejant kapalı bir
 `<details>` olarak tek satıra indirgenmiştir, panel altta açılır, yatay
 kaydırma çubuğu yoktur.*
+
+![Arama — masaüstü](docs/ekran/ara-masaustu.png)
+
+*`/ara` masaüstü — arama kutusu, sonuç sayısı, her sonuçta başlık + yol +
+etiket rozetleri ve **vurgulu alıntı** (`kontrast` eşleşmeleri sarı `<mark>`
+ile). Sıralama alaka sıralamasıdır; graf bağlantısı her sonuçtan açılır.*
+
+![Arama — mobil](docs/ekran/ara-mobil.png)
+
+*390 × 844 — düğme altına iner, alıntı satırları kırılır, yatay kaydırma
+çubuğu yoktur.*
+
+![Arama — boş durum](docs/ekran/ara-bos.png)
+
+*Sonuç yok: ne aradığını ve neden bulunamadığını söyleyen boş durum.*
 
 ## Güvenlik ve gizlilik
 
@@ -333,6 +565,16 @@ Bağlayıcı kurallar; hepsi testlerle kanıtlanır.
   üstel geri çekilmeli yeniden denenir, 4xx'te denemez.
 - **Tutarlılık salt okunur.** atlas DB'si `mode=ro` ile açılır; `unpushed`
   NULL iken "pushlanmamış" iddiası yapılmaz.
+- **Arama ağa çıkmaz.** `harita ara` ve `/ara` hiçbir koşulda ağ açmaz,
+  `cor`'u çağırmaz; gömülü ağ istemcisi yoktur. Testler arama sırasında
+  `socket.socket`/`create_connection` çağrılırsa **düşer**.
+- **Arama aynı gizlilik modelini kullanır.** Gövde metni `chunks`'tan okunur
+  (gizli satırlar indekslemede süzülmüştür); alıntı üretilirken
+  `gizli_satir_mi` ile **ikinci kez** süzülür. **İndekslenmeyen not aramada da
+  çıkmaz** (hariç kümesi genişletilmez).
+- **Arama vurgusu XSS-güvenlidir.** `<mark>` yalnızca sunucunun hesapladığı
+  vurgu aralıklarının etrafında üretilir; not başlığı, yolu ve alıntısı Jinja
+  autoescape ile kaçışlıdır. `ara.js` DOM'a HTML yazmaz (`innerHTML` yok).
 
 ## Testler
 
@@ -355,6 +597,16 @@ python3 -m pytest -q -m "not e2e"        # yalnız hızlı birim testleri
   mod **soket açmaz** (açarsa test düşer), `--yaz` vault içini reddeder, vault
   hash'i değişmez. `CorLLMClient` **gerçek yerel sahte HTTP sunucusuyla** sınanır
   (5xx yeniden deneme, boş yanıt, loopback dışı host reddi).
+- `test_ara*.py` (Dalga D) BM25 arama motorunu sınar: Türkçe katlama
+  (`İ/ı/I/i` dört biçim, `ç ğ ö ş ü`, `IŞIK`↔`ışık`↔`isik`), kök modu ve
+  `--tam`, BM25 sıralama (alan ağırlığı, IDF, `b` cezası, `k1` doygunluğu),
+  filtreler (ifade/hariç/etiket/klasör), bozuk sözdizimi, durak-sözcük-only
+  sorgu, sonuç determinizmiği, **gizliliğin iki katmanını ayrı ayrı**
+  (indeks ve alıntı), hariç tutulan klasör, **ağ yasağı** (soket açılırsa
+  test düşer), `/ara` ve `/api/ara` XSS/CSP/salt-okunurluk, mobil yerleşim
+  ve ölçülebilir kontrast/yazı boyutu ölçümleri.
+- `test_ara_perf.py` 1200 notluk sentetik vault'ta indeksleme süresi ve sorgu
+  gecikmesini ölçer (kabul: p95 < 150 ms).
 - `test_tutarlilik.py` her kuralın **pozitif ve negatif** durumunu, `unpushed`
   NULL davranışını, eşleme önceliklerini, eşleşmeyen/klonsuz repo'yu, eski
   atlas verisi uyarısını, şema uyuşmazlığını, `--json` ve `--kati` çıkışını
@@ -370,4 +622,4 @@ python3 -m pytest -q -m "not e2e"        # yalnız hızlı birim testleri
 | B.1 | görsel kusur düzeltmeleri (sığdırma, bileşen paketleme, panel konumu) | ✅ |
 | **C** | **haftalık özet (`ozet`) + vault↔repo tutarlılığı (`tutarlilik`)** | ✅ |
 | C.1 | B.1'den kalan görsel kusurlar (etiket–daire çakışması, kırpma, lejant, yarıçap, seçim boşluğu) | ✅ |
-| D | anlamsal arama | ⏳ henüz yok |
+| **D** | **BM25 tam-metin arama (`ara` + `/ara`), tutarlılık "Kontrol edilenler"** | ✅ |

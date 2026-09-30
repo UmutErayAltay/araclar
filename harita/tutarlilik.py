@@ -349,6 +349,47 @@ class Bulgu:
 
 
 @dataclass
+class EslesmeCifti:
+    """Eşleşen bir not↔repo çifti — "ne kontrol edildi" cevabı."""
+
+    not_yolu: str
+    repo: str
+    yontem: str      # "frontmatter" | "eslesme dosyasi" | "backtick"
+    tahmin: bool     # backtick ile bulunduysa True (orta güven)
+
+    @property
+    def guven(self) -> str:
+        return "orta" if self.tahmin else "yuksek"
+
+    def sozluk(self) -> dict[str, object]:
+        return {
+            "not": self.not_yolu,
+            "repo": self.repo,
+            "yontem": self.yontem,
+            "tahmin": self.tahmin,
+            "guven": self.guven,
+        }
+
+
+@dataclass
+class KuralSayaci:
+    """Bir kuralın kaç çift üzerinde DEĞERLENDİRİLDİĞİ sayacı."""
+
+    kural: str
+    cift: int = 0     # bu kurala girebilecek çift sayısı
+    degerlendirilen: int = 0
+    bulgu: int = 0
+
+    def sozluk(self) -> dict[str, object]:
+        return {
+            "kural": self.kural,
+            "cift": self.cift,
+            "degerlendirilen": self.degerlendirilen,
+            "bulgu": self.bulgu,
+        }
+
+
+@dataclass
 class Rapor:
     """`tutarlilik` çıktısı."""
 
@@ -357,10 +398,42 @@ class Rapor:
     kontrol_edilemeyenler: list[str] = field(default_factory=list)
     atlas_uyari: str | None = None
     eslesmeyenler: int = 0
+    ciftler: list[EslesmeCifti] = field(default_factory=list)
+    kural_sayaclari: list[KuralSayaci] = field(default_factory=list)
+    eslesme_anahtari: dict[str, int] = field(default_factory=dict)
 
     @property
     def tumu(self) -> list[Bulgu]:
         return self.uyarilar + self.bilgiler
+
+    @property
+    def cift_guven_sayisi(self) -> dict[str, int]:
+        sayac = {"yuksek": 0, "orta": 0}
+        for c in self.ciftler:
+            sayac[c.guven] += 1
+        return sayac
+
+    def kontrol_et_metni(self) -> str:
+        """"Kontrol edilenler" bloğu — 0 uyarının ne anlama geldiğini söyler."""
+        guven = self.cift_guven_sayisi
+        yontem = self.eslesme_anahtari
+        satirlar = [
+            f"Eşleşen not↔repo çifti: {len(self.ciftler)} "
+            f"(yüksek güven: {guven['yuksek']}, orta güven/tahmin: {guven['orta']})",
+            "  kaynak: "
+            + ", ".join(f"{ad}={adet}" for ad, adet in sorted(yontem.items()))
+            if yontem
+            else "  kaynak: (eşleşme yok)",
+            f"Durum sözcüğü bulunan not: {len(self.ciftler)} eşleşti, "
+            f"{self.eslesmeyenler} not eşleşmedi (bulgu üretmez)",
+            f"Çalıştırılan kural: {len(self.kural_sayaclari)}",
+        ]
+        for k in self.kural_sayaclari:
+            satirlar.append(
+                f"  - {k.kural}: {k.degerlendirilen}/{k.cift} çift üzerinde "
+                f"değerlendirildi, {k.bulgu} bulgu"
+            )
+        return "\n".join(satirlar)
 
     def sozluk(self) -> dict[str, object]:
         return {
@@ -368,6 +441,14 @@ class Rapor:
             "bilgiler": [b.sozluk() for b in self.bilgiler],
             "kontrol_edilemeyenler": sorted(self.kontrol_edilemeyenler),
             "atlas_uyari": self.atlas_uyari,
+            "kontrol_edilenler": {
+                "cift_sayisi": len(self.ciftler),
+                "guven": self.cift_guven_sayisi,
+                "eslesme_yontemi": self.eslesme_anahtari,
+                "eslesmeyen_not": self.eslesmeyenler,
+                "ciftler": [c.sozluk() for c in self.ciftler],
+                "kurallar": [k.sozluk() for k in self.kural_sayaclari],
+            },
         }
 
 
@@ -430,6 +511,17 @@ def _pushlanmamis(repo: Repo) -> bool | None:
     return repo.unpushed > 0
 
 
+def _KURALLAR_SIRASI() -> list[KuralSayaci]:
+    """Kural sayaçları — çıktıda SABİT sırada görünür."""
+    return [
+        KuralSayaci("planli-ama-kod-var"),
+        KuralSayaci("bitti-ama-dirty"),
+        KuralSayaci("aktif-ama-durgun"),
+        KuralSayaci("vaultsuz-aktif-repo"),
+        KuralSayaci("konu-aktif-ama-repo-durgun"),
+    ]
+
+
 def bulgular_uret(
     vault: Path,
     atlas: AtlasVerisi,
@@ -450,6 +542,7 @@ def bulgular_uret(
     notlar = _notlari_tara(Path(vault))
     eslesilen_repo_adlari: set[str] = set()
     eslesilen_repo_yollari: set[str] = set()
+    sayaclar = {k.kural: k for k in _KURALLAR_SIRASI()}
 
     for not_ in notlar:
         if not_.durum is None:
@@ -463,9 +556,26 @@ def bulgular_uret(
         eslesilen_repo_yollari.add(repo.path)
         guven = "orta" if tahmin else "yuksek"
         etiket = " (tahmin)" if tahmin else ""
+        rapor.ciftler.append(EslesmeCifti(not_.yol, repo.name, yontem, tahmin))
+        rapor.eslesme_anahtari[yontem] = rapor.eslesme_anahtari.get(yontem, 0) + 1
+
+        # Kurallar 1-3 yalnız DURUM sözcüğüne bakar; durumu olan her eşleşmiş
+        # çift bu üç kuralın adaydır. Aday sayısı = değerlendirilen sayısı.
+        if not_.durum == "planli":
+            sayaclar["planli-ama-kod-var"].cift += 1
+        elif not_.durum == "bitti":
+            sayaclar["bitti-ama-dirty"].cift += 1
+        elif not_.durum == "aktif":
+            sayaclar["aktif-ama-durgun"].cift += 1
 
         # Kural 1: "planlandı" ama repoda kod var.
+        # `cift` = kurala GİREBİLECEK çift sayısı (durum sözcüğü eşleşmesi),
+        # `degerlendirilen` = gerçekten koşul denenen çift sayısı. Böylece
+        # "kaç çift üzerinde çalıştı" sorusu BOŞ payda vermez.
+        if not_.durum == "planli":
+            sayaclar["planli-ama-kod-var"].degerlendirilen += 1
         if not_.durum == "planli" and _commit_var(repo) and not _gun_once(repo.last_commit_at, esik_gun, bugun):
+            sayaclar["planli-ama-kod-var"].bulgu += 1
             rapor.uyarilar.append(
                 Bulgu(
                     onem="uyari", guven=guven, kural="planli-ama-kod-var",
@@ -477,8 +587,11 @@ def bulgular_uret(
 
         # Kural 2: "bitti" ama repo kirli / pushlanmamış.
         if not_.durum == "bitti":
+            sayaclar["bitti-ama-dirty"].degerlendirilen += 1
+        if not_.durum == "bitti":
             push = _pushlanmamis(repo)
             if repo.dirty > 0 or push is True:
+                sayaclar["bitti-ama-dirty"].bulgu += 1
                 parcalar = []
                 if repo.dirty > 0:
                     parcalar.append(f"{repo.dirty} değiştirilmemiş dosya")
@@ -494,7 +607,10 @@ def bulgular_uret(
                 )
 
         # Kural 3: "aktif" ama son commit eski.
+        if not_.durum == "aktif":
+            sayaclar["aktif-ama-durgun"].degerlendirilen += 1
         if not_.durum == "aktif" and _gun_once(repo.last_commit_at, esik_gun, bugun):
+            sayaclar["aktif-ama-durgun"].bulgu += 1
             rapor.bilgiler.append(
                 Bulgu(
                     onem="bilgi", guven=guven, kural="aktif-ama-durgun",
@@ -525,13 +641,18 @@ def bulgular_uret(
             continue
         if repo.path in eslesilen_repo_yollari:
             continue
+        # Kural 4 bir "aday" listesidir: aşağıdaki eleme adımlarının
+        # HEPSİ sayacı düşürür, böylece "kaç repo değerlendirildi" görünür.
+        sayaclar["vaultsuz-aktif-repo"].cift += 1
         if normalize(repo.name) == vault_adi:
             continue          # vault'un kendisi: proje DEĞİLDİR
         if normalize(repo.name) in bahsedilenler:
             continue          # vault'ta adı geçiyor: karşılığı VAR
         if not repo.has_remote:
             continue          # remote yok: paylaşılan/proje deposu sayılmaz
+        sayaclar["vaultsuz-aktif-repo"].degerlendirilen += 1
         if repo.last_commit_at is not None and repo.last_commit_at >= aktif_esik:
+            sayaclar["vaultsuz-aktif-repo"].bulgu += 1
             rapor.bilgiler.append(
                 Bulgu(
                     onem="bilgi", guven="yuksek", kural="vaultsuz-aktif-repo",
@@ -542,8 +663,13 @@ def bulgular_uret(
             )
 
     # Kural 5: Threads.md'de açık konu, eşleşen repo durgun.
-    rapor.bilgiler.extend(_konu_bulgulari(Path(vault), atlas, eslesme, esik_gun, bugun))
-
+    konu_bulgulari, konu_degerlendirilen = _konu_bulgulari(
+        Path(vault), atlas, eslesme, esik_gun, bugun, sayaci=sayaclar["konu-aktif-ama-repo-durgun"]
+    )
+    rapor.bilgiler.extend(konu_bulgulari)
+    sayaclar["konu-aktif-ama-repo-durgun"].degerlendirilen = konu_degerlendirilen
+    sayaclar["konu-aktif-ama-repo-durgun"].bulgu = len(konu_bulgulari)
+    rapor.kural_sayaclari = list(sayaclar.values())
     return rapor
 
 
@@ -566,14 +692,23 @@ def _bolum_adi(baslik: str) -> str:
 
 
 def _konu_bulgulari(
-    vault: Path, atlas: AtlasVerisi, eslesme: dict[str, str], esik_gun: int, bugun: date
-) -> list[Bulgu]:
-    """`Threads.md`'de açık işaretli ve durgun reponun geçtiği konular."""
+    vault: Path,
+    atlas: AtlasVerisi,
+    eslesme: dict[str, str],
+    esik_gun: int,
+    bugun: date,
+    sayaci: KuralSayaci | None = None,
+) -> tuple[list[Bulgu], int]:
+    """`Threads.md`'de açık işaretli ve durgun reponun geçtiği konular.
+
+    Döner: (bulgular, değerlendirilen_konu_sayısı). `sayaci` verilirse
+    kural 4'ün "aday" sayacı da burada artırılır (aşama elemesi görünür olsun).
+    """
     from .ozet import _bul  # ada göre bul (emoji klasör/NFC)
 
     yol = _bul(vault, _THREAD_DOSYA)
     if yol is None:
-        return []
+        return [], 0
     ham = yol.read_bytes().decode("utf-8", errors="replace").replace("\r\n", "\n")
     bilinen = _bilinen_repo_adlari(atlas)
 
@@ -586,11 +721,14 @@ def _konu_bulgulari(
             bolum = ham[m.start() : bitis]
             break
     if not bolum:
-        return []
+        return [], 0
 
     bulgular: list[Bulgu] = []
+    degerlendirilen = 0
     eslesmeler = list(_THREAD_BASLIK.finditer(bolum))
     for i, eslesme in enumerate(eslesmeler):
+        if sayaci is not None:
+            sayaci.cift += 1
         baslik = eslesme.group(1)
         bitis = eslesmeler[i + 1].start() if i + 1 < len(eslesmeler) else len(bolum)
         govde = bolum[eslesme.start() : bitis]
@@ -606,6 +744,7 @@ def _konu_bulgulari(
                 break
         if repo is None:
             continue
+        degerlendirilen += 1
         if _gun_once(repo.last_commit_at, esik_gun, bugun):
             bulgular.append(
                 Bulgu(
@@ -615,4 +754,4 @@ def _konu_bulgulari(
                     oneri="konuyu kapat ya da repoyu sürdür",
                 )
             )
-    return bulgular
+    return bulgular, degerlendirilen

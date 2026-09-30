@@ -438,3 +438,102 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   /* Panel alttayken "Sığdır" düğmesi panelin altında kalmasın. */
   .sigdir { top: 10px; right: 10px; padding: 5px 10px; font-size: 12px; }
 }
+
+/* --------------------------------------------------------------- arama /ara */
+
+.ara-form {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+/* Görsel etiket yok: ekran okuyucu için metin, görünürlük için gizli.
+   `position:absolute` + `clip` klasiği ekran okuyucuyu bozmaz. */
+.gizli-etiket {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#ara-kutu {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  background: var(--zemin);
+  color: var(--yazi);
+  font: inherit;
+  font-size: 14px;
+}
+#ara-kutu::placeholder { color: var(--bos); opacity: 1; }
+#ara-kutu:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 1px;
+  border-color: var(--vurgu);
+}
+
+.ara-form button {
+  padding: 9px 18px;
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  /* `button` tarayıcı varsayılanı BEYAZ buton verir; sıfırlama şart. */
+  background: rgba(21, 25, 34, 0.92);
+  color: var(--yazi);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ara-form button:hover { border-color: var(--ikincil); }
+.ara-form button:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 2px;
+}
+
+.ara-sonuclar { margin: 0; padding: 0; list-style: none; }
+
+.ara-sonuc {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(35, 40, 51, 0.55);
+}
+
+.ara-baslik {
+  font-size: 15px;
+  font-weight: 620;
+  color: var(--vurgu);
+  overflow-wrap: anywhere;
+}
+
+/* Alıntı: koyu zemin üzerinde açık metin. `overflow-wrap: anywhere` uzun
+   sözcüklerde yatay taşmayı engeller (390 px mobilde ölçülecek). */
+.ara-alinti {
+  margin: 6px 0 0;
+  color: var(--yazi);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Vurgu: metin `#0f1115` (koyu) üzerinde `#F0E442` (Okabe-Ito sarı) zemin.
+   Kontrast oranı ≈ 13.9:1 (≥4.5 eşiğinin çok üstü). */
+mark {
+  background: #f0e442;
+  color: #0f1115;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 600;
+}
+
+.ara-etiketler { margin: 8px 0 0; }
+
+@media (max-width: 600px) {
+  .ara-form { flex-direction: column; }
+  .ara-form button { width: 100%; }
+  .ara-alinti { font-size: 13px; }
+}

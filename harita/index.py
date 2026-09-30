@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
 
+from . import ara as ara_modulu
 from . import parse as ayristirici
 
 # Varsayılan olarak taranmayan klasör/dosya adları (vault köküne göreli).
@@ -61,6 +62,27 @@ CREATE INDEX IF NOT EXISTS ix_tags_etiket  ON tags(etiket);
 CREATE INDEX IF NOT EXISTS ix_chunks_not   ON chunks(not_id, sira);
 """
 
+# Dalga D: BM25 arama indeksi. `chunks` zaten gizli satırlardan arındırılmıştır;
+# arama gövde metnini YALNIZCA buradan okur, ham dosyayı ASLA açmaz.
+ARA_SEKIL = """
+CREATE TABLE IF NOT EXISTS ara_belge (
+    not_id  INTEGER PRIMARY KEY,
+    uzunluk INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ara_terim (
+    terim  TEXT NOT NULL,
+    not_id INTEGER NOT NULL,
+    alan   TEXT NOT NULL,
+    tf     INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_ara_terim    ON ara_terim(terim);
+CREATE INDEX IF NOT EXISTS ix_ara_terim_not ON ara_terim(not_id);
+CREATE TABLE IF NOT EXISTS ara_meta (
+    anahtar TEXT PRIMARY KEY,
+    deger   TEXT
+);
+"""
+
 
 @dataclass
 class IndeksOzeti:
@@ -72,6 +94,8 @@ class IndeksOzeti:
     etiketler: int = 0
     parcalar: int = 0
     suzulmus_satir: int = 0
+    arama_terim: int = 0
+    arama_belge: int = 0
 
     def ozet_metni(self) -> str:
         return (
@@ -106,6 +130,7 @@ def baglan_salt_okunur(db_yolu: Path | str) -> sqlite3.Connection:
 
 def sema_olustur(baglanti: sqlite3.Connection) -> None:
     baglanti.executescript(SEKIL)
+    baglanti.executescript(ARA_SEKIL)
     baglanti.commit()
 
 
@@ -231,6 +256,8 @@ def indeksle(
         # Tam yeniden indeksleme: önceki turdan kalan hiçbir satır kalmaz.
         for tablo in ("links", "tags", "aliases", "chunks", "notes"):
             baglanti.execute(f"DELETE FROM {tablo}")
+        for tablo in ("ara_terim", "ara_belge", "ara_meta"):
+            baglanti.execute(f"DELETE FROM {tablo}")
 
         ozet = IndeksOzeti()
         for _, goreli in notlari_tara(vault, haric):
@@ -252,8 +279,12 @@ def indeksle(
                     (not_id, hedef, tur),
                 )
             ozet.suzulmus_satir += not_.suzulmus_satir
+            # Arama terimleri: gövde `chunks`'tan okunur (gizli satırlar
+            # `not_ayristir` içinde zaten süzüldü).
+            ozet.arama_terim += _ara_terim_ekle(baglanti, not_id, not_, goreli)
 
         linkleri_coz(baglanti)
+        _ara_meta_yaz(baglanti)
         baglanti.commit()
         ozet.linkler = baglanti.execute("SELECT COUNT(*) FROM links").fetchone()[0]
         ozet.kirik_linkler = baglanti.execute(
@@ -262,6 +293,7 @@ def indeksle(
         ozet.etiketler = baglanti.execute(
             "SELECT COUNT(DISTINCT etiket) FROM tags"
         ).fetchone()[0]
+        ozet.arama_belge = baglanti.execute("SELECT COUNT(*) FROM ara_belge").fetchone()[0]
         return ozet
     finally:
         if sahiplenildi:
@@ -275,6 +307,76 @@ def _chunks_ekle(baglanti: sqlite3.Connection, not_id: int, govde: str, boyut: i
             "INSERT INTO chunks (not_id, sira, metin) VALUES (?, ?, ?)", (not_id, sira, metin)
         )
     return len(parcalar)
+
+
+# ---------------------------------------------------------------------------
+# Dalga D: arama indeksi
+# ---------------------------------------------------------------------------
+
+
+def _alan_terimleri(metin: str) -> list[str]:
+    return ara_modulu.terimler(metin)
+
+
+def _ara_terim_ekle(baglanti: sqlite3.Connection, not_id: int, not_: object, goreli: Path) -> int:
+    """Bir notun alan alan terim sayılarını `ara_terim`'e yazar.
+
+    Alanlar ve ağırlıkları `ara.ALAN_AGIRLIK`'tadır: başlık ×4, alias ×4,
+    etiket ×3, yol ×1.5, gövde ×1. Gövde metni `chunks`'tan okunur; gizli
+    satırlar `not_ayristir` sırasında süzüldüğü için buraya hiç girmez.
+    """
+    govde = "\n".join(
+        m for (m,) in baglanti.execute(
+            "SELECT metin FROM chunks WHERE not_id = ? ORDER BY sira", (not_id,)
+        )
+    )
+    alanlar: list[tuple[str, str]] = [
+        ("baslik", not_.baslik),
+        ("yol", goreli.as_posix().replace("/", " ")),
+        ("govde", govde),
+    ]
+    alanlar += [("alias", a) for a in not_.takma_adlar]
+    alanlar += [("etiket", e) for e in not_.etiketler]
+
+    sayac = 0
+    for alan, metin in alanlar:
+        tf_sayaci: dict[str, int] = {}
+        for terim in _alan_terimleri(metin):
+            tf_sayaci[terim] = tf_sayaci.get(terim, 0) + 1
+        for terim, tf in tf_sayaci.items():
+            baglanti.execute(
+                "INSERT INTO ara_terim (terim, not_id, alan, tf) VALUES (?, ?, ?, ?)",
+                (terim, not_id, alan, tf),
+            )
+            sayac += 1
+
+    # Belge uzunluğu = terimlerin TOPLAM sayısı (tekrar sayılı; BM25 `b`
+    # cezası uzun belgeleri kısa belgelere göre kısar).
+    uzunluk = baglanti.execute(
+        "SELECT COALESCE(SUM(tf), 0) FROM ara_terim WHERE not_id = ?", (not_id,)
+    ).fetchone()[0]
+    baglanti.execute(
+        "INSERT INTO ara_belge (not_id, uzunluk) VALUES (?, ?)", (not_id, int(uzunluk))
+    )
+    return sayac
+
+
+def _ara_meta_yaz(baglanti: sqlite3.Connection) -> None:
+    """Belge sayısı, ortalama uzunluk ve tokenleştirici sürümünü yazar."""
+    belge_sayisi, toplam = baglanti.execute(
+        "SELECT COUNT(*), COALESCE(SUM(uzunluk), 0) FROM ara_belge"
+    ).fetchone()
+    ort = (toplam / belge_sayisi) if belge_sayisi else 1.0
+    for anahtar, deger in (
+        ("surum", ara_modulu.TOKENLEŞTIRICI_SURUM),
+        ("belge_sayisi", str(int(belge_sayisi))),
+        ("ortalama_uzunluk", f"{ort:.4f}"),
+    ):
+        baglanti.execute(
+            "INSERT INTO ara_meta (anahtar, deger) VALUES (?, ?) "
+            "ON CONFLICT(anahtar) DO UPDATE SET deger = excluded.deger",
+            (anahtar, deger),
+        )
 
 
 def linkleri_coz(baglanti: sqlite3.Connection) -> None:

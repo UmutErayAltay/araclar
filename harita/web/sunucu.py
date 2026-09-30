@@ -146,7 +146,66 @@ def app_olustur(db_yolu: Path | str) -> Flask:
     def saglik() -> Response:
         return jsonify({"durum": "ok"})
 
+    @uygulama.get("/ara")
+    def ara_sayfasi() -> str:
+        """Arama sayfası. YALNIZCA GET; form `form-action 'none'` yüzünden
+        JS `location.assign` ile gönderilir. JS kapalıyken bile `?q=` ile
+        doğrudan açılan sayfa sonuç gösterir (sunucu tarafı render).
+        """
+        from .. import ara as ara_modulu
+
+        baglanti = _baglanti_al()
+        sorgu = request.args.get("q", "").strip()
+        sonuclar: list = []
+        hata: str | None = None
+        if sorgu:
+            try:
+                ayarlar = ara_modulu.Ayarlar(ilk=_ara_ilk(), etiket=None, klasor=None, tam=False)
+                sonuclar, _ = ara_modulu.ara(baglanti, sorgu, ayarlar)
+            except ara_modulu.SorguHatasi as exc:
+                hata = str(exc)
+        return render_template("ara.html", sorgu=sorgu, sonuclar=sonuclar, hata=hata)
+
+    @uygulama.get("/api/ara")
+    def api_ara() -> Response:
+        from .. import ara as ara_modulu
+
+        baglanti = _baglanti_al()
+        sorgu = request.args.get("q", "").strip()
+        if not sorgu:
+            return jsonify({"hata": "sorgu boş", "sonuclar": []})
+        try:
+            ayarlar = ara_modulu.Ayarlar(ilk=_ara_ilk())
+            sonuclar, _ = ara_modulu.ara(baglanti, sorgu, ayarlar)
+        except ara_modulu.SorguHatasi as exc:
+            return jsonify({"hata": str(exc), "sonuclar": []})
+        return jsonify(
+            {
+                "sorgu": sorgu,
+                "sonuclar": [
+                    {
+                        "puan": s.puan, "baslik": s.baslik, "yol": s.yol,
+                        "etiketler": s.etiketler, "alinti": s.alinti,
+                        "vurgular": [list(a) for a in s.vurgular],
+                        "not_id": s.not_id,
+                    }
+                    for s in sonuclar
+                ],
+            }
+        )
+
     return uygulama
+
+
+def _ara_ilk() -> int:
+    """`?ilk=` değerini güvenli sınıra çeker (üst sınır 50)."""
+    from ..ara import EN_COK_SONUC
+
+    try:
+        deger = int(request.args.get("ilk", 10))
+    except (TypeError, ValueError):
+        return 10
+    return max(1, min(deger, EN_COK_SONUC))
 
 
 def calistir(db_yolu: Path | str, port: int) -> None:  # pragma: no cover

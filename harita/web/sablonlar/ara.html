@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ara — harita</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='stil.css') }}">
+</head>
+<body class="liste-sayfa">
+<header class="ust">
+  <div class="ust-sol">
+    <h1>Ara</h1>
+    <p class="ozet">{% if sorgu %}{{ sonuclar|length }} sonuç · “{{ sorgu }}”{% else %}Tüm notlarda BM25 tam-metin araması{% endif %}</p>
+  </div>
+  <nav class="ust-sag">
+    <a href="/">Graf</a>
+    <a href="/yetim">Yetimler</a>
+    <a href="/kirik">Kırıklar</a>
+  </nav>
+</header>
+
+<main class="liste">
+  <!-- CSP `form-action 'none'` HTML formunu sessizce öldürür; bu yüzden
+       form gönderimi JS `location.assign` ile yapılır (CSP gevşetilmez).
+       JS KAPALIYKEN bile `?q=` ile doğrudan açılan sayfa sunucu tarafında
+       render edilir ve sonuçları gösterir. -->
+  <form id="ara-form" class="ara-form" role="search">
+    <label class="gizli-etiket" for="ara-kutu">Arama sorgusu</label>
+    <input id="ara-kutu" name="q" type="search" autocomplete="off"
+           placeholder="Örnek: güvenlik   ·   &quot;tam ifade&quot;   ·   -hariç   ·   etiket:proje"
+           value="{{ sorgu }}">
+    <button type="submit">Ara</button>
+  </form>
+
+  {% if hata %}
+    <div class="bos-durum"><h2>Arama yapılamadı</h2><p>{{ hata }}</p></div>
+  {% elif sonuclar %}
+    <ol class="ara-sonuclar">
+    {% for s in sonuclar %}
+      <li class="ara-sonuc">
+        <a class="ara-baslik" href="/?not={{ s.not_id }}">{{ s.baslik }}</a>
+        <span class="yol">{{ s.yol }}</span>
+        {% if s.etiketler %}
+          <span class="panel-etiketler ara-etiketler">
+            {% for e in s.etiketler %}<span class="etiket">#{{ e }}</span>{% endfor %}
+          </span>
+        {% endif %}
+        {#- Alıntı: sunucu vurgu aralıklarını hesapladı; `<mark>` YALNIZCA bu
+            parçalarda üretilir. Aralık dışı her şey otomatik kaçışlıdır. -#}
+        {% if s.alinti %}<p class="ara-alinti">{% for vurgulu, parca in s.alinti_vurgulu %}{% if vurgulu %}<mark>{{ parca }}</mark>{% else %}{{ parca }}{% endif %}{% endfor %}</p>{% endif %}
+      </li>
+    {% endfor %}
+    </ol>
+  {% elif sorgu %}
+    <div class="bos-durum">
+      <h2>Sonuç yok</h2>
+      <p>“{{ sorgu }}” için eşleşen not bulunamadı. Kök modu ekleri keser
+         (<code>borsanın</code> → <code>borsa</code>); yalnızca tam sözcük
+         istiyorsan tırnaklı ifade dene.</p>
+    </div>
+  {% else %}
+    <div class="bos-durum">
+      <h2>Ne aramıştın?</h2>
+      <p>Yukarıya bir sözcük yaz. Türkçe karakterler katlanır
+         (<code>guvenlik</code> = <code>güvenlik</code>,
+         <code>IŞIK</code> = <code>ışık</code>).</p>
+    </div>
+  {% endif %}
+</main>
+<script src="{{ url_for('static', filename='ara.js') }}"></script>
+</body>
+</html>

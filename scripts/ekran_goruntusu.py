@@ -4,7 +4,8 @@ KURGUSAL mini-vault: aşağıdaki notlar bu betiğin İÇİNDE uydurulur. Gerçe
 vault'tan HİÇBİR başlık, yol, özet veya e-posta görüntüye girmez.
 
 Çıktı: `docs/ekran/graf-masaustu.png`, `graf-panel-acik.png`,
-`graf-mobil.png`, `kirik-liste.png`.
+`graf-mobil.png`, `kirik-liste.png`, `ara-masaustu.png`, `ara-mobil.png`,
+`ara-bos.png`.
 
 Kullanım:
     python3 scripts/ekran_goruntusu.py            # docs/ekran/ altına yazar
@@ -316,6 +317,38 @@ def ekran_goruntuleri_al(kaynak: Path) -> list[Path]:
                 sayfa.wait_for_selector("body[data-hazir]")
                 sayfa.wait_for_timeout(400)
                 yol = cikti / "graf-mobil.png"
+                sayfa.screenshot(path=str(yol))
+                uretilen.append(yol)
+                sayfa.close()
+
+                # 5) Arama — masaüstü (sonuç listesi + vurgulu alıntı)
+                sayfa = tarayici.new_page(viewport={"width": 1440, "height": 900})
+                sayfa.goto(f"{taban}/ara?q=kontrast", wait_until="load")
+                sayfa.wait_for_selector(".ara-sonuc", timeout=15000)
+                sayfa.wait_for_timeout(250)
+                yol = cikti / "ara-masaustu.png"
+                sayfa.screenshot(path=str(yol))
+                uretilen.append(yol)
+                sayfa.close()
+
+                # 6) Arama — mobil (390x844)
+                sayfa = tarayici.new_page(viewport={"width": 390, "height": 844})
+                sayfa.goto(f"{taban}/ara?q=kontrast", wait_until="load")
+                sayfa.wait_for_selector(".ara-sonuc", timeout=15000)
+                sayfa.wait_for_timeout(250)
+                yol = cikti / "ara-mobil.png"
+                sayfa.screenshot(path=str(yol))
+                uretilen.append(yol)
+                sayfa.close()
+
+                # 7) Arama — boş durum (sonuç yok)
+                sayfa = tarayici.new_page(viewport={"width": 1440, "height": 900})
+                sayfa.goto(
+                    f"{taban}/ara?q=bulunamayacakkurgusalterim", wait_until="load"
+                )
+                sayfa.wait_for_selector(".bos-durum", timeout=15000)
+                sayfa.wait_for_timeout(250)
+                yol = cikti / "ara-bos.png"
                 sayfa.screenshot(path=str(yol))
                 uretilen.append(yol)
                 sayfa.close()

@@ -6,6 +6,8 @@ Alt komutlar: indeksle, kirik, yetim, etiketler, web, ozet, tutarlilik.
 from __future__ import annotations
 
 import argparse
+import os
+import re
 import sqlite3
 import sys
 from datetime import date
@@ -122,6 +124,102 @@ def komut_etiketler(args: argparse.Namespace) -> int:
     en_genis = max((str(adet) for _, adet in etiketler), key=len)
     for etiket, adet in etiketler:
         print(f"  {adet:>{len(en_genis)}}  #{etiket}")
+    return 0
+
+
+# Terminal çıktısı için: TTY ise ANSI kalın, değilse `«...»`.
+_KALIN = "\033[1m"
+_NORMAL = "\033[0m"
+# TTY'yi taklit eden kod sayacı: alt süreçler de TTY sanmasın.
+_KACIS_SIFIRLA = 0 if os.isatty(sys.stdout.fileno()) else 1  # noqa: E501
+
+
+def _vurgula(metin: str, vurgular: list[tuple[int, int]]) -> str:
+    """Alıntıdaki eşleşmeleri vurgular (TTY: kalın; değilse `«...»`).
+
+    Vurgu parçaları KATLANMIŞ metin üzerinde bulunur; `katla` 1:1 eşlediği
+    için ofsetler özgün metne aittir. Aralıklar zaten sıralı ve ayrık gelir.
+    """
+    if not vurgular:
+        return metin
+    parcalar: list[str] = []
+    onceki = 0
+    for bas, bit in vurgular:
+        bas, bit = max(0, bas), min(len(metin), bit)
+        if bas >= bit:
+            continue
+        parcalar.append(metin[onceki:bas])
+        parca = metin[bas:bit]
+        parcalar.append(f"{_KALIN}{parca}{_NORMAL}" if _KACIS_SIFIRLA == 0 else f"«{parca}»")
+        onceki = bit
+    parcalar.append(metin[onceki:])
+    return "".join(parcalar)
+
+
+def _konsol_temizle(metin: str) -> str:
+    """Terminal kontrol karakterlerini (ANSI, CR, escape) kaldırır.
+
+    Not içeriği kullanıcı verisidir; konsolu bozabilmesin diye temizlenir.
+    """
+    return _KONTROL_DESENI.sub("", metin)
+
+
+_KONTROL_DESENI = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+
+
+def komut_ara(args: argparse.Namespace) -> int:
+    """BM25 tam-metin arama. Tamamen yerel: ağa çıkmaz, cor'u çağırmaz.
+
+    Sonuç yoksa net mesaj + çıkış kodu 0; YALNIZCA hata sıfırdan farklıdır.
+    """
+    from . import ara as ara_modulu
+
+    baglanti = _db_ac(_db_yolu(args))
+    try:
+        ayarlar = ara_modulu.Ayarlar(
+            ilk=args.ilk,
+            etiket=args.etiket,
+            klasor=args.klasor,
+            tam=args.tam,
+        )
+        sonuclar, _ = ara_modulu.ara(baglanti, args.sorgu, ayarlar)
+    except ara_modulu.SorguHatasi as exc:
+        print(f"Hata: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        baglanti.close()
+
+    if args.json:
+        import json
+
+        veri = [
+            {
+                "puan": s.puan,
+                "baslik": s.baslik,
+                "yol": s.yol,
+                "etiketler": s.etiketler,
+                "alinti": s.alinti,
+                "not_id": s.not_id,
+            }
+            for s in sonuclar
+        ]
+        print(json.dumps({"sorgu": args.sorgu, "sonuc": len(veri), "kayitlar": veri},
+                         ensure_ascii=False, indent=2))
+        return 0
+
+    if not sonuclar:
+        print(f"'{_konsol_temizle(args.sorgu)}' için sonuç yok.")
+        return 0
+
+    print(f"{len(sonuclar)} sonuç")
+    for i, s in enumerate(sonuclar, 1):
+        print(f"{i:>2}. {_konsol_temizle(s.baslik)}  ({s.puan:.3f})")
+        print(f"    {_konsol_temizle(s.yol)}")
+        if s.etiketler:
+            rozetler = " ".join(f"#{_konsol_temizle(e)}" for e in s.etiketler)
+            print(f"    {rozetler}")
+        if s.alinti:
+            print(f"    {_vurgula(_konsol_temizle(s.alinti), s.vurgular)}")
     return 0
 
 
@@ -278,6 +376,13 @@ def komut_tutarlilik(args: argparse.Namespace) -> int:
     else:
         if rapor.atlas_uyari:
             print(f"UYARI: {rapor.atlas_uyari}")
+        # "Kontrol edilenler" ÖNCE gelir: "0 uyarı" ya tutarlılık ya da
+        # hiçbir şeyin eşleşmemiş olmasıdır — hangisi olduğu burada belli olur.
+        print("Kontrol edilenler:")
+        print("  " + rapor.kontrol_et_metni().replace("\n", "\n  "))
+        for cift in rapor.ciftler:
+            kaynak = cift.yontem + (" (tahmin)" if cift.tahmin else "")
+            print(f"    - {cift.not_yolu} → {cift.repo}  [kaynak: {kaynak}, güven: {cift.guven}]")
         for baslik, liste in (("Uyarılar", rapor.uyarilar), ("Bilgiler", rapor.bilgiler)):
             print(f"{baslik} ({len(liste)}):")
             for b in liste:
@@ -332,6 +437,19 @@ def arg_parser() -> argparse.ArgumentParser:
     p = alt.add_parser("etiketler", parents=[ortak], help="Etiketleri sıklığa göre listele")
     p.add_argument("--ilk", type=int, default=None, help="Yalnızca ilk N etiketi göster")
     p.set_defaults(fonksiyon=komut_etiketler)
+
+    p = alt.add_parser("ara", parents=[ortak], help="BM25 tam-metin arama (yerel)")
+    p.add_argument("sorgu", help='Arama sorgusu; "tırnaklı ifade", -terim, etiket:ad')
+    p.add_argument("--ilk", type=int, default=10, help="En fazla N sonuç (varsayılan: 10)")
+    p.add_argument("--etiket", default=None, help="Etiket filtresi (sorguda `etiket:ad` da olur)")
+    p.add_argument("--klasor", default=None, help="Klasör/yol öneki filtresi")
+    p.add_argument(
+        "--tam",
+        action="store_true",
+        help="Kök kesmeyi kapat: tam sözcük eşleşmesi",
+    )
+    p.add_argument("--json", action="store_true", help="JSON olarak bas")
+    p.set_defaults(fonksiyon=komut_ara)
 
     p = alt.add_parser("web", parents=[ortak], help="Grafiği 127.0.0.1 üzerinde sun")
     p.add_argument("vault", nargs="?", help="Verilirse önce salt-okunur indeksler")

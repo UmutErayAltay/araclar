@@ -546,7 +546,11 @@ def test_rapor_sozluk_yapisi(tc_vault: Path, tmp_path: Path) -> None:
     ])
     rapor = tut.bulgular_uret(tc_vault, tut.atlas_oku(db), esik_gun=30, bugun=BUGUN)
     s = rapor.sozluk()
-    assert set(s) == {"uyarilar", "bilgiler", "kontrol_edilemeyenler", "atlas_uyari"}
+    # Dalga D: "Kontrol edilenler" bölümü JSON'a da eklendi ("0 uyarı"
+    # sıfır çiftten mi yoksa sıfır bulgudan mı geliyor, ayırt edilebilsin).
+    assert set(s) == {
+        "uyarilar", "bilgiler", "kontrol_edilemeyenler", "atlas_uyari", "kontrol_edilenler"
+    }
     for b in s["uyarilar"] + s["bilgiler"]:
         assert set(b) == {"onem", "guven", "kural", "baslik", "gerekce", "oneri"}
 

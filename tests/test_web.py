@@ -462,14 +462,18 @@ def test_api_gorevler_sekli(istemci, db):
     assert set(veri) == {"gorevler"}
     kayit = veri["gorevler"][0]
     assert kayit["id"] == gorev_id
-    assert set(kayit) == {"id", "ajan", "istem", "durum", "durum_etiket", "olusturma"}
+    assert set(kayit) == {"id", "ajan", "istem", "durum", "durum_etiket", "olusturma", "kanit"}
 
 
 def test_api_gorev_sekli(istemci, db):
     gorev_id = ekle(db, log={"yol": None, "cikis_kodu": 0})
     veri = istemci.get(f"/api/gorev/{gorev_id}").get_json()
-    assert set(veri) == {"id", "ajan", "istem", "durum", "durum_etiket", "olusturma", "kosular", "log"}
-    assert set(veri["kosular"][0]) == {"id", "baslangic", "bitis", "cikis_kodu", "log_yolu", "kanit", "hata"}
+    assert set(veri) == {"id", "ajan", "istem", "durum", "durum_etiket", "olusturma", "kanit", "kosular", "log"}
+    assert set(veri["kosular"][0]) == {
+        "id", "baslangic", "bitis", "cikis_kodu", "log_yolu", "kanit", "hata",
+        # Dalga D: kanıt rozeti + gözlemlenen/beyan listeleri ve gerekçeler.
+        "kanit_rozet", "gozlemlenen", "beyan", "gerekceler", "uyarilar",
+    }
     assert set(veri["log"]) == {"ok", "metin", "satir", "yol"}
 
 

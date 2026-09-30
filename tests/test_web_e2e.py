@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from orkestra.queue import SEMA
+from orkestra.queue import SEMA, _goc
 
 KOK = Path(__file__).resolve().parent.parent
 pytestmark = pytest.mark.e2e
@@ -80,6 +80,7 @@ def sunucu(tmp_path_factory):
     b = sqlite3.connect(db)
     b.row_factory = sqlite3.Row
     b.executescript(SEMA)
+    _goc(b)          # Dalga D sutunlari (eski semada yok)
     b.commit()
 
     # -- kurgusal gorevler (XSS yukleri dahil) --
@@ -95,6 +96,40 @@ def sunucu(tmp_path_factory):
         "INSERT INTO runs (task_id,baslangic,bitis,cikis_kodu,cikti_yolu,kanit_yollari,hata) "
         "VALUES (?,?,?,?,?,?,?)",
         (gorev_id, "2026-09-30T05:00:01Z", "2026-09-30T05:00:20Z", 0, str(log), "[]", None),
+    )
+
+    # -- Dalga D: karisik kanit sonucu siniflari (kuyruk rozeti + detay) --
+    b.execute("INSERT INTO tasks (ajan,istem,durum,olusturma) VALUES (?,?,?,?)",
+              ("deniz-etiket", "etiket kuralini dogrula ve goster", "bitti",
+               "2026-09-30T07:00:00Z"))
+    kanit_id = b.execute("SELECT last_insert_rowid()").fetchone()[0]
+    kanit_log = dizin / "runs" / "kanit.log"
+    kanit_log.write_text("## Kanit\n- Test: pytest -q → 14 passed in 0.42s\n", encoding="utf-8")
+    kanit_ozeti = json.dumps({
+        "sonuc": "kanitli",
+        "gorseller": [
+            {"yol": "ekran/panel.png", "gecerli": True,
+             "gerekce": "gecerli png (4096 bayt, kosudan sonra yazildi)",
+             "cozulmus": "/kurgusal/ekran/panel.png", "bayt": 4096, "yeni_mi": True},
+            {"yol": "ekran/yok.png", "gecerli": False, "gerekce": "dosya diskte yok",
+             "cozulmus": "", "bayt": 0, "yeni_mi": None},
+        ],
+        "testler": [{"tur": "pytest", "passed": 14, "failed": None, "error": None,
+                     "metin": "14 passed in 0.42s"}],
+        "iddialar": ["Hizalama sorunu tamamen giderildi."],
+        "beyanlar": ["Test: pytest -q → 14 passed in 0.42s"],
+        "gorsel_beyanlar": [],
+        "gerekceler": [{"kural": "gozlemlenen-kanit", "sonuc": "kanitli",
+                        "kanit": "1 gorsel dogrulandi"}],
+        "uyarilar": ["son mesajda belirsiz engel ifadesi var, tetiklenmedi: izin"],
+        "git_degisti": True, "rapor_dosyasi": "", "kanit_durumu": "kanitli",
+        "gozlemlenen_kanit_sayi": 2,
+    }, ensure_ascii=False)
+    b.execute(
+        "INSERT INTO runs (task_id,baslangic,bitis,cikis_kodu,cikti_yolu,kanit_yollari,"
+        "hata,kanit_durumu,kanit_ozeti) VALUES (?,?,?,?,?,?,?,?,?)",
+        (kanit_id, "2026-09-30T07:00:01Z", "2026-09-30T07:00:22Z", 0, str(kanit_log),
+         "[]", None, "kanitli", kanit_ozeti),
     )
 
     # XSS yuklu gorev: hem istem, hem ajan, hem hata, hem log icerigi.
@@ -154,7 +189,8 @@ def sunucu(tmp_path_factory):
         surec.kill()
         pytest.skip("orkestra web zamaninda acilmadi")
 
-    yield {"adres": adres, "gorev_id": gorev_id, "xss_id": xss_id, "port": port}
+    yield {"adres": adres, "gorev_id": gorev_id, "xss_id": xss_id,
+           "kanit_id": kanit_id, "port": port}
     surec.terminate()
     try:
         surec.wait(timeout=10)
@@ -555,4 +591,80 @@ def test_yonlendirme_linkleri_calisir(tarayici, sunucu):
     sayfa.click("nav.ust-sag >> text=Kota")
     sayfa.wait_for_url("**/kota")
     assert "Kota" in sayfa.title() or sayfa.locator("h2").first.inner_text()
+    sayfa.close()
+
+
+# =========================================================================
+# Dalga D: kanıt rozeti, gözlemlenen/beyan ayrımı (GERÇEK tarayıcı)
+# =========================================================================
+
+
+def test_kuyruk_kanit_rozeti_gorunur(tarayici, sunucu):
+    """Kuyruk listesinde kanıt rozeti var; renk + METİN birlikte."""
+    sayfa, _ = sayfa_ac(tarayici, sunucu["adres"], "/", **MASASEU)
+    rozetler = sayfa.locator(".rozet.kanit-kanitli")
+    assert rozetler.count() >= 1
+    # Rozet metni okunur olmalı (renge tek başına dayanmaz).
+    assert "kanıtlı" in rozetler.first.inner_text()
+    sayfa.close()
+
+
+def test_detay_gözlemlenen_ve_beyan_ayri(tarayici, sunucu):
+    """Gözlemlenen kanıt ile beyan AYRI listelerde; beyan 'kanıt' sayılmıyor."""
+    sayfa, _ = sayfa_ac(tarayici, sunucu["adres"],
+                        f"/gorev/{sunucu['kanit_id']}", **MASASEU)
+    assert sayfa.locator(".kanit-izgara").count() == 1
+    kutular = sayfa.locator(".kanit-kutu h3")
+    basliklar = [kutular.nth(i).inner_text() for i in range(kutular.count())]
+    assert any("Gözlemlenen" in b for b in basliklar)
+    assert any("Beyan" in b for b in basliklar)
+    # Gözlemlenen listede geçerli VE geçersiz kanıt ayrı ayrı görünür.
+    assert sayfa.locator(".kanit-liste li.gecerli").count() >= 1
+    assert sayfa.locator(".kanit-liste li.gecersiz").count() >= 1
+    sayfa.close()
+
+
+def test_detay_gorsel_gomulmez(tarayici, sunucu):
+    """Görsel yolu web'de YALNIZCA metin; panelde resim olarak gömülmez."""
+    sayfa, _ = sayfa_ac(tarayici, sunucu["adres"],
+                        f"/gorev/{sunucu['kanit_id']}", **MASASEU)
+    assert sayfa.locator("img[src*='panel.png']").count() == 0
+    assert sayfa.locator("img[src*='yok.png']").count() == 0
+    # YOL metin olarak görünür.
+    assert "ekran/panel.png" in sayfa.inner_text("body")
+    sayfa.close()
+
+
+def test_detay_kanit_rozeti_uyari_vurgulu(tarayici, sunucu):
+    """Uyarı taşıyan kanıt sınıfı `vurgulu` (metne ek olarak kalın kenarlık)."""
+    sayfa, _ = sayfa_ac(tarayici, sunucu["adres"],
+                        f"/gorev/{sunucu['kanit_id']}", **MASASEU)
+    rozet = sayfa.locator(".rozet.kanit-kanitli").first
+    assert rozet.count() >= 1
+    # Bu görev `kanitli` → uyarı DEĞİL, vurgulu OLMAMALI.
+    assert rozet.get_attribute("class") is not None
+    assert "vurgulu" not in (rozet.get_attribute("class") or "")
+    sayfa.close()
+
+
+def test_detay_kanit_mobil_yatay_kaydirma_yok(tarayici, sunucu):
+    sayfa, _ = sayfa_ac(tarayici, sunucu["adres"],
+                        f"/gorev/{sunucu['kanit_id']}", 390, 844)
+    assert not _yatay_tasma(sayfa)
+    kirpilan = _kirpilan_metin(sayfa)
+    assert not kirpilan, f"mobilde kirpilan metin: {kirpilan}"
+    sayfa.close()
+
+
+def test_api_kanit_rozeti_donusu(tarayici, sunucu):
+    """API kanıt rozetini ve gözlemlenen/beyan listelerini döndürür."""
+    sayfa, _ = sayfa_ac(tarayici, sunucu["adres"],
+                        f"/api/gorev/{sunucu['kanit_id']}", **MASASEU)
+    veri = json.loads(sayfa.inner_text("body"))
+    assert veri["kanit"]["durum"] == "kanitli"
+    kosu = veri["kosular"][0]
+    assert kosu["kanit_rozet"]["durum"] == "kanitli"
+    assert kosu["kanit_rozet"]["etiket"] == "kanıtlı"
+    assert len(kosu["gozlemlenen"]) == 3   # 2 gorsel + git
+    assert kosu["beyan"]
     sayfa.close()

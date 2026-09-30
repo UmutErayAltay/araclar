@@ -8,6 +8,14 @@
     <dd class="ajan">{{ gorev.ajan }}</dd>
     <dt>Durum</dt>
     <dd><span class="rozet {{ gorev.durum }}">{{ gorev.durum_etiket }}</span></dd>
+    <dt>Kanıt</dt>
+    <dd>
+      <span class="rozet kanit-{{ gorev.kanit.durum }}{{ ' vurgulu' if gorev.kanit.uyari }}">{{ gorev.kanit.etiket }}</span>
+      <p class="aciklama">
+        Gözlemlenen kanıt orkestra'nın <b>kendi baktığı</b> kanıttır; beyan yalnızca
+        metinde yazandır ve tek başına kanıt <b>sayılmaz</b>. “Kanıtlı” “doğru” demek değildir.
+      </p>
+    </dd>
     <dt>Oluşturma</dt>
     <dd class="zaman">{{ gorev.olusturma }}</dd>
     <dt>Çalışma</dt>
@@ -29,6 +37,7 @@
             <th>Başlangıç</th>
             <th>Bitiş</th>
             <th class="sayi">Çıkış kodu</th>
+            <th>Kanıt</th>
             <th>Log</th>
             <th>Hata</th>
           </tr>
@@ -40,6 +49,9 @@
             <td class="zaman">{{ kosu.baslangic }}</td>
             <td class="zaman">{{ kosu.bitis or "—" }}</td>
             <td class="sayi">{{ kosu.cikis_kodu if kosu.cikis_kodu is not none else "—" }}</td>
+            <td>
+              <span class="rozet kanit-{{ kosu.kanit_rozet.durum }}{{ ' vurgulu' if kosu.kanit_rozet.uyari }}">{{ kosu.kanit_rozet.etiket }}</span>
+            </td>
             <td class="mono">{{ kosu.log_yolu or "—" }}</td>
             <td class="hata-metni">{{ kosu.hata or "—" }}</td>
           </tr>
@@ -58,6 +70,9 @@
           </span>
         </div>
         <div class="kart-alt">
+          <span class="rozet kanit-{{ kosu.kanit_rozet.durum }}{{ ' vurgulu' if kosu.kanit_rozet.uyari }}">kanıt: {{ kosu.kanit_rozet.etiket }}</span>
+        </div>
+        <div class="kart-alt">
           <span class="zaman">{{ kosu.baslangic }}</span>
           <span class="zaman">→ {{ kosu.bitis or "bitmedi" }}</span>
         </div>
@@ -70,6 +85,63 @@
     <div class="bos-durum">
       <h2>Bu görev hiç çalıştırılmamış</h2>
       <p><code>orkestra calistir-bir</code> ile kuyruktaki sıradaki görevi çalıştırabilirsin.</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="bolum">
+  <h2>Kanıt ayrıntısı</h2>
+  {% set son = gorev.kosular[-1] if gorev.kosular else none %}
+  {% if son and (son.gozlemlenen or son.beyan) %}
+    <div class="kanit-izgara">
+      <div class="kanit-kutu">
+        <h3>Gözlemlenen kanıt</h3>
+        <p class="aciklama">Orkestra'nın kendi baktığı: dosya diskte mi, imzası doğru mu, koşu boyunca değişti mi.</p>
+        {% if son.gozlemlenen %}
+        <ul class="kanit-liste">
+          {% for g in son.gozlemlenen %}
+            <li class="{{ 'gecerli' if g.gecerli else 'gecersiz' }}">
+              <span class="isaret" aria-hidden="true">{{ "✓" if g.gecerli else "✗" }}</span>
+              <span class="isaret-metin">{{ "geçti" if g.gecerli else "kaldı" }}</span>
+              <span class="mono">{{ g.yol }}</span>
+              <span class="aciklama">{{ g.gerekce }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="aciklama">Gözlemlenen kanıt yok.</p>
+        {% endif %}
+      </div>
+      <div class="kanit-kutu">
+        <h3>Beyan</h3>
+        <p class="aciklama">Yalnızca rapor metninde yazan. Tek başına “kanıt” <b>sayılmaz</b>.</p>
+        {% if son.beyan %}
+        <ul class="kanit-liste">
+          {% for b in son.beyan %}<li class="beyan">{{ b }}</li>{% endfor %}
+        </ul>
+        {% else %}
+        <p class="aciklama">Beyan yok.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if son.gerekceler %}
+    <h3>Gerekçeler</h3>
+    <ul class="kanit-liste gerekce-liste">
+      {% for g in son.gerekceler %}
+        <li><span class="mono">{{ g.kural }}</span><span class="aciklama">{{ g.kanit }}</span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if son.uyarilar %}
+    <h3>Uyarılar</h3>
+    <ul class="kanit-liste">
+      {% for u in son.uyarilar %}<li class="uyari-metin">{{ u }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+  {% else %}
+    <div class="bos-durum">
+      <h2>Kanıt kaydı yok</h2>
+      <p>Bu koşu için gözlemlenen kanıt toplanmamış. “Kanıtlı” olmak işin <b>doğru</b> olduğu anlamına gelmez.</p>
     </div>
   {% endif %}
 </section>

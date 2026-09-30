@@ -21,6 +21,8 @@
           <th class="sutun-ajan">Ajan</th>
           <th>İstem</th>
           <th class="sutun-durum">Durum</th>
+          {# Kanıt rozeti: renk + METİN. Renge tek başına dayanmaz. #}
+          <th class="sutun-kanit">Kanıt</th>
           <th class="th">Oluşturma</th>
         </tr>
       </thead>
@@ -31,6 +33,10 @@
           <td class="ajan">{{ kayit.ajan }}</td>
           <td><span class="istem" title="{{ kayit.istem }}">{{ kayit.istem }}</span></td>
           <td class="sutun-durum"><span class="rozet {{ kayit.durum }}">{{ kayit.durum_etiket }}</span></td>
+          <td class="sutun-kanit">
+            <span class="rozet kanit-{{ kayit.kanit.durum }}{{ ' vurgulu' if kayit.kanit.uyari }}"
+                  title="Kanıt: gözlemlenen kanıt orkestra'nın kendi baktığı; beyan yalnız metinde yazan">{{ kayit.kanit.etiket }}</span>
+          </td>
           <td class="zaman th">{{ kayit.olusturma }}</td>
         </tr>
       {% endfor %}
@@ -47,7 +53,9 @@
         <span class="rozet {{ kayit.durum }}">{{ kayit.durum_etiket }}</span>
       </div>
       <span class="istem">{{ kayit.istem }}</span>
+      {# Mobilde kanıt rozeti ayrı satırda: yan yana sığmaz, metin KALMALI. #}
       <div class="kart-alt">
+        <span class="rozet kanit-{{ kayit.kanit.durum }}{{ ' vurgulu' if kayit.kanit.uyari }}">kanıt: {{ kayit.kanit.etiket }}</span>
         <span class="zaman">{{ kayit.olusturma }}</span>
       </div>
     </article>

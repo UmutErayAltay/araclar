@@ -582,7 +582,10 @@ def test_izin_reddi_kuyrukta_onay_bekliyor(kuyruk, sahte_claude, cikti_dizini, m
     r = ClaudeRunner(komut=sahte_claude, cikti_dizini=cikti_dizini, uyku=lambda _s: None)
     gorev, kosu = kuyruk.calistir_bir(r)
     assert gorev.durum is Durum.ONAY_BEKLIYOR
-    assert kosu.hata is None
+    # Dalga D: kanıt katmanı reddi log'da da gördüğü için `runs.hata` artık
+    # MAKİNE işaretini de taşır (mevcut onay akışı bunu okur).
+    assert kosu.hata == "izin-reddi-suphesi"
+    assert kosu.kanit_durumu == "reddedildi-suphesi"
     assert kosu.cikti_yolu and Path(kosu.cikti_yolu).is_file()
 
 

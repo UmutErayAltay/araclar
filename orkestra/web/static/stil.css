@@ -17,7 +17,10 @@
   --panel-acik: #1c2130;
   --bos: #7a8496;
   --uyari: #E69F00;
-  --hata: #D55E00;
+  /* Dalga D: `--hata` #D55E00 idi; `--panel-acik` üzerinde 4.15:1 çıkıyordu
+     (eşik 4.5). Metin taşıyan rozetler bu zeminde de okunmalı — koyu turuncu
+     kırmızıya (#E85D1C) yükseltildi: panel-acik 4.59:1, zemin 5.41:1. */
+  --hata: #E85D1C;
   --basari: #009E73;
 
   /* Okabe-Ito */
@@ -26,7 +29,10 @@
   --oi3: #009E73;
   --oi4: #F0E442;
   --oi5: #0072B2;
-  --oi6: #D55E00;
+  /* Dalga D: kanıt rozetleri bu değişkeni kullanıyordu; #D55E00 koyu temada
+     `--panel-acik` üzerinde 4.15:1 (eşik 4.5). #E85D1C ile 4.59:1'e çıkarıldı.
+     `--hata` ile aynı değer: iki yol da aynı renge gidiyor. */
+  --oi6: #E85D1C;
   --oi7: #CC79A7;
   --oi8: #999999;
 }
@@ -152,6 +158,18 @@ h2:first-child { margin-top: 0; }
 .rozet.onay-bekliyor { color: var(--oi7); }
 .rozet.iptal { color: var(--oi8); }
 
+/* Dalga D kanıt rozetleri. Renk körlüğünde de ayırt edilebilmesi için
+   her rozet `border: 1px solid currentColor` + METİN taşır; renge tek
+   başına dayanılmaz. */
+.rozet.kanit-kanitli { color: var(--oi3); }
+.rozet.kanit-kanitsiz { color: var(--oi1); }
+.rozet.kanit-basarisiz { color: var(--oi6); }
+.rozet.kanit-reddedildi-suphesi { color: var(--oi7); }
+.rozet.kanit-degerlendirilmedi { color: var(--oi8); }
+
+/* Uyarı taşıyan kanıt: kalın kenarlıkla da vurgulanır (metne ek olarak). */
+.rozet.vurgulu { border-width: 2px; font-weight: 700; }
+
 .rozet.uyari { color: var(--oi1); }
 .rozet.asildi { color: var(--oi6); }
 .rozet.normal { color: var(--oi3); }
@@ -218,6 +236,7 @@ td.sayi, th.sayi { text-align: right; font-variant-numeric: tabular-nums; }
 .sutun-ajan { width: 168px; }
 /* Durum sütunu sabit genişlikte olsun: rozet metni ("onay bekliyor") taşmasın. */
 th.sutun-durum, td.sutun-durum { width: 156px; }
+th.sutun-kanit, td.sutun-kanit { width: 150px; }
 .th, td.th { white-space: nowrap; }
 /* Log yolu sütunu: monospace uzun yollar hücreyi şişirmesin. */
 td.mono { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
@@ -511,3 +530,68 @@ svg.graf {
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+
+/* ------------------------------------------------------- kanıt ayrıntısı (D) */
+
+.kanit-izgara {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+  margin: 10px 0 4px;
+}
+
+.kanit-kutu {
+  background: var(--panel);
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.kanit-kutu h3 {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+  font-weight: 620;
+}
+
+.kanit-liste {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.kanit-liste li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  /* Uzun yollar tabloyu TAŞIRMASIN diye kırılır. */
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kanit-liste li.gecerli { color: var(--basari); }
+.kanit-liste li.gecersiz { color: var(--hata); }
+.kanit-liste li.beyan { color: var(--ikincil); }
+.kanit-liste li.uyari-metin { color: var(--uyari); }
+
+.kanit-liste .isaret {
+  font-weight: 700;
+  /* İşaret KENDİSİ de metin: ekran okuyucu ✓/✗ okur. */
+  flex: 0 0 auto;
+}
+
+.kanit-liste .isaret-metin {
+  font-size: 12px;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+
+.kanit-liste .aciklama { flex: 1 1 100%; margin: 0; }
+
+.gerekce-liste li .mono { color: var(--vurgu); }

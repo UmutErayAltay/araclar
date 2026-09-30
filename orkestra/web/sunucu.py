@@ -23,7 +23,7 @@ from pathlib import Path
 
 from flask import Flask, Response, abort, current_app, g, jsonify, render_template, request
 
-from .. import guard, quota
+from .. import guard, quota, report
 
 # DNS rebinding koruması: yalnızca gerçek loopback adresleri.
 HOST_DESENI = re.compile(r"^(127\.0\.0\.1|localhost)(:\d{1,5})?$", re.IGNORECASE)
@@ -76,6 +76,34 @@ LOG_SON_SATIR = 200
 ISTEM_ONIZLEME = 100
 VARSAYILAN_CIKTI_DIZINI = Path.home() / ".orkestra" / "runs"
 
+# Dalga D kanıt rozetleri: renk + METİN (renge tek başına dayanmaz).
+KANIT_RENKLERI = {
+    report.KANITLI: "#009E73",       # Okabe-Ito yeşil
+    report.KANITSIZ: "#E69F00",      # turuncu
+    report.BASARISIZ: "#D55E00",     # kırmızı-turuncu
+    report.REDDEDILDI: "#CC79A7",    # pembe
+    report.DEGERLENDIRILMEDI: "#999999",
+}
+# Kanıt uyarısı taşıyan sınıflar: `liste`de ve detayda vurgulanır.
+KANIT_UYARI = frozenset({report.KANITSIZ, report.BASARISIZ, report.REDDEDILDI})
+
+
+def kanit_rozeti(satir) -> dict:
+    """Bir koşu satırından kanıt rozeti üretir (eski DB'de alan YOKTUR).
+
+    Sütun yoksa `degerlendirilmedi` döner — eski şema paneli BOZMAZ.
+    """
+    anahtarlar = satir.keys()
+    durum = satir["kanit_durumu"] if "kanit_durumu" in anahtarlar else None
+    if not durum or durum not in KANIT_RENKLERI:
+        durum = report.DEGERLENDIRILMEDI
+    return {
+        "durum": durum,
+        "etiket": report.SONUC_ETIKETLERI.get(durum, durum),
+        "renk": KANIT_RENKLERI[durum],
+        "uyari": durum in KANIT_UYARI,
+    }
+
 
 def guvenli_basliklar(cevap: Response) -> Response:
     """Her yanıta bağlayıcı güvenlik başlıklarını ekler."""
@@ -127,8 +155,8 @@ def istem_onizleme(istem: str) -> str:
     return guard.maskele(tek[:ISTEM_ONIZLEME])
 
 
-def _satirdan_gorev(satir) -> dict:
-    return {
+def _satirdan_gorev(satir, baglanti: sqlite3.Connection | None = None) -> dict:
+    kayit = {
         "id": satir["id"],
         "ajan": _temizle(satir["ajan"]),
         "istem": istem_onizleme(satir["istem"]),
@@ -136,17 +164,46 @@ def _satirdan_gorev(satir) -> dict:
         "durum_etiket": DURUM_ETIKETLERI.get(satir["durum"], satir["durum"]),
         "olusturma": satir["olusturma"],
     }
+    if baglanti is not None:
+        rozet = _son_kosu_kaniti(baglanti, satir["id"])
+        kayit["kanit"] = rozet or {
+            "durum": report.DEGERLENDIRILMEDI,
+            "etiket": report.SONUC_ETIKETLERI[report.DEGERLENDIRILMEDI],
+            "renk": KANIT_RENKLERI[report.DEGERLENDIRILMEDI],
+            "uyari": False,
+        }
+    return kayit
 
 
 def gorevleri(baglanti: sqlite3.Connection, durum: str | None = None) -> list[dict]:
-    """En yeni üstte olacak şekilde görev listesi."""
+    """En yeni üstte olacak şekilde görev listesi.
+
+    Her kayıt görevin SON koşusunun kanıt rozetini de taşır (yoksa
+    "değerlendirilmedi"). Alt sorgu ESKİ DB'de de çalışır: sütun yoksa
+    `runs` taraması boş döner.
+    """
     if durum and DURUM_DUZENI.match(durum):
         sql = "SELECT * FROM tasks WHERE durum = ? ORDER BY id DESC"
         parametre: tuple = (durum,)
     else:
         sql = "SELECT * FROM tasks ORDER BY id DESC"
         parametre = ()
-    return [_satirdan_gorev(s) for s in baglanti.execute(sql, parametre)]
+    return [_satirdan_gorev(s, baglanti) for s in baglanti.execute(sql, parametre)]
+
+
+def _son_kosu_kaniti(
+    baglanti: sqlite3.Connection, gorev_id: int
+) -> dict | None:
+    """Görevin son koşusunun kanıt rozetini döndürür; yoksa `None`."""
+    try:
+        satir = baglanti.execute(
+            "SELECT * FROM runs WHERE task_id = ? ORDER BY id DESC LIMIT 1",
+            (int(gorev_id),),
+        ).fetchone()
+    except sqlite3.OperationalError:
+        # `runs.kanit_durumu` yok (eskiden başka bir şema): sessizce "değerlendirilmedi".
+        return None
+    return kanit_rozeti(satir) if satir is not None else None
 
 
 def _kosular(baglanti: sqlite3.Connection, gorev_id: int) -> list[dict]:
@@ -160,6 +217,12 @@ def _kosular(baglanti: sqlite3.Connection, gorev_id: int) -> list[dict]:
             kanit_listesi = json.loads(kanit) if kanit else []
         except (TypeError, ValueError):
             kanit_listesi = []
+        ozet = None
+        if "kanit_ozeti" in satir.keys() and satir["kanit_ozeti"]:
+            try:
+                ozet = json.loads(satir["kanit_ozeti"])
+            except (TypeError, ValueError):
+                ozet = None
         kosular.append(
             {
                 "id": satir["id"],
@@ -169,9 +232,65 @@ def _kosular(baglanti: sqlite3.Connection, gorev_id: int) -> list[dict]:
                 "log_yolu": _temizle(satir["cikti_yolu"]),
                 "kanit": [_temizle(k) for k in kanit_listesi],
                 "hata": _temizle(satir["hata"]) if satir["hata"] else "",
+                "kanit_rozet": kanit_rozeti(satir),
+                # Gözlemlenen kanıtlar ve beyanlar AYRI listelenir.
+                "gozlemlenen": _gozlemlenen_listesi(ozet),
+                "beyan": _beyan_listesi(ozet),
+                "gerekceler": _gerekce_listesi(ozet),
+                "uyarilar": [_temizle(u) for u in (ozet or {}).get("uyarilar", [])],
             }
         )
     return kosular
+
+
+def _gozlemlenen_listesi(ozet: dict | None) -> list[dict]:
+    """GÖZLEMLENEN kanıtlar (orkestra'nın kendi baktığı)."""
+    if not ozet:
+        return []
+    liste = []
+    for g in ozet.get("gorseller", []):
+        liste.append(
+            {
+                "gecerli": bool(g.get("gecerli")),
+                "yol": _temizle(g.get("yol", "")),
+                "gerekce": _temizle(g.get("gerekce", "")),
+            }
+        )
+    if ozet.get("git_degisti") is not None:
+        liste.append(
+            {
+                "gecerli": True,
+                "yol": "git çalışma ağacı/HEAD",
+                "gerekce": "değişti" if ozet["git_degisti"] else "değişmedi",
+            }
+        )
+    return liste
+
+
+def _beyan_listesi(ozet: dict | None) -> list[str]:
+    """BEYANLAR (yalnızca metinde yazan) — kanıt sayılmaz."""
+    if not ozet:
+        return []
+    liste: list[str] = []
+    for t in ozet.get("testler", []):
+        sayilar = f"{t.get('passed') or 0} test geçti"
+        if t.get("failed"):
+            sayilar += f", {t['failed']} başarısız"
+        if t.get("error"):
+            sayilar += f", {t['error']} hata"
+        liste.append(f"test: {sayilar}")
+    for i in ozet.get("iddialar", [])[:10]:
+        liste.append(f"iddia: {i}")
+    return [_temizle(x) for x in liste]
+
+
+def _gerekce_listesi(ozet: dict | None) -> list[dict]:
+    if not ozet:
+        return []
+    return [
+        {"kural": _temizle(g.get("kural", "")), "kanit": _temizle(g.get("kanit", ""))}
+        for g in ozet.get("gerekceler", [])
+    ]
 
 
 def gorev_detay(baglanti: sqlite3.Connection, gorev_id: int) -> dict | None:
@@ -180,7 +299,7 @@ def gorev_detay(baglanti: sqlite3.Connection, gorev_id: int) -> dict | None:
     ).fetchone()
     if satir is None:
         return None
-    detay = _satirdan_gorev(satir)
+    detay = _satirdan_gorev(satir, baglanti)
     # Detayda istem kısaltılmaz: kullanıcı tam istemi görmek ister.
     detay["istem"] = _temizle(satir["istem"])
     detay["kosular"] = _kosular(baglanti, gorev_id)

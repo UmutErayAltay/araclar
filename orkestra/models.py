@@ -71,6 +71,9 @@ class Task:
     istem: str
     durum: Durum
     olusturma: str
+    # Dalga D: ajanın yazdığı rapor dosyası (çalışma dizinine göreli).
+    # Eski şemada sütun yoktur → `None` (rapor dosyası verilmemiş).
+    rapor_dosyasi: str | None = None
 
     @classmethod
     def satirdan(cls, satir) -> "Task":
@@ -80,6 +83,11 @@ class Task:
             istem=satir["istem"],
             durum=Durum(satir["durum"]),
             olusturma=satir["olusturma"],
+            rapor_dosyasi=(
+                satir["rapor_dosyasi"]
+                if "rapor_dosyasi" in satir.keys() and satir["rapor_dosyasi"]
+                else None
+            ),
         )
 
     @property
@@ -99,6 +107,9 @@ class Run:
     cikti_yolu: str | None
     kanit_yollari: list[str]
     hata: str | None
+    # Dalga D: rapor ayrıştırma sonucu (None = değerlendirilmemiş).
+    kanit_durumu: str | None = None
+    kanit_ozeti: dict | None = None
 
 
 @dataclass

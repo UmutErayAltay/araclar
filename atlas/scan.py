@@ -24,8 +24,9 @@ SKIP_DIRS = frozenset(
 #: `fetch/push/pull/checkout/reset/clean/gc/filter-branch` burada YOK ve eklenmez.
 #: `for-each-ref` yalnizca `refs/remotes` ALTINDA ref olup olmadigini sorar
 #: (--count=1): salt-okunur, hicbir sey yazmaz/guncellemez.
+#: `ls-files` yalnizca izlenen dosya listesi icin (Dalga B); -z ile okunur.
 ALLOWED_GIT_SUBCOMMANDS = frozenset(
-    {"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote", "for-each-ref"}
+    {"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote", "for-each-ref", "ls-files"}
 )
 
 GIT_TIMEOUT = 60

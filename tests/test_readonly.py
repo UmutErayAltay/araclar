@@ -22,7 +22,7 @@ from conftest import (
 )
 
 #: Taramanin kullanmasina izin verilen alt komutlar.
-IZINLI = {"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote", "for-each-ref"}
+IZINLI = {"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote", "for-each-ref", "ls-files"}
 
 #: Bu komsularin hicbiri calistirilmamali.
 YAZAN_KOMUTLAR = (
@@ -44,16 +44,22 @@ def test_sadece_izinli_alt_komutlar():
 
 def _git_shim(dizin: Path) -> Path:
     """`git` yerine gecen koruma (guard) script'i: argumanlari kaydeder ve izin
-    listesindeki alt komut disindaki HER seyi reddeder, gercek git'e devreder."""
+    listesindeki alt komut disindaki HER seyi reddeder, gercek git'e devreder.
+
+    `git -C <yol> <alt-komut> ...` bicimi korunur: alt komut `$3` konumundadır
+    ve gercek git'e TUM argumanlar aynen gecirilir (yoksa yanlis dizinde
+    calisir ve test bos gecer).
+    """
     kayit = dizin / "cagrilar.log"
     koruma = dizin / "git"
     koruma.write_text(
         "#!/bin/sh\n"
         'printf "%s\\n" "$*" >> "{kayit}"\n'
-        'shift 2\n'  # 'git -C <yol>' atlanir
-        'case "$1" in\n'
-        "  status|log|rev-parse|rev-list|symbolic-ref|remote|for-each-ref) exec {gercek} \"$@\" ;;\n"
-        '  *) echo "YASAK alt komut: $1" >&2; exit 97 ;;\n'
+        'alt="$3"\n'
+        'case "$alt" in\n'
+        "  status|log|rev-parse|rev-list|symbolic-ref|remote|for-each-ref|ls-files)"
+        ' exec {gercek} "$@" ;;\n'
+        '  *) echo "YASAK alt komut: $alt" >&2; exit 97 ;;\n'
         "esac\n".format(kayit=kayit, gercek=GERCEK_GIT),
         encoding="utf-8",
     )
@@ -66,16 +72,17 @@ def test_guard_kendisi_calisiyor(tmp_path: Path, monkeypatch):
     shim = tmp_path / "shim-dogrulama"
     shim.mkdir()
     _git_shim(shim)
+    repo = make_repo(tmp_path / "gercek-repo")  # gecerli bir repo: `remote` 0 donmeli
     env = dict(os.environ)
     env["PATH"] = f"{shim}:{env['PATH']}"
     yasak = subprocess.run(
-        ["git", "-C", str(tmp_path), "fetch", "--all"],
+        ["git", "-C", str(repo), "fetch", "--all"],
         capture_output=True, text=True, env=env,
     )
     assert yasak.returncode == 97
     assert "YASAK" in yasak.stderr
     serbest = subprocess.run(
-        ["git", "-C", str(tmp_path), "remote"],
+        ["git", "-C", str(repo), "remote"],
         capture_output=True, text=True, env=env,
     )
     assert serbest.returncode == 0
@@ -178,6 +185,54 @@ def test_tarama_sonrasi_head_ve_refler_ayni(tmp_path: Path, db_file: Path):
     assert git("rev-parse", "HEAD", cwd=repo) == once["head"]
     assert git("show-ref", cwd=repo, check=False) == once["ref"]
     assert git("log", "--format=%H %s", cwd=repo) == once["log"]
+
+
+def test_sizinti_taramasi_salt_okunur(tmp_path: Path, db_file: Path, monkeypatch):
+    """`atlas sizinti` de repoyu HIC degistirmez + guard yalnizca izinli alt komut."""
+    from atlas import leaks
+
+    repo = make_repo(tmp_path / "sizinti")
+    commit_file(repo, "gizli.txt", "anahtar: " + "sk-" + "b2" * 15, "sir ekle")
+    (repo / "izlenmeyen-sir.txt").write_text("sk-" + "c3" * 15, encoding="utf-8")  # izlenMIYOR
+    once = tree_hash(repo)
+
+    shim = tmp_path / "shim-sizinti"
+    shim.mkdir()
+    kayit = _git_shim(shim)
+    monkeypatch.setenv("PATH", f"{shim}:{os.environ['PATH']}")
+
+    tarama = leaks.tara_repo(repo, commit_sayisi=10)
+    assert tarama.bulgular, "sizinti bulgusu bekleniyordu"
+    assert once == tree_hash(repo), "sizinti taramasi repoyu degistirdi"
+
+    cagrilar = [l for l in kayit.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert cagrilar, "hic git cagrisi kaydedilmedi"
+    for cagri in cagrilar:
+        alt = cagri.split()[2]
+        assert alt in IZINLI, f"YAZAN komut cagrildi: {cagri}"
+        assert alt not in YAZAN_KOMUTLAR
+
+    # Izlenmeyen dosyadaki sIR bu taramada bulunmamali.
+    assert not [
+        b for b in tarama.bulgular
+        if b["kind"] == "api-anahtari" and "izlenmeyen" in (b["file"] or "")
+    ]
+
+    # Ayrica uctan uca: CLI de salt okunur.
+    proc = run_module_cli("sizinti", "--root", str(tmp_path), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    assert once == tree_hash(repo), "CLI sizinti taramasi repoyu degistirdi"
+
+
+def test_sizinti_izlenmeyen_dosyayi_taramaz(tmp_path: Path):
+    """Sadece `git ls-files` (izlenen) dosyalar taranir; izlenmeyen sir YOK."""
+    from atlas import leaks
+
+    repo = make_repo(tmp_path / "izlenmeyen")
+    (repo / "yok.txt").write_text("sk-" + "d4" * 15, encoding="utf-8")
+    # git add YAPILMAZ -> dosya izlenmiyor
+    bulgular = leaks.tara_calisma_agaci(repo)
+    assert not [b for b in bulgular if b["kind"] == "api-anahtari"]
 
 
 def test_okunamayan_dizin_taramayi_cozertmez(tmp_path: Path, db_file: Path):

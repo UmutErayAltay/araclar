@@ -181,3 +181,84 @@ def list_repos(conn: sqlite3.Connection, only_dirty: bool = False) -> list[sqlit
 
 def count_repos(conn: sqlite3.Connection) -> int:
     return int(conn.execute("SELECT COUNT(*) FROM repos").fetchone()[0])
+
+
+#: `commit` SQLite anahtar kelimesidir; INSERT listesinde tirnaklanmalidir.
+FINDING_COLUMNS = ("repo", "kind", "severity", "file", "line", '"commit"', "snippet_redacted")
+
+#: `onbulgu_sutun` = satiri ONCEDEN sil, sonra yaz (ayni transaction).
+#: Boylece bir repo yeniden taraninca ESKI bulgular kalici olarak gider.
+ONBULGU_SIL_SQL = "DELETE FROM findings WHERE repo = ?"
+
+
+def replace_findings(
+    conn: sqlite3.Connection, repo: str, bulgular: Sequence[dict[str, Any]]
+) -> int:
+    """Bir repo'nun bulgularini ATIP yeniler; doner: yazilan satir sayisi.
+
+    Silme + yazma TEK transaction'dadir: yarim kalan bir bulgu durumu olusmaz.
+    `snippet_redacted` alanina ham sır yazılamaz (bkz. `leaks.bulgu_olustur`).
+    """
+    with conn:  # BEGIN ... COMMIT
+        conn.execute(ONBULGU_SIL_SQL, (repo,))
+        if bulgular:
+            conn.executemany(
+                f"INSERT INTO findings ({', '.join(FINDING_COLUMNS)}) "
+                f"VALUES ({', '.join('?' * len(FINDING_COLUMNS))})",
+                [
+                    (
+                        repo,
+                        b["kind"],
+                        b.get("severity"),
+                        b.get("file"),
+                        b.get("line"),
+                        b.get("commit"),
+                        b.get("snippet_redacted"),
+                    )
+                    for b in bulgular
+                ],
+            )
+    return len(bulgular)
+
+
+def list_findings(
+    conn: sqlite3.Connection,
+    *,
+    repo: str | None = None,
+    tur: str | None = None,
+    onem: str | None = None,
+) -> list[sqlite3.Row]:
+    """Bulgu tablosunu filtreli sıralı döndürür (önem sırası: en yüksek önce)."""
+    sql = "SELECT * FROM findings"
+    kosul: list[str] = []
+    degerler: list[Any] = []
+    for sutun, deger in (("repo", repo), ("kind", tur), ("severity", onem)):
+        if deger is not None:
+            kosul.append(f"{sutun} = ?")
+            degerler.append(deger)
+    if kosul:
+        sql += " WHERE " + " AND ".join(kosul)
+    # CASE ile onem sirasi: yuksek > orta > dusuk > bilgi.
+    sql += (
+        " ORDER BY CASE severity WHEN 'yuksek' THEN 0 WHEN 'orta' THEN 1"
+        " WHEN 'dusuk' THEN 2 ELSE 3 END, repo, file, line, id"
+    )
+    return list(conn.execute(sql, degerler))
+
+
+def count_findings(conn: sqlite3.Connection) -> int:
+    return int(conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0])
+
+
+def findings_ozet(conn: sqlite3.Connection, repo: str | None = None) -> list[sqlite3.Row]:
+    """(repo, tur, onem) -> adet ozeti; CLI `sizinti` ciktisini besler."""
+    sql = "SELECT repo, kind, severity, COUNT(*) AS adet FROM findings"
+    if repo is not None:
+        sql += " WHERE repo = ?"
+    sql += (
+        " GROUP BY repo, kind, severity"
+        " ORDER BY CASE severity WHEN 'yuksek' THEN 0 WHEN 'orta' THEN 1"
+        " WHEN 'dusuk' THEN 2 ELSE 3 END, repo, kind"
+    )
+    return list(conn.execute(sql, () if repo is None else (repo,)))
+

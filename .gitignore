@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / araç çıktıları
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Dalga A geçici dosyaları
+.wave_*
+*.db
+*.db-wal
+*.db-shm

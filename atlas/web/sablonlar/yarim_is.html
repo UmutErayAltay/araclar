@@ -1,0 +1,109 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<h2>Yarım iş</h2>
+<p class="aciklama">Üç ayrı durum listelenir. <strong>atlas fetch yapmaz</strong>:
+push durumu yalnızca bu makinede daha önce indirilmiş yerel ref'lere bakar.</p>
+
+<section class="bolum">
+  <h2>Kirli (commit'lenmemiş değişiklik)</h2>
+  {% if veri.kirli %}
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <thead><tr><th>Repo</th><th class="sayi">Değişiklik</th><th>Dal</th></tr></thead>
+      <tbody>
+      {% for r in veri.kirli %}
+        <tr>
+          <td>{% if r.id %}<a href="/repo/{{ r.id }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</td>
+          <td class="sayi">{{ r.dirty }}</td>
+          <td class="ikincil">{{ r.branch or "-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="kart-liste">
+  {% for r in veri.kirli %}
+    <article class="kart">
+      <div class="kart-ust">
+        <strong>{% if r.id %}<a href="/repo/{{ r.id }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</strong>
+        <span class="rozet kirli">kirli</span>
+      </div>
+      <p class="kart-alt">{{ r.dirty }} değişiklik · {{ r.branch or "-" }}</p>
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}
+  <div class="bos-durum"><h3>Kirli repo yok</h3><p>Taranan tüm repolar temiz.</p></div>
+  {% endif %}
+</section>
+
+<section class="bolum">
+  <h2>Push bekleyen (bilinen)</h2>
+  {% if veri.push_bekleyen %}
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <thead><tr><th>Repo</th><th class="sayi">Push edilmemiş commit</th><th>Dal</th></tr></thead>
+      <tbody>
+      {% for r in veri.push_bekleyen %}
+        <tr>
+          <td>{% if r.id %}<a href="/repo/{{ r.id }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</td>
+          <td class="sayi">{{ r.unpushed }}</td>
+          <td class="ikincil">{{ r.branch or "-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="kart-liste">
+  {% for r in veri.push_bekleyen %}
+    <article class="kart">
+      <div class="kart-ust">
+        <strong>{% if r.id %}<a href="/repo/{{ r.id }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</strong>
+        <span class="rozet push">push bekliyor</span>
+      </div>
+      <p class="kart-alt">{{ r.unpushed }} commit · {{ r.branch or "-" }}</p>
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}
+  <div class="bos-durum"><h3>Push bekleyen yok</h3><p>Bilinen sayıda push edilmemiş commit yok.</p></div>
+  {% endif %}
+</section>
+
+<section class="bolum">
+  <h2>Push durumu bilinmeyen</h2>
+  <p class="aciklama">Remote tanımlı ama yerelde hiç uzak-takip ref'i yok. Gerçek sayı
+    0 da olabilir; atlas sayı uydurmaz. Çözüm repoda: <code>git fetch</code>.</p>
+  {% if veri.push_bilinmeyen %}
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <thead><tr><th>Repo</th><th>Push</th><th>Dal</th></tr></thead>
+      <tbody>
+      {% for r in veri.push_bilinmeyen %}
+        <tr>
+          <td>{% if r.id %}<a href="/repo/{{ r.id }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</td>
+          <td><span class="rozet bilinmiyor">bilinmiyor</span></td>
+          <td class="ikincil">{{ r.branch or "-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="kart-liste">
+  {% for r in veri.push_bilinmeyen %}
+    <article class="kart">
+      <div class="kart-ust">
+        <strong>{% if r.id %}<a href="/repo/{{ r.id }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</strong>
+        <span class="rozet bilinmiyor">bilinmiyor</span>
+      </div>
+      <p class="kart-alt">{{ r.branch or "-" }} · git fetch gerekir</p>
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}
+  <div class="bos-durum"><h3>Bilinmeyen yok</h3><p>Tüm repolarda push durumu biliniyor.</p></div>
+  {% endif %}
+</section>
+
+{% endblock %}

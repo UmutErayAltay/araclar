@@ -113,3 +113,79 @@ def run_module_cli(*args: str, cwd: Path | str | None = None) -> subprocess.Comp
         text=True,
         env=env,
     )
+
+
+# --------------------------------------------------------------------------
+# Web paneli yardimcilari (Dalga C)
+# --------------------------------------------------------------------------
+
+#: Ekrana basilan HER metin maske testinde kontrol edilir; fixture metinleri
+#: bilerek "sir" kalibi icerir ama parcalarindan kurulur (kaynakta literal yok).
+def sahte_sir(n: int = 14) -> str:
+    """Parcalardan kurulan sahte API anahtari (kaynakta tam literal YOK)."""
+    return "sk-" + ("k" + "7") * n
+
+
+def xss_yukle(deyim: str) -> str:
+    """Guvenilmeyen veri gibi davranan fixture metni."""
+    return f'"><{deyim}>'
+
+
+@pytest.fixture
+def web_app():
+    """Bos bir DB ile panel uygulamasi (salt-okunur; fixture sonrasi kapanir)."""
+    import tempfile
+    from pathlib import Path as _Path
+
+    from atlas.web import app_olustur
+
+    dizin = tempfile.mkdtemp(prefix="atlas-web-")
+    db_yolu = _Path(dizin) / "atlas.db"
+    # Bos DB semasi: tablolar var, satır yok.
+    from atlas import db as db_mod
+
+    conn = db_mod.connect(db_yolu)
+    conn.close()
+    return app_olustur(db_yolu)
+
+
+@pytest.fixture
+def web_client(web_app):
+    return web_app.test_client()
+
+
+def db_doldur(
+    db_path: Path,
+    *,
+    repos=(),
+    findings=(),
+    todos=(),
+) -> Path:
+    """Test DB'sine doğrudan (maskeli) satırlar yazar.
+
+    Panelin okuduğu tabloyu doldurur; tarama ÇALIŞTIRMAZ (panel tarama
+    tetiklemez — bu da testte kanıtlanır).
+    """
+    from atlas import db as db_mod
+
+    conn = db_mod.connect(db_path)
+    try:
+        db_mod.upsert_repos(conn, list(repos))
+        for f in findings:
+            conn.execute(
+                "INSERT INTO findings (repo, kind, severity, file, line, \"commit\", snippet_redacted) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    f["repo"], f["kind"], f.get("severity"), f.get("file"),
+                    f.get("line"), f.get("commit"), f.get("snippet_redacted"),
+                ),
+            )
+        for t in todos:
+            conn.execute(
+                "INSERT INTO todos (repo, file, line, text) VALUES (?, ?, ?, ?)",
+                (t["repo"], t.get("file"), t.get("line"), t.get("text")),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return db_path

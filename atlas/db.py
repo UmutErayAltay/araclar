@@ -262,3 +262,64 @@ def findings_ozet(conn: sqlite3.Connection, repo: str | None = None) -> list[sql
     )
     return list(conn.execute(sql, () if repo is None else (repo,)))
 
+
+# --------------------------------------------------------------------------
+# TODOs (Dalga C)
+# --------------------------------------------------------------------------
+
+TODO_COLUMNS = ("repo", "file", "line", "text")
+
+#: Yeniden taramada o repo'nun eski todo'lari ONCEDEN silinir (ayni transaction).
+ONTODO_SIL_SQL = "DELETE FROM todos WHERE repo = ?"
+
+
+def replace_todos(
+    conn: sqlite3.Connection, repo: str, todos: Sequence[dict[str, Any]]
+) -> int:
+    """Bir repo'nun todo'larini ATIP yeniler; doner: yazilan satir sayisi.
+
+    Silme + yazma TEK transaction'dadir. `text` alanina ham sır yazılamaz:
+    metin `todo.satiri_tara` icinde `leaks.maske`'den gecmistir.
+    """
+    with conn:  # BEGIN ... COMMIT
+        conn.execute(ONTODO_SIL_SQL, (repo,))
+        if todos:
+            conn.executemany(
+                f"INSERT INTO todos ({', '.join(TODO_COLUMNS)}) "
+                f"VALUES ({', '.join('?' * len(TODO_COLUMNS))})",
+                [(t["repo"], t.get("file"), t.get("line"), t.get("text")) for t in todos],
+            )
+    return len(todos)
+
+
+def list_todos(
+    conn: sqlite3.Connection, *, repo: str | None = None
+) -> list[sqlite3.Row]:
+    """Todo kayitlari (repo adi, dosya, satir sirali)."""
+    sql = "SELECT * FROM todos"
+    parametre: tuple = ()
+    if repo is not None:
+        sql += " WHERE repo = ?"
+        parametre = (repo,)
+    sql += " ORDER BY repo, file, line, id"
+    return list(conn.execute(sql, parametre))
+
+
+def count_todos(conn: sqlite3.Connection, repo: str | None = None) -> int:
+    sql = "SELECT COUNT(*) FROM todos"
+    parametre: tuple = ()
+    if repo is not None:
+        sql += " WHERE repo = ?"
+        parametre = (repo,)
+    return int(conn.execute(sql, parametre).fetchone()[0])
+
+
+def todos_ozet(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    """(repo, adet) -> todo yogunlugu; en yogundan azaga, ada gore."""
+    return list(
+        conn.execute(
+            "SELECT repo, COUNT(*) AS adet FROM todos GROUP BY repo "
+            "ORDER BY adet DESC, repo COLLATE NOCASE"
+        )
+    )
+

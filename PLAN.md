@@ -13,7 +13,7 @@ sağlık durumunu SQLite'a yazan bir CLI + Flask web panel. Doğuş nedeni 2026-
 ekran görüntülerinde gerçek kişi fotoğrafı, `C:\Users\...` yolu ve API anahtarı parçası public repoya
 gitti; yarım işler ve bayat README'ler elle aranıyordu.
 
-**Durum:** Dalga A, A.1 ve B tamam (2026-09-30, repo `atlas` main'de, 280 test; sızıntı taraması: gerçek 15 repo 5,5 sn, ham sır DB/çıktıda yok, geçmiş bulgularında dosya:satır doğru). Kararlar: yavaşlama (+%32) kabul; Mt3Ui55OS'taki 39 görsel için eşik 50 kalır. Açık iş (Dalga C'nin 0. maddesi): `ozel-anahtar` yalnızca BAŞLIK + izleyen gövde satırı (>=32 base64 karakter) varsa `yuksek`, yalnızca başlık varsa `bilgi` (test yolu düşürmesi ozel-anahtar'dan KALKAR: gerçek anahtar tests/ altında düşük önemle gözden kaçmasın). Sıradaki: Dalga C (web panel).
+**Durum:** Dalga A, A.1, B ve C tamam (2026-09-30, repo `atlas` main'de, 525 test + 54 Playwright e2e). C: salt-okunur web panel (`atlas web`, 127.0.0.1, CSP, mode=ro, yalnızca GET), TODO/FIXME taraması (`atlas borc`), tek komutla `atlas guncelle` (tara+sizinti+borc; gerçek 15 repo 6,4 sn), `ozel-anahtar` kuralı düzeltildi (gövdeli anahtar her yerde `yuksek`, yalnızca başlık `bilgi`). Bilinen: yoğunluk grafiği ham sayı (TODO/1000 satır değil); Flask geliştirme sunucusu (yerel, tek kullanıcı); Windows'ta doğrulanmadı. Sıradaki: Dalga D (README bayatlığı + cor özeti).
 Bağlantılar: [[readme-dokumantasyon-kod-senkron-gecikmesi]], [[ne-izlesem-delegasyon-modeli-ajan-kendi-dogrular]],
 [[cor-bulut-oturumu-agent-tool-erisimsizligi-headless-cozum]]. Referans: `repo-durum` skill'i
 (`.agents/skills/repo-durum/SKILL.md`) git tarama mantığı için okunur, kopyalanmaz.

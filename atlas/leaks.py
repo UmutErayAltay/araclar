@@ -22,7 +22,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from typing import Any, Iterable, NamedTuple
+from typing import Any, Iterable, NamedTuple, Sequence
 
 from .scan import ALLOWED_GIT_SUBCOMMANDS, GitError, find_repo_paths, git_env
 
@@ -58,9 +58,21 @@ BIR_KADEME_DUSUK = {"yuksek": "dusuk", "orta": "bilgi", "dusuk": "bilgi", "bilgi
 #: `tests/` altındaki türler bir kademe düşürülür. `env-izlenen` ve
 #: `gorsel-elle-kontrol` BİLEREK DIŞARIDA: ilki içerik okunmadığı için dosyanın
 #: varlığı zaten sırdır (düşürmek yanlış negatif olurdu), ikincisi zaten
-#: `bilgi`. `ozel-anahtar` test fixture'ındaysa `dusuk`'a iner — bir testin
-#: kendi ürettiği sahte anahtardır (bkz. `harita/tests/conftest.py`).
-TEST_YOLU_DUSURULEN_TURLER = frozenset({"api-anahtari", "ozel-anahtar", "kisisel-yol", "e-posta"})
+#: `bilgi`. `ozel-anahtar` da DIŞARIDA (Dalga C kuralı): `tests/` altındaki
+#: GÖVDELİ bir anahtar gerçektir ve `yuksek` kalmalıdır; yalnız başlık varsa
+#: zaten `bilgi` olduğu için test fixture'ları yanlış pozitif üretmez.
+TEST_YOLU_DUSURULEN_TURLER = frozenset({"api-anahtari", "kisisel-yol", "e-posta"})
+
+#: `ozel-anahtar` başlığının hemen ardından aranan GÖVDE penceresi (satır sayısı).
+#: 1–5 satır: PEM gövdesi başlıktan sonra 1. satırda gelir; 5, açıklama satırları
+#: olan armalı biçimler için yeterli pay bırakır. 6+'da gelen bir gövde sayılmaz.
+GOVDE_PENCERE = 5
+
+#: Gövde satırı olma eşiği: base64 alfabesinde en az bu kadar karakter.
+GOVDE_ESIK = 32
+
+#: Gövde satırı deseni (base64 alfabeti + `=` dolgusu).
+_DESEN_GOVDE_SATIRI = re.compile(r"^[A-Za-z0-9+/=]{%d,}$" % GOVDE_ESIK)
 
 #: `snippet_redacted` üst sınırı (maskelemeden SONRA kırpılır).
 SNIPPET_MAX = 120
@@ -483,14 +495,37 @@ def dosya_test_yolu_mu(dosya: str | None) -> bool:
     return any(f"/{t}" in norm for t in TEST_YOLU_KIRINTILARI)
 
 
+def _ozel_anahtar_onemi(sonraki_satirlar: Sequence[str] | None) -> str:
+    """`-----BEGIN … PRIVATE KEY-----` başlığının önemi: gövde var mı?
+
+    Gövde = başlıktan hemen sonraki 1–`GOVDE_PENCERE` satır içinde, en az
+    `GOVDE_ESIK` karakterlik ve yalnız base64 alfabesinden oluşan bir satır.
+    Başlıktan 6+ satır sonra gelen gövde sayılmaz.
+
+    * Gövde VAR  → `yuksek`: gerçek bir özel anahtar.
+    * Gövde YOK  → `bilgi`: yalnız başlık (test fixture'ı, dedektör kodu,
+      dokümantasyon örneği) — "başlık var, gövde yok — elle kontrol et".
+    """
+    for satir in (sonraki_satirlar or ())[:GOVDE_PENCERE]:
+        if _DESEN_GOVDE_SATIRI.match(satir.strip()):
+            return "yuksek"
+    return "bilgi"
+
+
 def satiri_tara(
     satir: str,
     *,
     dosya: str | None = None,
     commit: str | None = None,
     line: int | None = None,
+    sonraki_satirlar: Sequence[str] | None = None,
 ) -> list[dict[str, Any]]:
     """TEK satırı tüm desenlerle tarar, MASKELENMİŞ bulgular döndürür.
+
+    `sonraki_satirlar`: yalnızca `ozel-anahtar` başlığı→gövde kuralı için
+    kullanılır (başlıktan sonraki satırlar; en fazla `GOVDE_PENCERE` tanesi
+    okunur). Gövde satırının kendisi bulguya GİRMEZ: yalnızca varlığı önemi
+    belirler, böylece gövdenin hiçbir parçası `snippet_redacted`'a giremez.
 
     Ham satır yalnızca bu fonksiyona girer; bulgular `bulgu_olustur` üzerinden
     üretildiği için ham içerik dışarı çıkmaz. `eslesme` koordinatı snippet'in
@@ -511,10 +546,15 @@ def satiri_tara(
         for eslesme in desen.finditer(ham):
             if suzgec is not None and not suzgec(eslesme):
                 continue
+            onem = (
+                _ozel_anahtar_onemi(sonraki_satirlar)
+                if kind == "ozel-anahtar"
+                else severity
+            )
             bulgular.append(
                 bulgu_olustur(
                     kind=kind,
-                    severity=severity,
+                    severity=onem,
                     file=dosya,
                     line=line,
                     commit=commit,
@@ -759,8 +799,11 @@ def tara_calisma_agaci(repo: Path, *, timeout: int = 60) -> list[dict[str, Any]]
         if veri is None:
             continue
         metin = veri.decode("utf-8", "replace")
-        for no, satir in enumerate(metin.splitlines(), start=1):
-            for b in satiri_tara(satir, dosya=dosya, line=no):
+        satirlar = metin.splitlines()
+        for no, satir in enumerate(satirlar, start=1):
+            for b in satiri_tara(
+                satir, dosya=dosya, line=no, sonraki_satirlar=satirlar[no : no + GOVDE_PENCERE]
+            ):
                 bulgular.append(b)
     return bulgular
 
@@ -779,8 +822,12 @@ def _gecmis_govdesi(govde: str, commit: str) -> list[dict[str, Any]]:
                                    sayac artar), `-` silinen satır (yeni
                                    dosyada YOK: sayac artmaz), ` ` bağlam
                                    satırı (sayac artar).
+
+    `ozel-anahtar` başlığı→gövde kuralı için `+` satırları ÖNCE toplanır, sonra
+    taranır: gövde, başlıktan sonraki `+` satırlarda aranır (aynı dosyanın
+    sonraki satırları; hunk sınırları da bu sırayı bozmaz).
     """
-    bulgular: list[dict[str, Any]] = []
+    eklenen: list[tuple[str, int, str]] = []  # (dosya, yeni satır no, metin)
     eski_yol: str | None = None
     yeni_yol: str | None = None
     dosya: str | None = None
@@ -820,12 +867,24 @@ def _gecmis_govdesi(govde: str, commit: str) -> list[dict[str, Any]]:
             satir = None if satir is None else satir + 1
             if dosya is None:
                 continue  # dosya çözülemedi: yanlış dosyaya bağlamaktansa atla
-            bulgular.extend(satiri_tara(ham_satir[1:], dosya=dosya, commit=commit, line=no))
+            eklenen.append((dosya, no, ham_satir[1:]))
         elif ham_satir.startswith("-"):  # silinen satır: yeni dosyada yok
             continue
         elif ham_satir.startswith(" "):  # bağlam satırı
             satir = None if satir is None else satir + 1
         # `\ No newline at end of file` ve diğerleri yok sayılır
+
+    bulgular: list[dict[str, Any]] = []
+    for indeks, (dosya_yolu, no, metin) in enumerate(eklenen):
+        # Başlık→gövde kuralı: Aynı dosyanın sonraki `+` satırlarına bak.
+        sonraki = [
+            m
+            for d, _n, m in eklenen[indeks + 1 : indeks + 1 + GOVDE_PENCERE]
+            if d == dosya_yolu
+        ]
+        bulgular.extend(
+            satiri_tara(metin, dosya=dosya_yolu, commit=commit, line=no, sonraki_satirlar=sonraki)
+        )
     return bulgular
 
 

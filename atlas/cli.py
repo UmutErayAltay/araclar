@@ -7,7 +7,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from . import __version__, config, db, leaks, scan
+from . import __version__, config, db, leaks, scan, todo
 
 #: Yazilari terminal genisligine gore sutunlara dizer.
 _MIN_WIDTH = 8
@@ -18,6 +18,9 @@ BILINMIYOR_ACIKLAMA = "uzak-takip bilgisi yok (git fetch gerekir); atlas fetch y
 
 #: `atlas sizinti --gecmis` varsayilani (son N commit).
 VARSAYILAN_GECMIS = 500
+
+#: `atlas web --port` varsayilani. Adres kodda sabittir (127.0.0.1).
+VARSAYILAN_PORT = 8770
 
 #: Onem sirasi (ozet ciktisinda ve filtrelerde).
 ONEMLER = ("yuksek", "orta", "dusuk", "bilgi")
@@ -111,6 +114,26 @@ def build_parser() -> argparse.ArgumentParser:
     bulgular.add_argument("--repo", metavar="AD", help="repo filtresi (tam eslesme)")
     bulgular.add_argument("--siddet", choices=ONEMLER, help="onem filtresi")
     bulgular.add_argument("--tur", metavar="T", help="tur filtresi (orn. api-anahtari)")
+
+    borc = sub.add_parser("borc", help="TODO/FIXME borcunu tara ve raporla")
+    borc.add_argument("--root", action="append", metavar="DIZIN", help="tarama koku (birden fazla olabilir)")
+    borc.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
+    borc.add_argument("--repo", metavar="AD", help="yalnizca bu repo taranir (adi veya yolu)")
+
+    guncelle = sub.add_parser(
+        "guncelle",
+        help="tara + sizinti + borc: uclu tabloyu tek komutta doldurur",
+    )
+    guncelle.add_argument("--root", action="append", metavar="DIZIN", help="tarama koku (birden fazla olabilir)")
+    guncelle.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
+    guncelle.add_argument(
+        "--gecmis", type=int, default=VARSAYILAN_GECMIS, metavar="N",
+        help=f"sizinti gecmisi icin son N commit (varsayilan: {VARSAYILAN_GECMIS})",
+    )
+
+    web = sub.add_parser("web", help="salt-okunur web panelini baslat (yalnizca 127.0.0.1)")
+    web.add_argument("--db", metavar="YOL", help="veritabani yolu (varsayilan: ~/.atlas/atlas.db)")
+    web.add_argument("--port", type=int, default=VARSAYILAN_PORT, metavar="N", help="port (varsayılan: %d)" % VARSAYILAN_PORT)
     return parser
 
 
@@ -277,6 +300,112 @@ def _cmd_bulgular(args: argparse.Namespace) -> int:
     return 0
 
 
+def _borc_tara(args: argparse.Namespace) -> tuple[dict[str, list[dict]], list[tuple[Path, str]], list[str]]:
+    """`--repo` filtresi varsa yalniz o repo, yoksa koklerin tumu taranir.
+
+    Doner: (repo -> todos, hatalar, uyarilar).
+    """
+    kokler = [Path(r) for r in args.root] if args.root else config.load_roots()
+    uyarilar: list[str] = []
+    hatalar: list[tuple[Path, str]] = []
+    if getattr(args, "repo", None):
+        repo = _tek_repo_coz(args.repo, kokler)
+        if repo is None:
+            return {}, [(Path(args.repo), "repo bulunamadi")], uyarilar
+        try:
+            tarama = todo.tara_repo(repo)
+            return {tarama.repo: tarama.todos}, hatalar, list(tarama.uyarilar)
+        except Exception as exc:
+            return {}, [(repo, type(exc).__name__)], uyarilar
+    repo_todolar, hatalar = todo.tara_roots(kokler)
+    return repo_todolar, hatalar, uyarilar
+
+
+def _cmd_borc(args: argparse.Namespace) -> int:
+    """TODO/FIXME borcunu tarar, DB'ye yazar, repo basina sayi basar."""
+    db_path = Path(args.db) if args.db else config.default_db_path()
+    repo_todolar, hatalar, uyarilar = _borc_tara(args)
+
+    conn = db.connect(db_path)
+    try:
+        toplam = 0
+        for repo_yol in sorted(repo_todolar):
+            # Yeniden taramada o repo'nun ESKI todo'lari silinir (ayni transaction).
+            toplam += db.replace_todos(conn, repo_yol, repo_todolar[repo_yol])
+        ozet = db.todos_ozet(conn)
+    finally:
+        conn.close()
+
+    print(f"Taranan repo: {len(repo_todolar) + len(hatalar)}")
+    print(f"Todo: {toplam}")
+    if not ozet:
+        print("TODO/FIXME borcu yok.")
+    else:
+        print()
+        print(render_table(
+            ["Repo", "Todo"],
+            [[Path(r["repo"]).name or r["repo"], str(r["adet"])] for r in ozet],
+        ))
+        print(f"\nToplam todo: {sum(r['adet'] for r in ozet)}")
+    print(f"Veritabani: {db_path}")
+    for uyari in uyarilar:
+        print(f"  ! {uyari}", file=sys.stderr)
+    for path, err in hatalar:
+        print(f"  ! atlandi: {path}: {err}", file=sys.stderr)
+    if hatalar:
+        print(f"Hatali repo: {len(hatalar)}", file=sys.stderr)
+    return 0
+
+
+def _cmd_guncelle(args: argparse.Namespace) -> int:
+    """`tara` + `sizinti` + `borc` — mevcut komutlarin davranisi DEGISTIRILMEZ.
+
+    Uc komut da ayni koklerle, sirasiyla cagrilir; her biri kendi ciktisini
+    basar. `guncelle` yalnizca birlesiktir: yeni bir tarama YONTEMI degildir.
+    """
+    kokler = [Path(r) for r in args.root] if args.root else config.load_roots()
+    kok_metni = [str(k) for k in kokler]
+    db_yol = str(Path(args.db) if args.db else config.default_db_path())
+    cikis = 0
+
+    print("== 1/3: repo taramasi ==")
+    cikis |= _cmd_tara(_alt(args, komut="tara", root=kok_metni, db=db_yol, derinlik=config.DEFAULT_DEPTH))
+    print()
+    print("== 2/3: sizinti taramasi ==")
+    cikis |= _cmd_sizinti(_alt(args, komut="sizinti", root=kok_metni, db=db_yol, gecmis=args.gecmis, repo=None))
+    print()
+    print("== 3/3: TODO/FIXME borcu ==")
+    cikis |= _cmd_borc(_alt(args, komut="borc", root=kok_metni, db=db_yol, repo=None))
+    return cikis
+
+
+def _alt(args: argparse.Namespace, **degistir) -> argparse.Namespace:
+    """Mevcut bir komutun Namespace'ini turetilir (`guncelle` bunu kullanir)."""
+    yeni = argparse.Namespace(**vars(args))
+    for anahtar, deger in degistir.items():
+        setattr(yeni, anahtar, deger)
+    return yeni
+
+
+def _cmd_web(args: argparse.Namespace) -> int:  # pragma: no cover — gercek surec e2e'de
+    """Salt-okunur paneli baslatir. Adres kodda sabittir: `127.0.0.1`."""
+    from . import web as web_modulu
+
+    db_path = Path(args.db) if args.db else config.default_db_path()
+    if not db_path.exists():
+        print(f"Veritabani yok: {db_path}", file=sys.stderr)
+        print("Once 'atlas guncelle' calistir.", file=sys.stderr)
+        return 1
+    port = int(args.port)
+    if not 1 <= port <= 65535:
+        print(f"Gecersiz port: {port}", file=sys.stderr)
+        return 1
+    print(f"Panel: http://127.0.0.1:{port}/  (salt-okunur; yalnizca 127.0.0.1)")
+    print(f"Veritabani: {db_path} (mode=ro)")
+    web_modulu.calistir(db_path, port)
+    return 0
+
+
 def _stdout_stderr_utf8() -> None:
     """Türkçe karakterler (ı, ğ, ş…) her ortamda doğru çıksın.
 
@@ -303,6 +432,12 @@ def main(argv: list[str] | None = None) -> int:
             return _cmd_sizinti(args)
         if args.komut == "bulgular":
             return _cmd_bulgular(args)
+        if args.komut == "borc":
+            return _cmd_borc(args)
+        if args.komut == "guncelle":
+            return _cmd_guncelle(args)
+        if args.komut == "web":
+            return _cmd_web(args)
     except BrokenPipeError:  # pragma: no cover
         return 0
 

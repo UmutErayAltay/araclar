@@ -1,0 +1,42 @@
+{# Ortak iskelet: CSP satir ici stil/script yasaklar, bu yuzden stil degiskenleri
+   stil.css'ten gelir; sablonda `style=` OZNITELIGI ve <script> YOKTUR.
+   Gezinme cubugu HER sayfada tam gorunur ve icerigi KAPATMAZ: sabit (fixed)
+   degil, normal akista; `main` ust boslukla degil, cubuktan sonra baslar. #}
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ baslik|default('Panel') }} — atlas</title>
+{# favicon: harici istek (ve konsol hatası) yapmamak için veri URI.
+   `img-src 'self' data:` CSP izin verir. #}
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2356B4E9'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='stil.css') }}">
+<script src="{{ url_for('static', filename='panel.js') }}" defer></script>
+</head>
+<body>
+<header class="ust">
+  <div class="ust-sol">
+    <h1>atlas</h1>
+    <p class="ozet">Repo Saglik Atlasi — salt-okunur panel</p>
+  </div>
+  <nav class="ust-sag" aria-label="Sayfalar">
+    <a href="/" {% if yol == '/' %}aria-current="page"{% endif %}>Özet</a>
+    <a href="/yarim-is" {% if yol == '/yarim-is' %}aria-current="page"{% endif %}>Yarım iş</a>
+    <a href="/sizinti" {% if yol == '/sizinti' %}aria-current="page"{% endif %}>Sızıntı</a>
+    <a href="/borc" {% if yol == '/borc' %}aria-current="page"{% endif %}>Borç</a>
+  </nav>
+</header>
+<main>
+{% if veri and veri.veri_bayat %}
+  <p class="uyari-bar" role="status">Veri eski — <code>atlas guncelle</code> çalıştır.</p>
+{% endif %}
+{% block icerik %}{% endblock %}
+</main>
+<footer class="alt">
+  <p>Panel yalnızca görüntüler ve veritabanını salt okunur açar. Taramayı tetiklemez;
+     <code>atlas guncelle</code> ile yenileyin. Repo adları, dosya yolları ve
+     snippet/todo metinleri ekrana basılmadan önce maskelenir.</p>
+</footer>
+</body>
+</html>

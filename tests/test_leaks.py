@@ -102,12 +102,17 @@ def test_api_anahtari_yer_tutucu_bulgu_degil(tmp_path: Path):
     ],
 )
 def test_ozel_anahtar_bulunur(tmp_path: Path, baslik: str):
+    """GÖVDESİZ başlık `bilgi`'dir (Dalga C kuralı): elle kontrol notu.
+
+    Gövdeli başlık `yuksek` kalır; o davranış `tests/test_leaks_ozel_anahtar.py`
+    içinde ayrıca ve kapsamlı test edilir.
+    """
     repo = make_repo(tmp_path / "r")
     commit_file(repo, "id.pem", f"{baslik}\ncift satir\n", "ekle")
     b = leaks.tara_calisma_agaci(repo)
     assert "ozel-anahtar" in turler(b)
     bulgu = next(x for x in b if x["kind"] == "ozel-anahtar")
-    assert bulgu["severity"] == "yuksek"
+    assert bulgu["severity"] == "bilgi"
 
 
 def test_ozel_anahtar_yoksa_bulgu_degil(tmp_path: Path):

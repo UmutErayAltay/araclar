@@ -1,0 +1,64 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<h2>TODO / FIXME borcu</h2>
+<p class="aciklama">Git'in <strong>izlediği</strong> metin dosyalarında
+  <code>TODO</code>, <code>FIXME</code>, <code>XXX</code> veya <code>HACK</code>
+  içeren satırlar. Metin DB'ye yazılmadan önce maskelenir.</p>
+
+{% if veri.ozet %}
+<section class="bolum">
+  <h2>Repo başına yoğunluk</h2>
+  {# Yoğunluk çubuğu: sıfır-bağımlılık SVG, etiketler kesişmez.
+     Genişlik `data-genislik` ile HTML'den taşınır (satır içi style yasak),
+     `panel.js` yalnızca bu sayıyı uygular. #}
+  <div class="cubuk-liste">
+  {% for o in veri.ozet %}
+    <div class="cubuk-satiri">
+      <span class="cubuk-ad kirp" title="{{ o.repo }}">{{ o.repo }}</span>
+      <div class="cubuk-yol">
+        <div class="cubuk" data-genislik="{{ '%.1f'|format(o.oran) }}"></div>
+      </div>
+      <span class="cubuk-deger sayi">{{ o.adet }}</span>
+    </div>
+  {% endfor %}
+  </div>
+  <p class="lejant-not">Çubuk en yoğun repo'ya göre ölçeklenir (en çok = tam).</p>
+</section>
+
+<section class="bolum">
+  <h2>Tüm kayıtlar ({{ veri.toplam }})</h2>
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <thead><tr><th>Repo</th><th>Dosya:satır</th><th>Metin</th></tr></thead>
+      <tbody>
+      {% for t in veri.kayitlar %}
+        <tr>
+          <td class="dar">{{ t.repo }}</td>
+          <td class="mono kirp" title="{{ t.dosya }}">{{ t.dosya }}{% if t.satir %}:{{ t.satir }}{% endif %}</td>
+          <td class="mono kirp" title="{{ t.metin }}">{{ t.metin or "-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="kart-liste">
+  {% for t in veri.kayitlar %}
+    <article class="kart">
+      <div class="kart-ust"><strong>{{ t.repo }}</strong></div>
+      <p class="mono kirp">{{ t.dosya }}{% if t.satir %}:{{ t.satir }}{% endif %}</p>
+      <pre class="snippet mono">{{ t.metin or "-" }}</pre>
+    </article>
+  {% endfor %}
+  </div>
+</section>
+
+{% else %}
+  <div class="bos-durum">
+    <h3>TODO borcu yok</h3>
+    <p>İzlenen dosyalarda <code>TODO/FIXME/XXX/HACK</code> içeren satır bulunmuyor.
+      <code>atlas borc</code> ile yeniden tarayabilirsiniz.</p>
+  </div>
+{% endif %}
+
+{% endblock %}

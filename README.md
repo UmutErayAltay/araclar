@@ -1,8 +1,9 @@
 # atlas — Repo Sağlık Atlası
 
-Bir kök dizindeki tüm git repolarını tarar, her birinin sağlık durumunu SQLite'a yazar ve
-CLI ile tablo olarak gösterir. **Dalga A** (çekirdek tarayıcı + DB) ve
-**Dalga B** (sızıntı ve geçmiş taraması) uygulanmıştır.
+Bir kök dizindeki tüm git repolarını tarar, her birinin sağlık durumunu SQLite'a yazar,
+CLI ile tablo olarak gösterir ve **salt okunur bir web paneli** ile görüntüler.
+**Dalga A** (çekirdek tarayıcı + DB), **Dalga B** (sızıntı ve geçmiş taraması) ve
+**Dalga C** (TODO borcu + web paneli) uygulanmıştır.
 
 ## Ne yapar
 
@@ -52,8 +53,8 @@ yüzden listelenmemek doğrudur.
 
 ## Kurulum
 
-Python 3.11+ ve `git` gerekir. Çalışma zamanında hiçbir üçüncü taraf kütüphane yoktur
-(yalnızca standart kütüphane).
+Python 3.11+ ve `git` gerekir. Tek çalışma zamanı bağımlılığı **Flask**'tır
+(web paneli için); tüm tarama kodu yalnızca standart kütüphaneyle çalışır.
 
 ```bash
 python3 -m atlas tara --root /home/user   # pip kurulumu gerekmez
@@ -89,6 +90,16 @@ atlas liste --sadece-yarim          # yalnızca commit'lenmemiş veya push bekle
 # Sızıntı taraması (ayrı komut; git durumunu etkilemez)
 atlas sizinti --root /home/user
 atlas bulgular --siddet yuksek
+
+# TODO/FIXME borcu (Dalga C)
+atlas borc --root /home/user
+atlas borc --repo ornek-repo
+
+# ÜÇÜNÜ TEK KOMUTTA: tara + sizinti + borc
+atlas guncelle --root /home/user
+
+# Salt okunur web paneli (yalnızca 127.0.0.1)
+atlas web --port 8770
 ```
 
 **Veritabanı yolu:** `--db` ile verilmezse `ATLAS_DB` ortam değişkeni, o da yoksa
@@ -101,8 +112,8 @@ listesi kullanılır:
 roots = ["/home/user/projeler", "~/Desktop"]
 ```
 
-`findings`, `readme_status` ve `todos` tabloları şemaları Dalga B/C/D için şimdiden
-boş olarak oluşturulmuştur; `readme_status` ve `todos` bu dalda doldurulmaz.
+`findings` ve `todos` tabloları Dalga B ve C'de doldurulur; `readme_status` şeması
+Dalga D için hazır durumda ama henüz doldurulmaz.
 
 ## Sızıntı taraması (Dalga B)
 
@@ -129,7 +140,8 @@ Bulgu türleri ve önemleri:
 |---|---|---|
 | `api-anahtari` | yüksek | `sk-…`, `AKIA…`, `ghp_…`, `xoxb-…`, `sk_live_…`, `AIza…`, JWT (`eyJ….….…`), `sb_secret_…`, etiketli değer (`API_KEY = …`) |
 | `api-anahtari` | bilgi | `sb_publishable_…` (yayınlanabilir anahtar; istemci tarafında herkese açık olması **tasarım gereği**) |
-| `ozel-anahtar` | yüksek | `-----BEGIN … PRIVATE KEY-----` |
+| `ozel-anahtar` | yüksek | `-----BEGIN … PRIVATE KEY-----` **başlığının ardından 1–5 satırda ≥32 karakterlik base64 gövdesi** |
+| `ozel-anahtar` | bilgi | Yalnız **başlık** var (test fixture'ı, dedektör kodu, dokümantasyon) — "başlık var, gövde yok — elle kontrol et" |
 | `env-izlenen` | yüksek | Git'in **izlediği** `.env`, `.env.local` … (`.env.example` hariç) |
 | `kisisel-yol` | orta | `C:\Users\<ad>`, `/Users/<ad>/`, `/home/<ad>/` |
 | `e-posta` | düşük | Gerçek e-posta (noreply/example imzaları hariç) |
@@ -193,4 +205,106 @@ dâhil) bulunmadığı otomatik olarak doğrulanır.
   çökmez, çıkış kodu yine `0`'dır.
 - Uzak sunucuya hiçbir ağ isteği yapılmaz (`fetch` yasaktır); yalnızca yerel
   `origin` bilgisi okunur.
-- Bu dalda web sunucusu yoktur. (Dalga C'de yalnızca `127.0.0.1`'e bağlanacaktır.)
+- `atlas borc` ve `atlas guncelle` de aynı güvence altındadır: `todo.py` **yeni
+  git alt komutu talep etmez**, yalnızca `ls-files` + standart dosya okuması
+  kullanır. Bu, izin listesiyle (guard script'i) ayrıca test edilir.
+
+## TODO / FIXME borcu (Dalga C)
+
+`atlas borc` git'in **izlediği** metin dosyalarında `\b(TODO|FIXME|XXX|HACK)\b`
+içeren satırları bulur ve `todos` tablosuna yazar. Metin **160 karakterle
+kırpılır** ve DB'ye yazılmadan önce maskeleme fonksiyonundan geçer (todo yorumu
+`# API_KEY = …` bir sır taşıyabilir).
+
+- Kelime sınırı `\b` ile uygulanır ve büyük/küçük harf duyarsızdır: `TODOS`,
+  `todo_list`, `myTODO`, `hacked` gibi **bileşik** adlar elenir; `// fixme:` gibi
+  gerçek yazımlar yakalanır.
+- İkili (ilk 8 KiB içinde NUL), 1 MiB'tan büyük ve `node_modules/.venv/vendor/
+  dist/build` altındaki dosyalar atlanır; sembolik linkler takip edilmez.
+- Repo yeniden taranınca **yalnız o repoya ait** eski kayıtlar silinip yeniler
+  (tek transaction) — `findings` ile aynı kural.
+
+### `atlas guncelle`
+
+`tara` + `sizinti` + `borc` üçünü **tek komutta** sırayla çalıştırır ve üç
+tabloyu doldurur. Mevcut komutların davranışı değişmez: `guncelle` yalnızca onları
+çağırır, yeni bir tarama yöntemi değildir.
+
+```bash
+atlas guncelle --root /home/user            # üç tablo birden
+atlas guncelle --root ~/Desktop --gecmis 200
+```
+
+## Web paneli (Dalga C)
+
+`atlas web` aynı DB'yi **salt okunur** açan yerel bir panel başlatır:
+
+```bash
+atlas web --db ~/.atlas/atlas.db --port 8770
+```
+
+| Sayfa | İçerik |
+|---|---|
+| `/` | Özet kartları (repo, kirli, push bekleyen, push bilinmeyen, bulgu sayıları, toplam todo, son tarama) |
+| `/yarim-is` | Üç bölüm: kirli · pushlanmamış commit'i **bilinen** · push durumu **bilinmeyen** |
+| `/sizinti` | Bulgular; `?siddet=` `?tur=` `?repo=` süzgeçleri, sayfa başı 100 |
+| `/borc` | Repo başına TODO yoğunluğu çubuğu + tüm kayıtlar |
+| `/repo/<id>` | Repo kartı + o repoya ait bulgular ve TODO'lar (`id` = satır numarası, **ad değil**) |
+| `/api/ozet`, `/api/yarim-is`, `/api/bulgular`, `/api/borc`, `/saglik` | JSON (aynı süzgeçler) |
+
+Panel **repolara dokunmaz ve tarama tetiklemez** — yalnızca DB'yi okur. Veri
+24 saatten eskiyse uyarı gösterir. Ekran görüntülerini yenilemek için
+`atlas guncelle` çalıştırılır.
+
+### Panel güvenlik modeli
+
+- Sunucu **koda sabit** `127.0.0.1` adresine bağlanır; `--host` seçeneği **yoktur**.
+- `Host` başlığı `127.0.0.1[:port]` / `localhost[:port]` değilse **403** döner ve
+  istek **bağlantı açılmadan** reddedilir (DNS rebinding koruması).
+- Veritabanı `mode=ro` (URI) ile açılır; panel hiçbir koşulda yazmaz.
+- Tüm rotalar **yalnızca GET**'tir; diğer metotlar 405 döner (CSRF yüzeyi yoktur).
+- Rota yüzeyi **sayısal id/sayfa** ile sınırlıdır; dosya sistemi yolu alan rotalar
+  yoktur.
+- `Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self';
+  img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none';
+  frame-ancestors 'none'` her yanıtta bulunur; ayrıca `X-Content-Type-Options:
+  nosniff`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`.
+  **Satır içi script/stil yoktur**; JS/CSS `static/` altındadır.
+- Repo adı, dosya adı, snippet ve todo metni **güvenilmeyen veridir**: Jinja
+  autoescape açık, JS'te `innerHTML` yoktur (`textContent`/`setAttribute`).
+- Ekrana basılan **her** `snippet_redacted` ve `text`, basılmadan **önce** bir kez
+  daha maskeleme fonksiyonundan geçer (savunma katmanı: DB'de ham sır olsa bile
+  ekrana çıkmaz). Testle kanıtlanır.
+- Rozetler yalnızca renge dayanmaz: her rozet hem renk hem **metin** taşır.
+  Grafikler sıfır bağımlılık SVG'dır (CDN yok).
+
+Bu güvence testlerle kanıtlanır: 405/403/404, güvenlik başlıkları, `mode=ro`,
+reddedilen isteğin DB açmaması, XSS yükleri, ham sırın hiçbir yanıtta
+(ilk 6 karakteri dâhil) görünmemesi ve panelin/CLI'nin repoları bayt bayt
+değiştirmemesi.
+
+## Ekran görüntüleri
+
+Aşağıdakiler **kurgusal veriyle** üretilmiştir: repo adları, yollar ve kişiler
+uydurmadır; gerçek repo adı, yol, anahtar veya e-posta **yoktur**. Üretici:
+`python3 scripts/ekran_goruntusu.py`.
+
+### Özet (masaüstü)
+
+![Özet — masaüstü](docs/ekran/ozet-masaustu.png)
+
+### Yarım iş
+
+![Yarım iş](docs/ekran/yarim-is.png)
+
+### Sızıntı bulguları
+
+![Sızıntı — masaüstü](docs/ekran/sizinti-masaustu.png)
+
+### TODO / FIXME borcu
+
+![Borç](docs/ekran/borc.png)
+
+### Özet (mobil, 390 px)
+
+![Özet — mobil](docs/ekran/ozet-mobil.png)

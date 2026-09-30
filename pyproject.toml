@@ -8,14 +8,23 @@ version = "0.1.0"
 description = "Repo Saglik Atlasi - yerel git repolarini tarayan salt-okunur CLI"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["Flask>=3.0"]
+
+[project.optional-dependencies]
+dev = ["pytest", "playwright"]
 
 [project.scripts]
 atlas = "atlas.cli:main"
 
 [tool.setuptools]
-packages = ["atlas"]
+packages = ["atlas", "atlas.web"]
+
+[tool.setuptools.package-data]
+"atlas.web" = ["sablonlar/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "e2e: gercek sunucu + Playwright tarayici testleri (yavas)",
+]

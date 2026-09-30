@@ -13,7 +13,7 @@ sağlık durumunu SQLite'a yazan bir CLI + Flask web panel. Doğuş nedeni 2026-
 ekran görüntülerinde gerçek kişi fotoğrafı, `C:\Users\...` yolu ve API anahtarı parçası public repoya
 gitti; yarım işler ve bayat README'ler elle aranıyordu.
 
-**Durum:** planlandı, kod yok. Repo adı önerisi: `atlas` (Umut GitHub'da açar).
+**Durum:** Dalga A tamam (2026-09-30; 108 test yeşil + 1 root ortamında atlanan; gerçek 15 repo taranıp elle doğrulandı, salt-okunurluk kanıtlandı). Kararlar: `--sadece-yarim` = `dirty>0 OR (unpushed>0 AND has_remote=1)`; sembolik link dizinlerine girilmez; maskeleme Dalga B'de `atlas/leaks.py` içinde tek yardımcı. Bilinen sınır: `unpushed` yerel uzak-takip ref'lerine bakar (`fetch` yasak); ref hiç yoksa "bilinmiyor" sayılacak (A.1). Sıradaki: A.1, sonra Dalga B.
 Bağlantılar: [[readme-dokumantasyon-kod-senkron-gecikmesi]], [[ne-izlesem-delegasyon-modeli-ajan-kendi-dogrular]],
 [[cor-bulut-oturumu-agent-tool-erisimsizligi-headless-cozum]]. Referans: `repo-durum` skill'i
 (`.agents/skills/repo-durum/SKILL.md`) git tarama mantığı için okunur, kopyalanmaz.

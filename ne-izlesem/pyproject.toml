@@ -1,0 +1,6 @@
+[tool.pytest.ini_options]
+pythonpath = ["."]
+markers = [
+    "integration: gerçek ağ/TMDB/OpenLibrary gerektirir",
+]
+addopts = "-m 'not integration'"

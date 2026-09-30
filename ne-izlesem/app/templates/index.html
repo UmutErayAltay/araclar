@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ne İzlesem / Okusam</title>
+<!-- Boş data URI: tarayıcının /favicon.ico isteğini (ve 404'ü) tamamen keser. -->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <h1>🎬 Ne İzlesem / Okusam</h1>
+  </header>
+
+  <form id="add-form" class="add-form">
+    <div class="add-title-wrap" id="add-title-wrap">
+      <input type="text" id="add-title" placeholder="Başlık ekle…" required autocomplete="off"
+             role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-dropdown">
+      <div id="search-dropdown" class="search-dropdown hidden" role="listbox" aria-label="Arama sonuçları"></div>
+    </div>
+    <select id="add-kind">
+      <option value="film">Film</option>
+      <option value="dizi">Dizi</option>
+      <option value="anime">Anime</option>
+      <option value="kitap">Kitap</option>
+    </select>
+    <select id="add-status">
+      <option value="planlanan">Planlanan</option>
+      <option value="izleniyor">İzleniyor</option>
+      <option value="tamamlandi">Tamamlandı</option>
+      <option value="birakildi">Bırakıldı</option>
+    </select>
+    <button type="submit">Ekle</button>
+  </form>
+
+  <form id="mood-form" class="mood-form">
+    <input type="text" id="mood-input" placeholder="Ruh halin ne? (örn. rahatlatıcı, hafif bir şey)"
+           autocomplete="off">
+    <button type="submit" id="mood-submit">Öner</button>
+  </form>
+
+  <section id="suggestions" class="suggestions hidden" aria-live="polite" aria-busy="false">
+    <div class="suggestions-head">
+      <h2 class="suggestions-title">Öneriler</h2>
+      <p class="suggestions-sub" id="suggestions-sub"></p>
+    </div>
+    <div class="mood-loading hidden" id="mood-loading">
+      <span class="spinner" aria-hidden="true"></span>
+      <span>Ruh haline göre öneriler aranıyor… birkaç saniye sürebilir.</span>
+    </div>
+    <div class="suggestions-grid" id="suggestions-grid"></div>
+  </section>
+
+  <div class="controls">
+    <input type="search" id="search" placeholder="Ara…" autocomplete="off">
+    <div class="chip-row" id="kind-chips" data-filter="kind">
+      <button class="chip active" data-value="">Hepsi</button>
+      <button class="chip" data-value="film">Film</button>
+      <button class="chip" data-value="dizi">Dizi</button>
+      <button class="chip" data-value="anime">Anime</button>
+      <button class="chip" data-value="kitap">Kitap</button>
+    </div>
+    <div class="chip-row" id="status-chips" data-filter="status">
+      <button class="chip active" data-value="">Hepsi</button>
+      <button class="chip" data-value="planlanan">Planlanan</button>
+      <button class="chip" data-value="izleniyor">İzleniyor</button>
+      <button class="chip" data-value="tamamlandi">Tamamlandı</button>
+      <button class="chip" data-value="birakildi">Bırakıldı</button>
+    </div>
+  </div>
+
+  <main id="grid" class="grid" aria-live="polite"></main>
+  <p id="empty-state" class="empty-state hidden">Henüz bir şey eklemedin.</p>
+</div>
+
+<div id="toast" class="toast hidden" role="status"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

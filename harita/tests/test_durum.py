@@ -543,3 +543,53 @@ def test_cli_durum_hata_donus_kodu(tmp_path: Path, capsys: pytest.CaptureFixture
     assert kod == 1
     cikti = capsys.readouterr().out
     assert json.loads(cikti)["hata"] == "indeks_yok"
+
+
+# --- WAL + yazılamayan dizin yedek yolu (root'tan BAĞIMSIZ: `mode=ro` başarısızlığı taklit edilir) ---
+
+
+class _OkunamayanBaglanti:
+    """`mode=ro` ile açılan ama sorguda `OperationalError` veren bağlantı (WAL `-shm` açılamıyor)."""
+
+    def execute(self, *a, **k):
+        import sqlite3
+
+        raise sqlite3.OperationalError("unable to open database file")
+
+    def close(self) -> None:
+        return None
+
+
+def test_ro_basarisiz_olursa_degismez_yedek_okuma_calisir(
+    durum_db: Path, durum_vault: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Yazılamayan dizindeki WAL DB: `mode=ro` okunamaz → `immutable=1` yedek yoluyla DOĞRU sayılar.
+
+    Gerçek koşul (`chmod 555` dizin) root'ta etkisiz kalır; bu yüzden bu yol yalnız normal
+    kullanıcıda (CI) görülüyordu. Burada `baglan_salt_okunur` bozulur, yedek gerçek DB'yi okur.
+    """
+    from harita import index as indeks_modulu
+
+    monkeypatch.setattr(indeks_modulu, "baglan_salt_okunur", lambda yol: _OkunamayanBaglanti())
+    durum = durum_moduli.durum_oku(durum_db, durum_vault)
+    assert durum.hata is None
+    assert durum.not_sayisi == 5 and durum.kirik_link == 1 and durum.yetim_not == 1
+
+
+def test_ro_ve_yedek_ikisi_de_basarisizsa_okunamadi(
+    durum_db: Path, durum_vault: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Yedek de başarısızsa sessizce sahte sayı DÖNMEZ: `okunamadi` hata kodu."""
+    from harita import index as indeks_modulu
+
+    monkeypatch.setattr(indeks_modulu, "baglan_salt_okunur", lambda yol: _OkunamayanBaglanti())
+    monkeypatch.setattr(indeks_modulu, "baglan_donuk", lambda yol: _OkunamayanBaglanti())
+    durum = durum_moduli.durum_oku(durum_db, durum_vault)
+    assert durum.hata == durum_moduli.HATA_OKUNAMADI
+
+
+def test_bozuk_dosya_yedek_yola_dusmeden_okunamadi(tmp_path: Path, durum_vault: Path) -> None:
+    """DB dosyası bozuksa (OperationalError DEĞİL) yedek yol denenmez, `okunamadi` döner."""
+    bozuk = tmp_path / "bozuk.db"
+    bozuk.write_bytes(b"sqlite degil, rastgele metin" * 50)
+    assert durum_moduli.durum_oku(bozuk, durum_vault).hata == durum_moduli.HATA_OKUNAMADI

@@ -133,6 +133,17 @@ def baglan_salt_okunur(db_yolu: Path | str) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{quote(yol.as_posix())}?mode=ro", uri=True)
 
 
+def baglan_donuk(db_yolu: Path | str) -> sqlite3.Connection:
+    """`mode=ro&immutable=1` ile açar: `-shm`/`-wal` dosyası OLUŞTURMAZ.
+
+    WAL modundaki bir DB, yazılamayan dizinde `mode=ro` ile bile okunamaz (okuyucu da `-shm`
+    ister). DİKKAT: `immutable`, dosyanın değişmediğini VARSAYAR; yalnızca dizin yazılamadığı
+    (yani kimse WAL yazamadığı) için `mode=ro` başarısız olduğunda yedek yol olarak kullanılır.
+    """
+    yol = Path(db_yolu).expanduser()
+    return sqlite3.connect(f"file:{quote(yol.as_posix())}?mode=ro&immutable=1", uri=True)
+
+
 def sema_olustur(baglanti: sqlite3.Connection) -> None:
     baglanti.executescript(SEKIL)
     baglanti.executescript(ARA_SEKIL)

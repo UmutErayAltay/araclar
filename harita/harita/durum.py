@@ -189,24 +189,31 @@ def durum_oku(
     if not yol.exists():
         return Durum(hata=HATA_INDEKS_YOK, _yalnizca_hata=True)
 
+    def _oku(baglan):
+        baglanti = baglan(yol)
+        try:
+            # Sayılar: web `/saglik`, `/kirik` ve `/yetim` ile AYNI sorgular.
+            sayaclar = indeks_moduli.toplam_sayaclar(baglanti)
+            # `yetim_not` = GERÇEK yetimler (`/yetim` sayfasının "gercek" listesi):
+            # `daily/` günlükleri ve kök dosyaları YAPISAL yalnızlıktır, uyarı değil.
+            yetim_gercek = len(indeks_moduli.yetim_ayir(baglanti).gercek)
+            meta = indeks_moduli.indeks_meta_oku(baglanti)
+            return sayaclar, yetim_gercek, meta, indeks_bayati(baglanti, vault)
+        finally:
+            baglanti.close()
+
     try:
-        baglanti = indeks_moduli.baglan_salt_okunur(yol)
+        try:
+            sayaclar, yetim_gercek, meta, bayat = _oku(indeks_moduli.baglan_salt_okunur)
+        except sqlite3.OperationalError:
+            # WAL modundaki DB yazılamayan dizinde `mode=ro` ile açılamaz (`-shm` gerekir;
+            # root izin denetimini aştığı için yalnız normal kullanıcıda görülür). Dizin
+            # yazılamıyorsa kimse WAL yazamaz: değişmez (immutable) okuma güvenlidir.
+            sayaclar, yetim_gercek, meta, bayat = _oku(indeks_moduli.baglan_donuk)
     except sqlite3.Error:
         return Durum(hata=HATA_OKUNAMADI, _yalnizca_hata=True)
-    try:
-        # Sayılar: web `/saglik`, `/kirik` ve `/yetim` ile AYNI sorgular.
-        sayaclar = indeks_moduli.toplam_sayaclar(baglanti)
-        kirik = sayaclar["kirik"]
-        # `yetim_not` = GERÇEK yetimler (`/yetim` sayfasının "gercek" listesi):
-        # `daily/` günlükleri ve kök dosyaları YAPISAL yalnızlıktır, uyarı değil.
-        yetim_gercek = len(indeks_moduli.yetim_ayir(baglanti).gercek)
-        meta = indeks_moduli.indeks_meta_oku(baglanti)
-        son_indeks = meta.get("son_indeks")
-        bayat = indeks_bayati(baglanti, vault)
-    except sqlite3.Error:
-        return Durum(hata=HATA_OKUNAMADI, _yalnizca_hata=True)
-    finally:
-        baglanti.close()
+    kirik = sayaclar["kirik"]
+    son_indeks = meta.get("son_indeks")
 
     return Durum(
         son_indeks=str(son_indeks) if son_indeks else None,

@@ -120,3 +120,55 @@ def test_ayni_repo_iki_kokta_tekil_olmaz(tmp_path: Path):
     make_repo(ust / "repo")
     yollar = find_repo_paths([tmp_path, ust])
     assert [str(p) for p in yollar].count(str(ust / "repo")) == 1
+
+
+# --- erisilemeyen dizin uyarisi (root'tan BAGIMSIZ: os.walk onerror'u taklit edilir) ---
+
+def test_find_repos_erisilemeyen_dizini_hatalar_listesine_yazar(tmp_path, monkeypatch):
+    """Icine girilemeyen dizin tarama cokertmez ama SESSIZ gecilmez: hatalar listesine yazilir.
+
+    Gercek `chmod 000` root'ta etkisiz oldugu icin `os.walk` taklit edilir; boylece bu
+    test hem root'ta (container) hem normal kullanicida (CI) ayni sekilde kosar.
+    """
+    from atlas import scan
+
+    kilitli = tmp_path / "kilitli"
+
+    def sahte_walk(base, topdown=True, followlinks=False, onerror=None):
+        onerror(PermissionError(13, "Permission denied", str(kilitli)))
+        return iter(())
+
+    monkeypatch.setattr(scan.os, "walk", sahte_walk)
+    hatalar: list = []
+    assert scan.find_repos(tmp_path, hatalar=hatalar) == []
+    assert len(hatalar) == 1
+    yol, aciklama = hatalar[0]
+    assert yol == kilitli
+    assert "girilemedi" in aciklama and "Permission denied" in aciklama
+
+
+def test_find_repos_hatalar_verilmezse_eski_davranis(tmp_path, monkeypatch):
+    """`hatalar` verilmezse (eski cagrilar) erisim hatasi sessizce yutulur, istisna firlamaz."""
+    from atlas import scan
+
+    def sahte_walk(base, topdown=True, followlinks=False, onerror=None):
+        onerror(PermissionError(13, "Permission denied", str(tmp_path / "x")))
+        return iter(())
+
+    monkeypatch.setattr(scan.os, "walk", sahte_walk)
+    assert scan.find_repos(tmp_path) == []
+
+
+def test_scan_roots_erisilemeyen_dizini_hata_olarak_dondurur(tmp_path, monkeypatch):
+    from atlas import scan
+
+    kilitli = tmp_path / "kilitli"
+
+    def sahte_walk(base, topdown=True, followlinks=False, onerror=None):
+        onerror(PermissionError(13, "Permission denied", str(kilitli)))
+        return iter(())
+
+    monkeypatch.setattr(scan.os, "walk", sahte_walk)
+    repos, hatalar = scan.scan_roots([tmp_path])
+    assert repos == []
+    assert [str(y) for y, _ in hatalar] == [str(kilitli)]

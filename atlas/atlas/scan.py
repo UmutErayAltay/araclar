@@ -76,12 +76,18 @@ def is_repo(path: Path) -> bool:
     return (path / ".git").exists()
 
 
-def find_repos(root: Path, depth: int = 3) -> list[Path]:
+def find_repos(
+    root: Path, depth: int = 3, hatalar: list[tuple[Path, str]] | None = None
+) -> list[Path]:
     """Kokten `depth` seviyesine kadar repo kesfi.
 
     Bir dizin repo ise INDIRILMEZ (ic ice repo sayilmaz).
     node_modules/.venv/venv/target/__pycache__/.git hic girilmez.
     Sembolik link dongusune karsi (Path.resolve) korunur.
+
+    Icine girilemeyen dizin (izin yok vb.) tarama cokertmez; `hatalar` verilmisse
+    `(yol, aciklama)` olarak oraya eklenir. Boylece altindaki repolar SESSIZCE
+    kaybolmaz (seffaflik).
     """
     found: list[Path] = []
     seen: set[Path] = set()
@@ -91,7 +97,12 @@ def find_repos(root: Path, depth: int = 3) -> list[Path]:
         return []
     if not base.is_dir():
         return []
-    for current, dirs, _files in os.walk(base, topdown=True, followlinks=False, onerror=lambda _e: None):
+    def _erisilemedi(hata: OSError) -> None:
+        if hatalar is not None:
+            yol = Path(hata.filename) if hata.filename else base
+            hatalar.append((yol, f"dizine girilemedi ({hata.strerror or type(hata).__name__}); altindaki repolar taranmadi"))
+
+    for current, dirs, _files in os.walk(base, topdown=True, followlinks=False, onerror=_erisilemedi):
         current_path = Path(current)
         key = current_path.resolve() if current_path.is_symlink() else current_path
         if key in seen:  # ayni yer dongusu
@@ -288,7 +299,7 @@ def scan_roots(roots, depth: int = 3) -> tuple[list[dict], list[tuple[Path, str]
         if not root_path.is_dir():
             errors.append((root_path, "kok bir dizin degil"))
             continue
-        for repo_path in find_repos(root_path, depth=depth):
+        for repo_path in find_repos(root_path, depth=depth, hatalar=errors):
             row, err = scan_repo_safe(repo_path)
             if row is None:
                 errors.append((repo_path, err or "bilinmeyen hata"))

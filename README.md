@@ -1,11 +1,12 @@
-# corclient
+# araclar
 
 Yerel **cor** proxy'sine (`POST /v1/messages`) konuşan küçük Python araçlarının tek
 deposu. Ortak parça, hepsinin kullandığı **tek LLM istemcisidir** (`corclient.py`);
 araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 
-> Not: Depo adı yalnızca istemciyi anlatıyor; içinde istemciyi kullanan 5 uygulama da var.
-> GitHub'da adı değiştirilebilir (Settings → Rename; eski bağlantılar yönlenir).
+> Not: Bu depo önceki adıyla `corclient` idi; adı `araclar` oldu (eski bağlantılar GitHub'da
+> yönlenir). `corclient.py` ortak istemci modülünün adıdır ve değişmedi. Eski ayrı repolar
+> (`atlas`, `harita`, `orkestra`, `danis`, `anlat`) boşaltıldı; kod artık burada, klasörlerinde.
 
 ## İçindekiler
 

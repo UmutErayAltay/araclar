@@ -1,0 +1,404 @@
+"""BAGLAYICI: tarama salt-okunurdur, repolara hicbir sey yazmaz."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import stat
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from conftest import (
+    commit_file,
+    git,
+    make_bare_remote,
+    make_repo,
+    read_only_actor,
+    run_module_cli,
+    tree_hash,
+)
+
+#: Taramanin kullanmasina izin verilen alt komutlar.
+IZINLI = {"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote", "for-each-ref", "ls-files"}
+
+#: Bu komsularin hicbiri calistirilmamali.
+YAZAN_KOMUTLAR = (
+    "push", "fetch", "pull", "reset", "checkout", "restore", "clean", "gc",
+    "rebase", "merge", "commit", "add", "rm", "mv", "filter-branch", "stash",
+    "update-ref", "prune", "am", "cherry-pick", "revert", "worktree", "submodule",
+)
+
+GERCEK_GIT = shutil.which("git") or "/usr/bin/git"
+
+
+def test_sadece_izinli_alt_komutlar():
+    from atlas.scan import ALLOWED_GIT_SUBCOMMANDS
+
+    assert set(ALLOWED_GIT_SUBCOMMANDS) == IZINLI
+    for yasak in YAZAN_KOMUTLAR:
+        assert yasak not in ALLOWED_GIT_SUBCOMMANDS
+
+
+def _git_shim(dizin: Path) -> Path:
+    """`git` yerine gecen koruma (guard) script'i: argumanlari kaydeder ve izin
+    listesindeki alt komut disindaki HER seyi reddeder, gercek git'e devreder.
+
+    `git -C <yol> <alt-komut> ...` bicimi korunur: alt komut `$3` konumundadır
+    ve gercek git'e TUM argumanlar aynen gecirilir (yoksa yanlis dizinde
+    calisir ve test bos gecer).
+    """
+    kayit = dizin / "cagrilar.log"
+    koruma = dizin / "git"
+    koruma.write_text(
+        "#!/bin/sh\n"
+        'printf "%s\\n" "$*" >> "{kayit}"\n'
+        'alt="$3"\n'
+        'case "$alt" in\n'
+        "  status|log|rev-parse|rev-list|symbolic-ref|remote|for-each-ref|ls-files)"
+        ' exec {gercek} "$@" ;;\n'
+        '  *) echo "YASAK alt komut: $alt" >&2; exit 97 ;;\n'
+        "esac\n".format(kayit=kayit, gercek=GERCEK_GIT),
+        encoding="utf-8",
+    )
+    koruma.chmod(0o755)
+    return kayit
+
+
+def test_guard_kendisi_calisiyor(tmp_path: Path, monkeypatch):
+    """Once korumanin dogru calistigini dogrula (aksi halde asagidaki test bos gecer)."""
+    shim = tmp_path / "shim-dogrulama"
+    shim.mkdir()
+    _git_shim(shim)
+    repo = make_repo(tmp_path / "gercek-repo")  # gecerli bir repo: `remote` 0 donmeli
+    env = dict(os.environ)
+    env["PATH"] = f"{shim}:{env['PATH']}"
+    yasak = subprocess.run(
+        ["git", "-C", str(repo), "fetch", "--all"],
+        capture_output=True, text=True, env=env,
+    )
+    assert yasak.returncode == 97
+    assert "YASAK" in yasak.stderr
+    serbest = subprocess.run(
+        ["git", "-C", str(repo), "remote"],
+        capture_output=True, text=True, env=env,
+    )
+    assert serbest.returncode == 0
+
+
+def test_gercek_git_cagrisi_sadece_okuyan_komutlar(tmp_path: Path, monkeypatch):
+    """Kanit: guard script'i ile her git cagrisi kaydedilir; kayitta yazan komut olmamali."""
+    from atlas import scan
+
+    repo = make_repo(tmp_path / "guvenlik")
+    shim = tmp_path / "shim"
+    shim.mkdir()
+    kayit = _git_shim(shim)
+    monkeypatch.setenv("PATH", f"{shim}:{os.environ['PATH']}")
+
+    satir = scan.collect_repo(repo)
+    assert satir["name"] == "guvenlik"  # tarama gercekten calisti
+
+    cagrilar = [l for l in kayit.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert cagrilar, "hic git cagrisi kaydedilmedi"
+    for cagri in cagrilar:
+        parcalar = cagri.split()
+        alt = parcalar[2]  # "-C <yol> <alt-komut>"
+        assert alt in IZINLI, f"YAZAN komut cagrildi: {cagri}"
+        assert alt not in YAZAN_KOMUTLAR
+
+
+def test_tarama_once_ve_sonra_ayni(tmp_path: Path, db_file: Path):
+    """Tarama repoyu HIC degistirmez: .git icerigi + calisma agaci ayni kalmali."""
+    temiz = make_repo(tmp_path / "temiz")
+    kirli = make_repo(tmp_path / "kirli")
+    commit_file(kirli, "a.txt", "1", "ikinci")
+    (kirli / "README.md").write_text("# degistirildi\n", encoding="utf-8")
+    (kirli / "izlenmeyen.txt").write_text("yeni\n", encoding="utf-8")
+
+    remote = make_bare_remote(tmp_path / "uzak.git")
+    gecmis = make_repo(tmp_path / "gecmis")
+    git("remote", "add", "origin", str(remote), cwd=gecmis)
+    git("push", "-q", "-u", "origin", "main", cwd=gecmis)
+    commit_file(gecmis, "b.txt", "1", "push edilmemiş")
+
+    bos = make_repo(tmp_path / "bos", commit=False)
+    ayrik = make_repo(tmp_path / "ayrik")
+    commit_file(ayrik, "a.txt", "1", "ikinci")
+    git("checkout", "-q", git("rev-parse", "HEAD~1", cwd=ayrik).strip(), cwd=ayrik)
+
+    repolar = [temiz, kirli, gecmis, bos, ayrik]
+    once = {r: tree_hash(r) for r in repolar}
+
+    for repo in repolar:
+        proc = run_module_cli("tara", "--root", str(repo.parent), "--db", str(db_file))
+        assert proc.returncode == 0, proc.stderr
+
+    for repo in repolar:
+        assert once[repo] == tree_hash(repo), f"{repo} tarama ile degisti"
+        assert not (repo / ".git" / "atlas.lock").exists()
+
+
+def test_index_dosyasi_degismez(tmp_path: Path, db_file: Path):
+    """`git status` index'i tazelemesin: index dosyasi bayt bayt ayni kalmali."""
+    repo = make_repo(tmp_path / "repo")
+    index = repo / ".git" / "index"
+    assert index.exists()
+    once = index.read_bytes()
+    proc = run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    assert index.read_bytes() == once
+
+
+def test_optional_locks_kapatili_calistirilir(monkeypatch, tmp_path: Path):
+    import subprocess as sp
+
+    from atlas import scan
+
+    repo = make_repo(tmp_path / "repo")
+    gorulen: list[dict] = []
+    gercek_run = sp.run
+
+    def kaydedici(cmd, *a, **kw):
+        gorulen.append(kw.get("env") or {})
+        return gercek_run(cmd, *a, **kw)
+
+    monkeypatch.setattr(scan.subprocess, "run", kaydedici)
+    scan.collect_repo(repo)
+    assert gorulen
+    for env in gorulen:
+        assert env.get("GIT_OPTIONAL_LOCKS") == "0"
+
+
+def test_tarama_sonrasi_head_ve_refler_ayni(tmp_path: Path, db_file: Path):
+    repo = make_repo(tmp_path / "repo")
+    commit_file(repo, "a.txt", "1", "ikinci")
+    once = {
+        "head": git("rev-parse", "HEAD", cwd=repo),
+        "ref": git("show-ref", cwd=repo, check=False),
+        "log": git("log", "--format=%H %s", cwd=repo),
+    }
+    proc = run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    assert git("rev-parse", "HEAD", cwd=repo) == once["head"]
+    assert git("show-ref", cwd=repo, check=False) == once["ref"]
+    assert git("log", "--format=%H %s", cwd=repo) == once["log"]
+
+
+def test_sizinti_taramasi_salt_okunur(tmp_path: Path, db_file: Path, monkeypatch):
+    """`atlas sizinti` de repoyu HIC degistirmez + guard yalnizca izinli alt komut."""
+    from atlas import leaks
+
+    repo = make_repo(tmp_path / "sizinti")
+    commit_file(repo, "gizli.txt", "anahtar: " + "sk-" + "b2" * 15, "sir ekle")
+    (repo / "izlenmeyen-sir.txt").write_text("sk-" + "c3" * 15, encoding="utf-8")  # izlenMIYOR
+    once = tree_hash(repo)
+
+    shim = tmp_path / "shim-sizinti"
+    shim.mkdir()
+    kayit = _git_shim(shim)
+    monkeypatch.setenv("PATH", f"{shim}:{os.environ['PATH']}")
+
+    tarama = leaks.tara_repo(repo, commit_sayisi=10)
+    assert tarama.bulgular, "sizinti bulgusu bekleniyordu"
+    assert once == tree_hash(repo), "sizinti taramasi repoyu degistirdi"
+
+    cagrilar = [l for l in kayit.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert cagrilar, "hic git cagrisi kaydedilmedi"
+    for cagri in cagrilar:
+        alt = cagri.split()[2]
+        assert alt in IZINLI, f"YAZAN komut cagrildi: {cagri}"
+        assert alt not in YAZAN_KOMUTLAR
+
+    # Izlenmeyen dosyadaki sIR bu taramada bulunmamali.
+    assert not [
+        b for b in tarama.bulgular
+        if b["kind"] == "api-anahtari" and "izlenmeyen" in (b["file"] or "")
+    ]
+
+    # Ayrica uctan uca: CLI de salt okunur.
+    proc = run_module_cli("sizinti", "--root", str(tmp_path), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    assert once == tree_hash(repo), "CLI sizinti taramasi repoyu degistirdi"
+
+
+def test_sizinti_izlenmeyen_dosyayi_taramaz(tmp_path: Path):
+    """Sadece `git ls-files` (izlenen) dosyalar taranir; izlenmeyen sir YOK."""
+    from atlas import leaks
+
+    repo = make_repo(tmp_path / "izlenmeyen")
+    (repo / "yok.txt").write_text("sk-" + "d4" * 15, encoding="utf-8")
+    # git add YAPILMAZ -> dosya izlenmiyor
+    bulgular = leaks.tara_calisma_agaci(repo)
+    assert not [b for b in bulgular if b["kind"] == "api-anahtari"]
+
+
+def test_okunamayan_dizin_taramayi_cozertmez(tmp_path: Path, db_file: Path):
+    """chmod 000 dizin taramayi cokertmemeli ve diger repolar yazilmalı.
+
+    Root icin de gecerli: root DAC_OVERRIDE ile her seyi okur, ama kritik olan
+    taramanin 0 cikis koduyla bitmesi.
+    """
+    from conftest import rows_for
+
+    iyi = make_repo(tmp_path / "okunur")
+    kilitli = tmp_path / "kilitli"
+    kilitli.mkdir()
+    os.chmod(kilitli, 0o000)
+    try:
+        proc = run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+        assert proc.returncode == 0, proc.stderr
+        assert str(iyi) in rows_for(db_file)
+    finally:
+        os.chmod(kilitli, stat.S_IRWXU)
+
+
+def test_izinsiz_dizin_atlanir_ve_uyari_verilir(tmp_path: Path, db_file: Path):
+    """Iceri gemedigi icin atlanan dizin stderr'a yazilir (seffaflik).
+
+    Root oldugunda chmod 000 ise yaramaz; bu yol `test_permissions.py` icinde
+    gercek `nobody` kullanicisiyla kanitlanir.
+    """
+    from conftest import rows_for
+
+    iyi = make_repo(tmp_path / "okunur")
+    kilitli = tmp_path / "kilitli"
+    kilitli.mkdir()
+    os.chmod(kilitli, 0o000)
+    try:
+        if os.access(kilitli, os.R_OK) and os.access(kilitli, os.X_OK):
+            pytest.skip("root: chmod 000 etkisiz; test_permissions.py gercek kullaniciyla calisiyor")
+        proc = run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+        assert proc.returncode == 0, proc.stderr
+        assert str(iyi) in rows_for(db_file)
+        assert "kilitli" in proc.stderr
+    finally:
+        os.chmod(kilitli, stat.S_IRWXU)
+
+
+def test_bozuk_uzak_adresi_cozertmez(tmp_path: Path, db_file: Path):
+    """Uzak sunucu erisilemez olsa da tarama bitmeli (fetch CALISTIRILMAZ)."""
+    from conftest import rows_for
+
+    repo = make_repo(tmp_path / "copuk")
+    git("remote", "add", "origin", "https://ornek.invalid/olmayan.git", cwd=repo)
+    proc = run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    satir = rows_for(db_file)[str(repo)]
+    assert satir["has_remote"] == 1
+    # Yerelde hicbir uzak-takip ref'i yok ve fetch yasak: sayi UYDURULAMAZ.
+    assert satir["unpushed"] is None
+    assert satir["dirty"] == 0
+
+
+def test_kilitli_ve_bozuk_ama_saglam_repolar(db_file: Path, tmp_path: Path):
+    """Bozuk + bos + temiz + kirli + gecmis: hicbiri digerini cokertmemeli."""
+    from conftest import rows_for
+
+    bozuk = tmp_path / "bozuk"
+    bozuk.mkdir()
+    (bozuk / ".git").mkdir()
+    (bozuk / ".git" / "HEAD").write_text("HEAD degil\n", encoding="utf-8")
+    make_repo(tmp_path / "bos", commit=False)
+    temiz = make_repo(tmp_path / "temiz")
+    kirli = make_repo(tmp_path / "kirli")
+    (kirli / "README.md").write_text("# x\n", encoding="utf-8")
+
+    proc = run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    satirlar = rows_for(db_file)
+    assert sorted(r["name"] for r in satirlar.values()) == ["bos", "kirli", "temiz"]
+    assert satirlar[str(temiz)]["dirty"] == 0
+    assert satirlar[str(kirli)]["dirty"] == 1
+
+
+def test_bozuk_git_dizini_taramayi_cozertmez(tmp_path: Path, db_file: Path):
+    from conftest import rows_for
+
+    bozuk = tmp_path / "bozuk"
+    bozuk.mkdir()
+    (bozuk / ".git").mkdir()
+    (bozuk / ".git" / "HEAD").write_text("bu bir HEAD degil\n", encoding="utf-8")
+    (bozuk / ".git" / "config").write_text("[coremel\n", encoding="utf-8")
+    iyi = make_repo(tmp_path / "iyi")
+    proc = run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    satirlar = rows_for(db_file)
+    assert str(iyi) in satirlar
+    assert str(bozuk) not in satirlar  # hatali repo satir olarak yazilmaz
+    assert "bozuk" in proc.stderr
+
+
+# --------------------------------------------------------------------------
+# Dalga C: `atlas borc` ve `atlas guncelle` de salt-okunur
+# --------------------------------------------------------------------------
+
+def test_borc_taramasi_salt_okunur(tmp_path: Path, db_file: Path, monkeypatch):
+    """`atlas borc` repoyu HIC degistirmez + guard yalnizca izinli alt komut."""
+    from atlas import todo
+
+    repo = make_repo(tmp_path / "borc")
+    commit_file(repo, "a.py", "# TODO: bir\n# FIXME: iki\n", "ekle")
+    once = tree_hash(repo)
+
+    shim = tmp_path / "shim-borc"
+    shim.mkdir()
+    kayit = _git_shim(shim)
+    monkeypatch.setenv("PATH", f"{shim}:{os.environ['PATH']}")
+
+    # Guard arkasinda tarama GERCEKTEN bulgu bulmali (aksi halde test bos gecer).
+    bulgular = todo.tara_calisma_agaci(repo)
+    assert len(bulgular) == 2, "todo taramasi beklendigi kadar bulgu bulmadi"
+
+    proc = run_module_cli("borc", "--root", str(repo.parent), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    assert once == tree_hash(repo), "borc taramasi repoyu degistirdi"
+
+    cagrilar = [l for l in kayit.read_text(encoding="utf-8").splitlines() if l.strip()]
+    assert cagrilar, "hic git cagrisi kaydedilmedi"
+    for cagri in cagrilar:
+        alt = cagri.split()[2]
+        assert alt in IZINLI, f"YAZAN komut cagrildi: {cagri}"
+        assert alt not in YAZAN_KOMUTLAR
+    # Borc taramasi YALNIZCA ls-files kullanir (yeni alt komut yok).
+    assert {c.split()[2] for c in cagrilar} <= {"ls-files"}
+
+
+def test_guncelle_tum_adimlar_salt_okunur(tmp_path: Path, db_file: Path):
+    """`guncelle` = tara + sizinti + borc: ucu da salt-okunur."""
+    kok = tmp_path / "koklar"
+    repo = make_repo(kok / "r")
+    commit_file(repo, "a.py", "# TODO: bir\n", "ekle")
+    commit_file(repo, "b.txt", "not\n", "ekle")
+    once = tree_hash(repo)
+    proc = run_module_cli("guncelle", "--root", str(kok), "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    assert once == tree_hash(repo), "guncelle repoyu degistirdi"
+
+
+def test_panel_veritabani_dosyasina_yazmaz(tmp_path: Path):
+    """Panel DB dosyasina HIC BIR bayt yazmaz (salt-okunur + salt-izlemeli)."""
+    from conftest import db_doldur
+    from atlas.web import app_olustur
+
+    db_yolu = db_doldur(
+        tmp_path / "panel.db",
+        repos=[{"path": "/kurgusal/r", "name": "r", "dirty": 1, "unpushed": 0,
+                "branch": "main", "has_remote": 0, "scanned_at": "2026-09-29T10:00:00+00:00"}],
+        findings=[{"repo": "/kurgusal/r", "kind": "api-anahtari", "severity": "yuksek",
+                   "file": "a.py", "line": 1, "commit": None, "snippet_redacted": "maskeli"}],
+        todos=[{"repo": "/kurgusal/r", "file": "a.py", "line": 2, "text": "# TODO: x"}],
+    )
+    once = db_yolu.read_bytes()
+    stat_once = db_yolu.stat()
+    client = app_olustur(db_yolu).test_client()
+    for yol in ["/", "/yarim-is", "/sizinti", "/borc", "/saglik",
+                "/api/ozet", "/api/yarim-is", "/api/bulgular", "/api/borc", "/repo/1"]:
+        assert client.get(yol).status_code == 200
+    assert db_yolu.read_bytes() == once, "panel DB dosyasini degistirdi"
+    # -wal/-shm yan dosyalari OLUSMAMALI (salt-okunur baglanti).
+    assert not db_yolu.with_name(db_yolu.name + "-wal").exists()
+    assert not db_yolu.with_name(db_yolu.name + "-shm").exists()
+    assert db_yolu.stat().st_size == stat_once.st_size

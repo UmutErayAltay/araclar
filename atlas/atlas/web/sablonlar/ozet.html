@@ -1,0 +1,90 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<h2>Genel bakış</h2>
+
+<div class="kart-izgara">
+  <article class="kart">
+    <p class="kart-etiket">Repo</p>
+    <p class="kart-sayi">{{ veri.repo_sayisi }}</p>
+    <p class="kart-alt">kayıtlı repo</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Kirli repo</p>
+    <p class="kart-sayi">{{ veri.kirli_repo }}</p>
+    <p class="kart-alt">commit'lenmemiş değişiklik var</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Push bekleyen</p>
+    <p class="kart-sayi">{{ veri.push_bekleyen }}</p>
+    <p class="kart-alt">bilinen sayı</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Push durumu bilinmeyen</p>
+    <p class="kart-sayi">{{ veri.push_bilinmeyen }}</p>
+    <p class="kart-alt">atlas fetch yapmaz</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Toplam todo</p>
+    <p class="kart-sayi">{{ veri.toplam_todo }}</p>
+    <p class="kart-alt">TODO/FIXME/XXX/HACK</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Bayat README</p>
+    <p class="kart-sayi">{{ veri.bayat_readme }}</p>
+    <p class="kart-alt"><a href="/bayat-readme">taze: {{ veri.readme_sayaclari.taze }} · yok: {{ veri.readme_sayaclari.yok }}</a></p>
+  </article>
+</div>
+
+<section class="bolum">
+  <h2>Bulgular — önem bazında</h2>
+  {% set var = veri.toplam_bulgu > 0 %}
+  <div class="bolum-ust">
+    <p class="aciklama">Toplam {{ veri.toplam_bulgu }} bulgu. Renk körlüğünde de ayırt
+      edilebilmesi için her rozet hem renk hem metin taşır.</p>
+  </div>
+  {% if veri.toplam_bulgu > 0 %}
+  {# Önem dağılımı: sıfır-bağımlılık SVG, etiketler kesişmez. #}
+  <svg class="graf" viewBox="0 0 460 150" role="img"
+       aria-label="Bulgu sayıları önem bazında">
+    {% set en_cok = veri.toplam_bulgu %}
+    {% for onem in onemler %}
+      {% set adet = veri.bulgu_sayaclari.get(onem, 0) %}
+      {% set y = 18 + loop.index0 * 32 %}
+      {% set genislik = (adet / en_cok * 250) if en_cok else 0 %}
+      <rect x="86" y="{{ y }}" width="{{ genislik if genislik > 0 else 0 }}"
+            height="18" rx="2" fill="{{ onem_renkleri[onem] }}"></rect>
+      <text class="graf-etiket" x="78" y="{{ y + 13 }}" text-anchor="end">{{ onem_etiketleri[onem] }}</text>
+      <text class="graf-etiket sayi" x="{{ 92 + genislik if genislik > 0 else 92 }}" y="{{ y + 13 }}">{{ adet }}</text>
+    {% endfor %}
+  </svg>
+  <p class="lejant-not">Çubuk genişliği en yüksek değere göre ölçeklenir (en çok = tam).</p>
+  {% else %}
+  <div class="bos-durum">
+    <h3>Bulgu yok</h3>
+    <p>Hiçbir repoda sızıntı bulunmadı.
+      <a href="/sizinti">Sızıntı sayfasına bakın</a>.</p>
+  </div>
+  {% endif %}
+</section>
+
+<section class="bolum">
+  <h2>Son tarama</h2>
+  {% if veri.son_tarama %}
+    <dl class="alan">
+      <dt>Zaman</dt><dd>{{ veri.son_tarama }}</dd>
+      <dt>Durum</dt>
+      <dd>
+        {% if veri.veri_bayat %}
+          <span class="rozet eski">eski (24 saatten fazla)</span>
+        {% else %}
+          <span class="rozet taze">güncel</span>
+        {% endif %}
+      </dd>
+    </dl>
+  {% else %}
+    <p class="aciklama">Hiç tarama yapılmamış. <code>atlas guncelle</code> çalıştırın.</p>
+  {% endif %}
+</section>
+
+{% endblock %}

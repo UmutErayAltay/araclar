@@ -1,0 +1,83 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<h2>Bayat README</h2>
+<p class="aciklama">Her repo için “README kod ilerledi ama güncellenmedi mi?”
+  sorusunun <strong>sayısal</strong> cevabı. Skor, README'nin son değiştirildiği
+  committen sonraki <strong>davranış commit sayısına</strong> (belge dışı kod
+  değişikliği yapan commit) ek olarak, README'deki ekran görüntülerinin yaşından
+  gelir. Eşikler: skor &lt; 3 <code>taze</code>, 3–7 <code>eskiyor</code>,
+  8+ <code>bayat</code>.</p>
+
+{% if veri.kayitlar %}
+
+<div class="kart-izgara">
+  <article class="kart">
+    <p class="kart-etiket">Bayat / eskiyor</p>
+    <p class="kart-sayi">{{ veri.bayat_readme }}</p>
+    <p class="kart-alt">README gecikmiş repo</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Taze</p>
+    <p class="kart-sayi">{{ veri.sayaclar.taze }}</p>
+    <p class="kart-alt">güncel görünüyor</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">README yok</p>
+    <p class="kart-sayi">{{ veri.sayaclar.yok }}</p>
+    <p class="kart-alt">kökte README dosyası yok</p>
+  </article>
+</div>
+
+<section class="bolum">
+  <h2>Skora göre sıralı (toplam {{ veri.toplam }})</h2>
+  <p class="aciklama">Renk körlüğünde de ayırt edilebilmesi için her rozet hem
+    renk hem <strong>metin</strong> taşır.</p>
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <thead>
+        <tr>
+          <th>Repo</th><th>Seviye</th><th class="sayi">Skor</th>
+          <th class="sayi">Davranış commit</th><th class="sayi">Görsel yaşı (gün)</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for k in veri.kayitlar %}
+        <tr>
+          <td class="dar">{% if k.id %}<a href="/repo/{{ k.id }}">{{ k.repo }}</a>{% else %}{{ k.repo }}{% endif %}</td>
+          <td><span class="rozet {{ k.seviye if k.seviye_bilinen else 'bilgi' }}">{{ k.seviye_etiket }}</span></td>
+          <td class="sayi">{{ k.skor }}</td>
+          <td class="sayi">{{ k.davranis_commit }}</td>
+          <td class="sayi">{% if k.gorsel_yasi is not none %}{{ k.gorsel_yasi }}{% else %}-{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Mobil: tablo yerine kart (yatay kaydırma çubuğu çıkmaz). #}
+  <div class="kart-liste">
+  {% for k in veri.kayitlar %}
+    <article class="kart">
+      <div class="kart-ust">
+        <strong>{% if k.id %}<a href="/repo/{{ k.id }}">{{ k.repo }}</a>{% else %}{{ k.repo }}{% endif %}</strong>
+        <span class="rozet {{ k.seviye if k.seviye_bilinen else 'bilgi' }}">{{ k.seviye_etiket }}</span>
+      </div>
+      <p class="kart-alt">
+        Skor {{ k.skor }} · {{ k.davranis_commit }} davranış commit
+        {%- if k.gorsel_yasi is not none %} · görsel {{ k.gorsel_yasi }} gün{% endif %}
+      </p>
+    </article>
+  {% endfor %}
+  </div>
+</section>
+
+{% else %}
+  <div class="bos-durum">
+    <h3>Henüz README taraması yapılmamış</h3>
+    <p><code>atlas readme</code> çalıştırın ya da tüm tabloları doldurmak için
+      <code>atlas guncelle</code> deyin. Panel tarama tetiklemez.</p>
+  </div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<h2>Sızıntı bulguları</h2>
+<p class="aciklama">Bulgu metni HER ZAMAN maskelenmiştir; ham sır hiçbir yerde yoktur.
+  Renk körlüğünde de ayırt edilebilmesi için rozet hem renk hem metin taşır.</p>
+
+{# Süzgeç formu: GET, salt-okunur. Tarayıcı varsayılanı BEYAZ kontrol YOK. #}
+<form class="suzgec" method="get" action="/sizinti">
+  <div class="alan-grup">
+    <label for="f-siddet">Önem</label>
+    <select id="f-siddet" name="siddet">
+      <option value="" {% if not siddet %}selected{% endif %}>tümü</option>
+      {% for o in onemler %}
+        <option value="{{ o }}" {% if siddet == o %}selected{% endif %}>{{ onem_etiketleri[o] }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="alan-grup">
+    <label for="f-tur">Tür</label>
+    <select id="f-tur" name="tur">
+      <option value="" {% if not tur %}selected{% endif %}>tümü</option>
+      {% for t, etiket in tur_etiketleri.items() %}
+        <option value="{{ t }}" {% if tur == t %}selected{% endif %}>{{ etiket }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="alan-grup">
+    <label for="f-repo">Repo</label>
+    <input id="f-repo" name="repo" type="text" value="{{ repo or '' }}"
+           placeholder="tam repo yolu" spellcheck="false">
+  </div>
+  <button type="submit">Filtrele</button>
+  <a class="btn" href="/sizinti">Temizle</a>
+</form>
+
+<p class="aciklama">
+  {{ veri.toplam }} bulgu · sayfa {{ veri.sayfa }}/{{ veri.toplam_sayfa }}
+  (sayfa başı {{ veri.sayfa_boyutu }})
+</p>
+
+{% if veri.kayitlar %}
+<div class="tablo-sarayici">
+  <table class="tablo">
+    <thead>
+      <tr>
+        <th>Önem</th><th>Tür</th><th>Repo</th><th>Dosya:satır</th><th>Konum</th><th>Snippet (maskeli)</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for b in veri.kayitlar %}
+      <tr>
+        <td><span class="rozet {{ b.onem }}">{{ b.onem_etiket }}</span></td>
+        <td>{{ b.tur_etiket }}</td>
+        <td class="dar">{{ b.repo }}</td>
+        <td class="mono kirp" title="{{ b.dosya }}{% if b.satir %}:{{ b.satir }}{% endif %}">
+          {{ b.dosya }}{% if b.satir %}:{{ b.satir }}{% endif %}</td>
+        <td class="ikincil">{{ b.yer }}{% if b.commit %} <span class="commit">{{ b.commit }}</span>{% endif %}</td>
+        <td class="mono kirp" title="{{ b.snippet }}">{{ b.snippet or "-" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="kart-liste">
+{% for b in veri.kayitlar %}
+  <article class="kart">
+    <div class="kart-ust">
+      <span class="rozet {{ b.onem }}">{{ b.onem_etiket }}</span>
+      <strong>{{ b.tur_etiket }}</strong>
+    </div>
+    <p class="mono kirp">{{ b.repo }} · {{ b.dosya }}{% if b.satir %}:{{ b.satir }}{% endif %}</p>
+    <p class="ikincil">{{ b.yer }}{% if b.commit %} <span class="commit">{{ b.commit }}</span>{% endif %}</p>
+    <pre class="snippet mono">{{ b.snippet or "-" }}</pre>
+  </article>
+{% endfor %}
+</div>
+
+{% if veri.toplam_sayfa > 1 %}
+<nav class="sayfalama" aria-label="Sayfalama">
+  {% set g = veri.suzgec %}
+  {% if veri.sayfa > 1 %}
+    <a class="btn" href="/sizinti?sayfa={{ veri.sayfa - 1 }}{% if g.siddet %}&amp;siddet={{ g.siddet }}{% endif %}{% if g.tur %}&amp;tur={{ g.tur }}{% endif %}{% if g.repo %}&amp;repo={{ g.repo|urlencode }}{% endif %}">‹ Önceki</a>
+  {% endif %}
+  <span class="ikincil">{{ veri.sayfa }} / {{ veri.toplam_sayfa }}</span>
+  {% if veri.sayfa < veri.toplam_sayfa %}
+    <a class="btn" href="/sizinti?sayfa={{ veri.sayfa + 1 }}{% if g.siddet %}&amp;siddet={{ g.siddet }}{% endif %}{% if g.tur %}&amp;tur={{ g.tur }}{% endif %}{% if g.repo %}&amp;repo={{ g.repo|urlencode }}{% endif %}">Sonraki ›</a>
+  {% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+  <div class="bos-durum">
+    <h3>{% if siddet or tur or repo %}Bu filtrede bulgu yok{% else %}Bulgu yok{% endif %}</h3>
+    <p>
+      {% if siddet or tur or repo %}
+        Seçili filtreyle eşleşen bulgu bulunmuyor. <a href="/sizinti">Filtreyi temizleyin</a>.
+      {% else %}
+        Taranan repolarda sızıntı bulunmadı. <code>atlas sizinti</code> ile tarayabilirsiniz.
+      {% endif %}
+    </p>
+  </div>
+{% endif %}
+
+{% endblock %}

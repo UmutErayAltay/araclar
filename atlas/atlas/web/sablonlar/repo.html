@@ -1,0 +1,124 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<h2>{{ repo.name }}</h2>
+<p class="aciklama"><span class="mono">{{ repo.path }}</span></p>
+
+<section class="bolum">
+  <h2>Repo kartı</h2>
+  <dl class="alan">
+    <dt>Dal</dt><dd>{{ repo.branch or "-" }}</dd>
+    <dt>Kirli</dt><dd>{{ repo.dirty }} değişiklik</dd>
+    <dt>Push edilmemiş</dt>
+    <dd>
+      {% if repo.unpushed_bilinmeyen %}
+        <span class="rozet bilinmiyor">bilinmiyor</span>
+        <span class="ikincil">atlas fetch yapmaz; <code>git fetch</code> gerekir</span>
+      {% else %}
+        {{ repo.unpushed }}
+      {% endif %}
+    </dd>
+    <dt>Remote</dt><dd>{{ "var" if repo.has_remote else "yok" }}</dd>
+    <dt>Son commit</dt><dd>{{ repo.last_commit_at or "-" }}</dd>
+    <dt>README</dt>
+    <dd>
+      {% if repo.readme and repo.readme.seviye_bilinen %}
+        <span class="rozet {{ repo.readme.seviye }}">{{ repo.readme.seviye_etiket }}</span>
+        <span class="ikincil">skor {{ repo.readme.skor }} ·
+          {{ repo.readme.davranis_commit }} davranış commit{% if repo.readme.screenshot_age_days is not none %} ·
+          görsel {{ repo.readme.screenshot_age_days }} gün{% endif %}</span>
+      {% elif repo.readme %}
+        <span class="rozet bilgi">{{ repo.readme.seviye_etiket }}</span>
+        {% if repo.readme.neden %}<span class="ikincil">{{ repo.readme.neden }}</span>{% endif %}
+      {% else %}
+        <span class="ikincil">taranmamış — <code>atlas readme</code> çalıştırın</span>
+      {% endif %}
+    </dd>
+  </dl>
+</section>
+
+<section class="bolum">
+  <h2>Şimdi ne yapmalı</h2>
+  {% if repo.ozet %}
+    {# Özet metni LLM çıktısı olabilir: sunucu tarafında bir kez daha maskelendi. #}
+    <ul class="ozet-liste">
+    {% for satir in repo.ozet.metin.splitlines() %}
+      <li>{{ satir.lstrip('-•* ') }}</li>
+    {% endfor %}
+    </ul>
+    <p class="lejant-not">Kaynak: {{ repo.ozet.kaynak_etiket }} · üretim: {{ repo.ozet.uretim }}</p>
+  {% else %}
+    <div class="bos-durum">
+      <h3>Henüz özet üretilmedi</h3>
+      <p>Bu repo için özet yok. <code>atlas ozet</code> çalıştırın.
+        Varsayılan özet ağa çıkmaz (yerel kural); <code>--cor</code> ile
+        yerel LLM'e sorulabilir.</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="bolum">
+  <h2>Bulgular ({{ repo.bulgular|length }})</h2>
+  {% if repo.bulgular %}
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <thead><tr><th>Önem</th><th>Tür</th><th>Dosya:satır</th><th>Konum</th><th>Snippet</th></tr></thead>
+      <tbody>
+      {% for b in repo.bulgular %}
+        <tr>
+          <td><span class="rozet {{ b.onem }}">{{ b.onem_etiket }}</span></td>
+          <td>{{ b.tur_etiket }}</td>
+          <td class="mono kirp" title="{{ b.dosya }}">{{ b.dosya }}{% if b.satir %}:{{ b.satir }}{% endif %}</td>
+          <td class="ikincil">{{ b.yer }}</td>
+          <td class="mono kirp" title="{{ b.snippet }}">{{ b.snippet or "-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="kart-liste">
+  {% for b in repo.bulgular %}
+    <article class="kart">
+      <div class="kart-ust">
+        <span class="rozet {{ b.onem }}">{{ b.onem_etiket }}</span><strong>{{ b.tur_etiket }}</strong>
+      </div>
+      <p class="mono kirp">{{ b.dosya }}{% if b.satir %}:{{ b.satir }}{% endif %} · {{ b.yer }}</p>
+      <pre class="snippet mono">{{ b.snippet or "-" }}</pre>
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}
+  <div class="bos-durum"><h3>Bulgu yok</h3><p>Bu repoda kayıtlı sızıntı bulgusu yok.</p></div>
+  {% endif %}
+</section>
+
+<section class="bolum">
+  <h2>TODO'lar ({{ repo.todos|length }})</h2>
+  {% if repo.todos %}
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <thead><tr><th>Dosya:satır</th><th>Metin</th></tr></thead>
+      <tbody>
+      {% for t in repo.todos %}
+        <tr>
+          <td class="mono kirp" title="{{ t.dosya }}">{{ t.dosya }}{% if t.satir %}:{{ t.satir }}{% endif %}</td>
+          <td class="mono kirp" title="{{ t.metin }}">{{ t.metin or "-" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="kart-liste">
+  {% for t in repo.todos %}
+    <article class="kart">
+      <p class="mono kirp">{{ t.dosya }}{% if t.satir %}:{{ t.satir }}{% endif %}</p>
+      <pre class="snippet mono">{{ t.metin or "-" }}</pre>
+    </article>
+  {% endfor %}
+  </div>
+  {% else %}
+  <div class="bos-durum"><h3>TODO yok</h3><p>Bu repoda kayıtlı TODO kaydı yok.</p></div>
+  {% endif %}
+</section>
+
+{% endblock %}

@@ -1,0 +1,22 @@
+Windows Registry Editor Version 5.00
+
+; danis — "Bu dosyayı danis'e sor" sağ tık menü girdisi.
+;
+; Bu bir ŞABLONdur: `<DANIS_EXE_YOLU>` yer tutucusu gerçek yolla değiştirilir.
+; Otomatik kurulum: install-context-menu.ps1 -DryRun ile önce içeriği görün,
+; bayrağı kaldırınca reg import çalışsın.
+;
+; Anahtar `*\shell\exefile` altındadır: HKCR, HKLM\SOFTWARE\Classes ve
+; HKCU\Software\Classes'in birleşik görünümüdür, dolayısıyla bu bir *kullanıcı*
+; anahtarı değil sistem anahtarıdır (yönetici hakkı gerektirebilir) ama .exe
+; kayıtlarını da kapsadığı için hangi kökten gelirse gelsin exe'lerde görünür.
+; `exefile` sayesinde menü yalnızca çalıştırılabilir dosyalarda görünür.
+;
+; Kaldırmak için: HKEY_CLASSES_ROOT\*\shell\exefile\DanisaSor anahtarını silmek
+; yeterlidir.
+
+[HKEY_CLASSES_ROOT\*\shell\exefile\DanisaSor]
+@="Bu dosyayı danis'e sor"
+
+[HKEY_CLASSES_ROOT\*\shell\exefile\DanisaSor\command]
+@="<DANIS_EXE_YOLU>" dosya "%1"

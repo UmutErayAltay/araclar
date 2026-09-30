@@ -1,0 +1,41 @@
+name: Build Windows
+
+# push/PR tetikleyicili — kisayol/.github/workflows/ci.yml ile aynı desen.
+# Bu workflow YALNIZCA Windows'ta gerçekten koşar; Linux'ta PyInstaller
+# bir .exe üretmez. Doğrulama durumu GitHub → Actions sekmesinden görülür.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: pip install -r requirements.txt pyinstaller
+
+      # PyInstaller'a `danis` paketinin kendisini de veriyoruz: cli.py
+      # `from danis.hata_analiz import ...` diye İÇE aktarım yapıyor, sadece
+      # script yolunu vermek modüleri bulamıyor (hidden-import hatası).
+      - name: Build (tek dosya)
+        run: pyinstaller --onefile --name danis --paths . danis/cli.py
+
+      - name: Smoke test
+        run: |
+          # Kurulum çökmüşse artifact'ı yayınlamadan yakalayalım: --help
+          # cor'a dokunmaz, ama giriş noktasının ve bağımlılıkların
+          # paketlendiğini gerçekten kanıtlar.
+          .\dist\danis.exe --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: danis-win
+          path: dist/danis.exe
+          if-no-files-found: error

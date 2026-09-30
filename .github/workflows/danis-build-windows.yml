@@ -1,12 +1,19 @@
-name: Build Windows
+name: danis — Build Windows
 
-# push/PR tetikleyicili — kisayol/.github/workflows/ci.yml ile aynı desen.
+# corclient monorepo'sunda danis/ klasörü için. Tetikleyici yalnız danis/ veya
+# ortak istemci kaynağı değişince çalışır; komutlar danis/ içinde koşar.
 # Bu workflow YALNIZCA Windows'ta gerçekten koşar; Linux'ta PyInstaller
 # bir .exe üretmez. Doğrulama durumu GitHub → Actions sekmesinden görülür.
 on:
   push:
     branches: [main]
+    paths: ['danis/**', 'corclient.py', '.github/workflows/danis-build-windows.yml']
   pull_request:
+    paths: ['danis/**', 'corclient.py', '.github/workflows/danis-build-windows.yml']
+
+defaults:
+  run:
+    working-directory: danis
 
 jobs:
   build:
@@ -37,5 +44,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: danis-win
-          path: dist/danis.exe
+          path: danis/dist/danis.exe
           if-no-files-found: error

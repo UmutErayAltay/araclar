@@ -115,8 +115,8 @@ sınıfıdır ve eski varsayılanları verir:
 | atlas | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor start` |
 | harita | `stealth/space-bunny-alpha` | 2000 | 60 | loopback **+ `0.0.0.0`** | `cor start` |
 | orkestra | `nvidia/nemotron-3-ultra-550b-a55b:free` | 4000 | 120 | loopback | `cor start` |
-| danis | `stealth/space-bunny-alpha` | 2000 | 60 | **YOK** (`None`) | `cor` |
-| ne-izlesem | `stealth/space-bunny-alpha` | 2000 | 60 | **YOK** (`None`) | `cor claude` |
+| danis | `stealth/space-bunny-alpha` | 2000 | 60 | loopback (8. bölümde sıkılaştırıldı) | `cor` |
+| ne-izlesem | `stealth/space-bunny-alpha` | 2000 | 60 | loopback (8. bölümde sıkılaştırıldı) | `cor claude` |
 
 `DEFAULT_MODEL` her repoda `os.environ.get("COR_MODEL", <yukarıdaki>)`; `DEFAULT_BASE_URL`
 `os.environ.get("COR_BASE_URL", "http://127.0.0.1:8787")`.
@@ -166,3 +166,20 @@ kendi başına değiştirmez.**
 - Anahtar, yerel yol, oturum id'si repoya girmez (fixture'lar dahil).
 - Her yeni test için "bozuk kodda bu kırılır mı" diye kendin dene; raporda hangi testlerin
   mutasyona karşı kırıldığını listele.
+
+## 8. Monorepo'ya taşıma (2026-09-30, sonradan)
+
+Bu sözleşme başta ayrı repolar için yazıldı (her tüketici kendi reposunda). Sonra Umut, `atlas`,
+`harita`, `orkestra`, `danis`, `ne-izlesem` projelerinin bu repoya klasör olarak taşınmasına karar
+verdi (`git subtree add`, commit geçmişi korunarak; `danis` artık özel). Sonuçları:
+
+- Yukarıdaki "tüketici repo" ifadeleri artık `corclient/<proje>/` klasörleridir; vendoring (1. bölüm)
+  bilerek korundu: projeler bağımsız kurulabilir/derlenebilir kalsın (`danis` tek `.exe`).
+- `tools/sync.py --hepsi` ve `tests/test_monorepo_kopyalar.py` eklendi: artık kopyaların **güncelliği**
+  de aynı repoda test edilir (ayrı repolar döneminde yalnız "elle düzenlendi mi" görülebiliyordu).
+- **4. bölümdeki açık karar kapandı:** `danis` ve `ne-izlesem` de loopback dışı adresi reddeder
+  (`izinli_konaklar=IZINLI_KONAKLAR`). Uzak cor kullanan (ör. WSL→Windows) kurulum bu iki araçta artık
+  kurulumda hata alır; bilerek kabul edildi.
+- `danis`'in Windows CI'ı `.github/workflows/danis-build-windows.yml` olarak köke taşındı
+  (`working-directory: danis`, yol filtreli). Windows'ta henüz koşturulmadı.
+- `anlat` ve `readbunny` kapsam dışı kaldı (6. bölüm geçerli).

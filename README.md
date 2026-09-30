@@ -1,74 +1,68 @@
 # corclient
 
-Yerel cor proxy'sine (`POST /v1/messages`) konuşan ince LLM istemcisinin **tek kaynağı**.
+Yerel **cor** proxy'sine (`POST /v1/messages`) konuşan küçük Python araçlarının tek
+deposu. Ortak parça, hepsinin kullandığı **tek LLM istemcisidir** (`corclient.py`);
+araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 
-Bu istemci daha önce `atlas`, `harita`, `orkestra`, `danis` ve `ne-izlesem`
-paketlerinde birer kopyası olarak yaşıyordu. Bu repo o kopyaları **tek dosyaya**
-indirir; tüketici repolar kaynağı kopyalayıp kendi `llm.py` ince kabuğunu korur.
+> Not: Depo adı yalnızca istemciyi anlatıyor; içinde istemciyi kullanan 5 uygulama da var.
+> GitHub'da adı değiştirilebilir (Settings → Rename; eski bağlantılar yönlenir).
 
-## Neden bağımlılık değil (vendoring kararı)
+## İçindekiler
 
-`pip install corclient` **seçilmedi**:
+| Klasör | Ne işe yarar |
+|---|---|
+| `corclient.py`, `tools/`, `tests/` | Ortak cor istemcisi (tek kaynak) + senkron aracı + bunların testleri |
+| `atlas/` | Repo sağlık atlası: git repolarını tarar, yarım iş / bayat README / sızıntı bulgularını gösterir |
+| `harita/` | Markdown vault'unu not grafiği, arama ve haftalık özet olarak gösterir |
+| `orkestra/` | Ajan görev kuyruğu, kota takibi, kanıt değerlendirme ve web panel |
+| `danis/` | Terminalde hata asistanı + "bu dosyayı cor'a sor" (Windows `.exe` derlemesi var) |
+| `ne-izlesem/` | Film/dizi/kitap takip listesi + ruh haline göre öneri |
 
-- Tüm repolar bilerek **yalnız stdlib** (`urllib`) kullanıyor; ek kurulum adımı istemiyorlar.
-- `danis` herkese açık bir repo ve GitHub Actions'ta Windows `.exe` derliyor; özel bir
-  repoya bağımlılık CI'ı kırılabilir.
-- Her repo kendi test paketini **tek başına** koşabilmeli.
-
-Bunun yerine `tools/sync.py` ile kaynak, her tüketicinin paketine `_corclient.py`
-adıyla kopyalanır. Bu, "5 kopya" yerine **"1 kaynak + 5 doğrulanabilir yansıma"**dır.
-Kopya **elle düzenlenmez**; sapma senkron başlığındaki `sha256` ile yakalanır.
-
-## Dürüst sınır
-
-Bu bir bağımlılık değil, senkronlanan bir kopya düzenidir. Yani bir hatayı düzeltmek
-**yine 5 repoya yansıtılmalıdır** — ama artık tek komutla (`sync.py`) ve sapma olursa
-`--check` **kırmızı** döner. Tek doğruluk kaynağı kazanılmıştır; tek yazma yeri
-kazanılmamıştır.
-
-## Kullanım (tüketici repo)
-
-Kaynağı kendi paketinize kopyalayın:
+Her klasör **bağımsız bir projedir**: kendi `README.md`, `pyproject.toml` ve testi var.
+Testler klasörün içinden koşulur (kökteki `pytest` yalnızca ortak istemciyi sınar):
 
 ```bash
-python3 tools/sync.py ../atlas/atlas/_corclient.py ../harita/harita/_corclient.py
+python3 -m pytest -q                      # kök: ortak istemci + senkron + tüm kopyaların güncelliği
+cd atlas && python3 -m pytest -q          # bir proje
 ```
 
-Sapma denetimi (CI'ya koyun):
+## Ortak istemci nasıl paylaşılıyor (vendoring)
+
+Projeler bilerek **yalnız standart kütüphane** kullanır ve kendi başına kurulabilir/derlenebilir
+olmalıdır (ör. `danis` PyInstaller ile tek `.exe` olur). Bu yüzden istemci bir pip bağımlılığı
+değil; `corclient.py` **kopyalanır**: her projenin paketinde `_corclient.py` vardır ve
+ilk satırında kaynağın sha256'sı yazar. Proje içindeki `llm.py` ise yalnızca o projeye özgü
+varsayılanları (model, token sayısı, zaman aşımı, konak denetimi) taşıyan ince bir kabuktur.
+
+Kopya **elle düzenlenmez**. Düzeltme her zaman `corclient.py`'de yapılır:
 
 ```bash
-python3 tools/sync.py --check ../atlas/atlas/_corclient.py
+python3 tools/sync.py --hepsi            # kaynağı tüm projelere yansıt
+python3 tools/sync.py --check --hepsi    # sapma varsa çıkış kodu 1
 ```
 
-Sapma varsa çıkış kodu `1` döner ve hangi hedefin neden kırıldığını stderr'e yazar.
-Hedef yollar komut satırı argümanıdır; koda **gömülmez** (yerel yol sızıntısı yok).
+Kökteki `tests/test_monorepo_kopyalar.py`, tüm kopyaların güncel olduğunu ve listede olmayan
+bir kopya bulunmadığını sınar; yansıtmayı unutmak testi kırar. CRLF (Windows `autocrlf`)
+farkı hash'i bozmaz.
 
-Kopyaladıktan sonra `llm.py` ince kabuğunuz şu ismi dışa vermeye devam eder:
-`LLMError`, `LLMClient`, `CorLLMClient`, `konak_kontrol`, `IZINLI_KONAKLAR`,
-`DEFAULT_BASE_URL`, `DEFAULT_MODEL`, `MAX_TOKENS`. Mevcut testler ve CLI'lar böylece
-**değişmeden** çalışır.
+## Proje varsayılanları
 
-## Tüketici tablosu
-
-| Repo | `DEFAULT_MODEL` | `MAX_TOKENS` | timeout | konak denetimi | başlat ipucu |
+| Proje | `DEFAULT_MODEL` | `MAX_TOKENS` | timeout | konak denetimi | başlat ipucu |
 |---|---|---|---|---|---|
 | atlas | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor start` |
-| harita | `stealth/space-bunny-alpha` | 2000 | 60 | loopback **+ `0.0.0.0`** | `cor start` |
+| harita | `stealth/space-bunny-alpha` | 2000 | 60 | loopback + `0.0.0.0` | `cor start` |
 | orkestra | `nvidia/nemotron-3-ultra-550b-a55b:free` | 4000 | 120 | loopback | `cor start` |
-| danis | `stealth/space-bunny-alpha` | 2000 | 60 | **yok** (`izinli_konaklar=None`) | `cor` |
-| ne-izlesem | `stealth/space-bunny-alpha` | 2000 | 60 | **yok** (`izinli_konaklar=None`) | `cor claude` |
+| danis | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor` |
+| ne-izlesem | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor claude` |
 
-`danis` ve `ne-izlesem` bugün konak denetimi **yapmıyor**; bu refactor davranışı
-değiştirmiyor, mevcut kararı koruyor. Bu iki araç kullanıcı dosyasını `COR_BASE_URL`'in
-gösterdiği yere gönderir; diğer üçü loopback dışını reddeder. Tutarlılık istenirse
-`izinli_konaklar=IZINLI_KONAKLAR` yapmak tek satırlık değişikliktir — ancak uzak cor
-kullanan (WSL→Windows gibi) kurulumları kırabilir; bu karar ana oturumunundur.
+Loopback denetimi, kullanıcı verisi yanlışlıkla başka bir makineye gitmesin diye cor adresi
+`127.0.0.1`/`localhost`/`::1` dışındaysa istemciyi kurarken hata verir. `COR_BASE_URL` ve
+`COR_MODEL` ortam değişkenleri varsayılanları değiştirir.
 
-## Geliştirme
+## CI
 
-```bash
-python3 -m pytest -q
-```
+`.github/workflows/danis-build-windows.yml`: `danis/` veya `corclient.py` değişince Windows'ta
+`danis.exe` derler ve `--help` ile sınar. Yalnızca GitHub'ın Windows çalıştırıcısında çalışır;
+sonucu Actions sekmesinden görürsünüz.
 
-Testler gerçek bir yerel HTTP sunucusuna (`http.server`, `127.0.0.1`, boş port) gider.
-Gerçek cor'a hiçbir ağ çağrısı yapılmaz; tüm veri kurgusaldır.
+Ayrıntılı tasarım gerekçesi ve kabul kriterleri: [`SOZLESME.md`](SOZLESME.md).

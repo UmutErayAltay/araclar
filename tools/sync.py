@@ -4,6 +4,8 @@
 Kullanım:
     python3 tools/sync.py YOL [YOL ...]            # yaz
     python3 tools/sync.py --check YOL [YOL ...]     # doğrula, sapma varsa 1
+    python3 tools/sync.py --hepsi                   # repodaki TÜM <proje>/<paket>/_corclient.py'leri yaz
+    python3 tools/sync.py --check --hepsi           # hepsini doğrula
 
 Her hedefe, kaynağın BAYTLARI DEĞİŞTİRİLMEDEN, üstüne tek bir senkron
 başlığı eklenerek yazılır:
@@ -100,6 +102,11 @@ def yaz(yol: Path, surum: str, sha256: str, govde: bytes) -> None:
     yol.write_bytes(baslik_uret(surum, sha256).encode("utf-8") + govde)
 
 
+def tum_kopyalar() -> list[Path]:
+    """Bu repodaki tüm `_corclient.py` kopyaları (`<proje>/<paket>/_corclient.py`)."""
+    return sorted(KOK.glob("*/*/_corclient.py"))
+
+
 def main(argv: list[str] | None = None) -> int:
     ayristirici = argparse.ArgumentParser(
         prog="sync.py",
@@ -110,8 +117,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="yazma; sapma varsa 1 döndür",
     )
-    ayristirici.add_argument("yollar", nargs="+", help="hedef _corclient.py yolu")
+    ayristirici.add_argument(
+        "--hepsi",
+        action="store_true",
+        help="bu repodaki tüm <proje>/<paket>/_corclient.py dosyalarını hedef al",
+    )
+    ayristirici.add_argument("yollar", nargs="*", help="hedef _corclient.py yolu")
     args = ayristirici.parse_args(argv)
+    if args.hepsi:
+        args.yollar = [*args.yollar, *(str(y) for y in tum_kopyalar())]
+    if not args.yollar:
+        ayristirici.error("hedef yol ver ya da --hepsi kullan")
 
     if not KAYNAK.is_file():
         print(f"HATA: kaynak bulunamadı: {KAYNAK}", file=sys.stderr)

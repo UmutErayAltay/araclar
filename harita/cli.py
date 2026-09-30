@@ -367,7 +367,9 @@ def komut_tutarlilik(args: argparse.Namespace) -> int:
     esleme_yolu = Path(args.esleme).expanduser() if args.esleme else tut_modulu.VARSAYILAN_ESLESME
     eslesme = tut_modulu.eslesme_dosyasi_oku(esleme_yolu)
 
-    rapor = tut_modulu.bulgular_uret(vault, atlas, eslesme, esik_gun=args.esik_gun)
+    rapor = tut_modulu.bulgular_uret(
+        vault, atlas, eslesme, esik_gun=args.esik_gun, bugun=args.bugun
+    )
 
     if args.json:
         import json
@@ -396,6 +398,33 @@ def komut_tutarlilik(args: argparse.Namespace) -> int:
     if args.kati and rapor.uyarilar:
         return 1
     return 0
+
+
+def komut_durum(args: argparse.Namespace) -> int:
+    """Kule entegrasyonu: SAYI/DURUM özeti.
+
+    Sözleşme (v1): stdout'a YALNIZCA tek bir JSON nesnesi; hata sabit kodlu.
+    Ağa çıkmaz, cor çağırmaz, indekslemeyi TETİKLEMEZ — yalnızca mevcut
+    indeksi salt okunur okur.
+    """
+    from . import durum as durum_moduli
+
+    db_yolu = _db_yolu(args)
+    durum = durum_moduli.durum_oku(db_yolu, args.vault)
+
+    # `tutarlilik_uyari` yalnızca VAULT biliniyorsa hesaplanabilir (atlas DB'si
+    # karşılaştırması vault notlarını okur). Vault verilmemişse atlas DB'si
+    # bulunsa bile `null` kalır: hesaplanmadığını 0 sanmak yanlış olur.
+    if durum.hata is None and args.vault:
+        durum.tutarlilik_uyari = durum_moduli.tutarlilik_uyari_sayisi(
+            args.vault, args.atlas_db, args.esleme, bugun=args.bugun
+        )
+
+    if args.json:
+        print(durum.json_metni())
+    else:
+        print(durum_moduli.durum_ozet_metni(durum))
+    return 1 if durum.hata is not None else 0
 
 
 def arg_parser() -> argparse.ArgumentParser:
@@ -493,6 +522,24 @@ def arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--kati", action="store_true", help="Uyarı varsa çıkış kodu 1")
     p.add_argument("--bugun", type=_tarih_coz, default=None, help=argparse.SUPPRESS)
     p.set_defaults(fonksiyon=komut_tutarlilik)
+
+    p = alt.add_parser(
+        "durum", parents=[ortak], help="Kule entegrasyonu için sayı/durum özeti (salt okunur)"
+    )
+    p.add_argument(
+        "vault", nargs="?", default=None, help="Vault kökü (bayatlık ve tutarlılık için)"
+    )
+    p.add_argument(
+        "--atlas-db",
+        default=None,
+        help="atlas SQLite DB'si (varsayılan: ~/.atlas/atlas.db)",
+    )
+    p.add_argument(
+        "--esleme", default=None, help="Eşleme dosyası (varsayılan: ~/.harita/repolar.toml)"
+    )
+    p.add_argument("--json", action="store_true", help="Sözleşmeye uygun tek JSON nesnesi")
+    p.add_argument("--bugun", type=_tarih_coz, default=None, help=argparse.SUPPRESS)
+    p.set_defaults(fonksiyon=komut_durum)
 
     return parser
 

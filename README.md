@@ -64,6 +64,10 @@ harita tutarlilik /path/to/vault
 harita tutarlilik /path/to/vault --atlas-db /tmp/harita_atlas.db
 harita tutarlilik /path/to/vault --kati           # uyarı varsa çıkış kodu 1
 harita tutarlilik /path/to/vault --json
+
+# kule entegrasyonu: SAYI/DURUM ozeti (SALT OKUNUR, indekslemeyi tetiklemez)
+harita durum --json /path/to/vault
+harita durum --json                       # vault verilmezse bayatlik/tutarlilik null
 ```
 
 Veritabanı yolunu `--db` ile ya da `HARITA_DB` ortam değişkeniyle belirle.
@@ -315,6 +319,45 @@ ayırt eder ve neye bakıldığını gösterir:
 `--json` çıktısının `kontrol_edilenler` alanında aynı bilgiler
 (`cift_sayisi`, `guven`, `eslesme_yontemi`, `eslesmeyen_not`, `ciftler`,
 `kurallar`) yer alır. **Bulgular bu eklemeyle DEĞİŞMEZ.**
+
+---
+
+## `durum --json` (kule entegrasyonu)
+
+Kule (kontrol kulesi paneli) bu projeyi yalnızca **SAYI ve DURUM** için okur.
+`harita durum` sözleşmeye uygun tek bir JSON nesnesi basar:
+
+```bash
+harita durum --json /path/to/vault
+harita durum --json                       # vault verilmezse bayatlık/tutarlılık null
+harita durum --json --atlas-db /tmp/atlas.db
+```
+
+```json
+{"surum":1,"kaynak":"harita","son_indeks":"2026-09-30T07:55:00+00:00","indeks_bayat":false,
+ "not_sayisi":1234,"kirik_link":3,"yetim_not":21,"tutarlilik_uyari":null}
+```
+
+| Alan | Anlamı |
+|---|---|
+| `surum` | daima `1` |
+| `kaynak` | daima `"harita"` |
+| `son_indeks` | son indekslemenin UTC ISO-8601 damgası; bilinmiyorsa `null` |
+| `indeks_bayat` | indeksten sonra vault'ta değişen not var mı; hesaplanamazsa `null` |
+| `not_sayisi` | `notes` satır sayısı (web `/saglik` ile aynı) |
+| `kirik_link` | çözülemeyen link sayısı (web `/kirik` ile aynı) |
+| `yetim_not` | **gerçek** yetimler (web `/yetim` ile aynı; `daily/` ve kök dosyaları hariç) |
+| `tutarlilik_uyari` | `tutarlilik` uyarı SAYISI; atlas DB'si/eşleme yoksa `null` |
+
+**Gizlilik (bağlayıcı).** Çıktıda yalnızca sayı, bool, sabit kısa etiket ve
+ISO-8601 zaman vardır. Not başlığı, içeriği, yolu, repo yolu veya kullanıcı
+içeriği **asla** girmez. `hata` SABİT bir koddur (`indeks_yok`, `okunamadi`);
+istisna metni, dosya yolu veya SQL ne stdout'a ne stderr'e yazılır.
+
+**Salt okunurluk.** Komut yalnızca **mevcut** indeksi `mode=ro` ile okur;
+indekslemeyi veya taramayı **tetiklemez**, hiçbir yere yazmaz, ağa çıkmaz ve
+`cor`'u çağırmaz. İndeks yoksa üretmez, `hata: "indeks_yok"` döner ve çıkış
+kodu `1` olur. `null` ile `0` farklıdır: `0` ölçüldü, `null` hesaplanamadı.
 
 ---
 
@@ -623,3 +666,4 @@ python3 -m pytest -q -m "not e2e"        # yalnız hızlı birim testleri
 | **C** | **haftalık özet (`ozet`) + vault↔repo tutarlılığı (`tutarlilik`)** | ✅ |
 | C.1 | B.1'den kalan görsel kusurlar (etiket–daire çakışması, kırpma, lejant, yarıçap, seçim boşluğu) | ✅ |
 | **D** | **BM25 tam-metin arama (`ara` + `/ara`), tutarlılık "Kontrol edilenler"** | ✅ |
+| **E** | **`durum --json` (kule entegrasyonu: sayı/durum özeti, salt okunur)** | ✅ |

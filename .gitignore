@@ -13,3 +13,4 @@ venv/
 
 # Dalga raporları: gerçek vault çıktısı içerir, ASLA commit'lenmez.
 .wave_*
+.ent_report.md

@@ -594,13 +594,42 @@ def test_cli_kati_uyari_varken_kod_1(tc_vault: Path, tmp_path: Path) -> None:
     assert kod == 1, "uyarı varken --kati çıkış kodu 1 vermeli"
 
 
-def test_cli_kati_uyari_yokken_kod_0(tc_vault: Path, tmp_path: Path) -> None:
+def test_cli_kati_bugun_durumlu_uyari_kodu_1(tc_vault: Path, tmp_path: Path) -> None:
+    """`--bugun` gerçekten dikkate alınınca uyarı görünür ve kod 1 olur.
+
+    `tc_vault`'ta `Atlas.md` "planlandı" diyor; atlas'taki `atlas` reposunda
+    2 gün önce commit VAR → kural 1 ("planlı-ama-kod-var") gerçekten bir
+    uyarı üretir. Bu yüzden 0 kodu bekleyen eski test, `--bugun`'ın
+    `bulgular_uret`'e İLETİLMEDİĞI bir kusurla yeşil kalıyordu: bayrak
+    ayrıştırılıyor ama yok sayılıyordu ve karşılaştırma gerçek "bugün"
+    (2026-09-30) ile yapılıyordu, eski commit 30 gün eşiğini geçtiği için
+    uyarı yanlışlıkla düşüyordu. `--bugun` düzeltilince uyarı geri gelir.
+    """
     db = atlas_kur(tmp_path / "a.db", [repo(name="atlas", last_commit_at=_iso(2))])
     kod, _ = _calistir([
         "tutarlilik", str(tc_vault), "--atlas-db", str(db), "--kati",
         "--bugun", "2026-03-10",
     ])
-    assert kod == 0
+    assert kod == 1, "planlı not + repoda commit varsa uyarı beklenir"
+
+
+def test_cli_kati_uyari_yokken_kod_0(tmp_path: Path) -> None:
+    """Uyarı YOKSA `--kati` çıkış kodu 0 vermeli.
+
+    Kurgusal vault'ta HİÇBİR notta durum sözcüğü yoktur: hiçbir not
+    hiçbir kuralın adayı olmaz, dolayısıyla uyarı da üretilemez.
+    Bu, gerçekten "ölçtük ve sıfır" olan tek durumdur -- bayatlık
+    yanlış referans günü yüzünden "sıfır" görünen durum DEĞİLDİR.
+    """
+    vault = tmp_path / "sessiz-vault"
+    vault.mkdir()
+    yaz(vault, "not.md", "# Not\n\nDurum sözcüğü yok, yalnızca metin.\n")
+    db = atlas_kur(tmp_path / "a.db", [repo(name="atlas", last_commit_at=_iso(2))])
+    kod, _ = _calistir([
+        "tutarlilik", str(vault), "--atlas-db", str(db), "--kati",
+        "--bugun", "2026-03-10",
+    ])
+    assert kod == 0, "hiçbir kural tetiklenmiyorsa uyarı da olmaz"
 
 
 def test_cli_esleme_dosyasi_kullanilir(tmp_path: Path) -> None:

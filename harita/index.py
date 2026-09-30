@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -55,6 +56,10 @@ CREATE TABLE IF NOT EXISTS chunks (
     not_id INTEGER NOT NULL,
     sira   INTEGER NOT NULL,
     metin  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS indeks_meta (
+    anahtar TEXT PRIMARY KEY,
+    deger   TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_links_hedef  ON links(hedef_id);
 CREATE INDEX IF NOT EXISTS ix_links_kaynak ON links(kaynak_id);
@@ -258,6 +263,7 @@ def indeksle(
             baglanti.execute(f"DELETE FROM {tablo}")
         for tablo in ("ara_terim", "ara_belge", "ara_meta"):
             baglanti.execute(f"DELETE FROM {tablo}")
+        baglanti.execute("DELETE FROM indeks_meta")
 
         ozet = IndeksOzeti()
         for _, goreli in notlari_tara(vault, haric):
@@ -285,6 +291,7 @@ def indeksle(
 
         linkleri_coz(baglanti)
         _ara_meta_yaz(baglanti)
+        _indeks_meta_yaz(baglanti, vault)
         baglanti.commit()
         ozet.linkler = baglanti.execute("SELECT COUNT(*) FROM links").fetchone()[0]
         ozet.kirik_linkler = baglanti.execute(
@@ -377,6 +384,44 @@ def _ara_meta_yaz(baglanti: sqlite3.Connection) -> None:
             "ON CONFLICT(anahtar) DO UPDATE SET deger = excluded.deger",
             (anahtar, deger),
         )
+
+
+def _indeks_meta_yaz(baglanti: sqlite3.Connection, vault: Path | str) -> None:
+    """İndeksin kendisine dair üç bilgiyi yazar.
+
+    `son_indeks` UTC ISO-8601 damgasıdır; `kok` indekslenen vault'un mutlak
+    yoludur; `not_mtime` en yeni notun `mtime`'sidir (bayatlık karşılaştırması
+    için). `harita durum` YALNIZCA bunları okur.
+    """
+    en_yeni = baglanti.execute("SELECT MAX(mtime) FROM notes").fetchone()[0]
+    for anahtar, deger in (
+        ("son_indeks", datetime.now(timezone.utc).isoformat(timespec="seconds")),
+        ("kok", Path(vault).resolve().as_posix()),
+        ("not_mtime", "" if en_yeni is None else float(en_yeni)),
+    ):
+        baglanti.execute(
+            "INSERT INTO indeks_meta (anahtar, deger) VALUES (?, ?) "
+            "ON CONFLICT(anahtar) DO UPDATE SET deger = excluded.deger",
+            (anahtar, deger if deger != "" else None),
+        )
+
+
+def indeks_meta_oku(baglanti: sqlite3.Connection) -> dict[str, str | None]:
+    """`indeks_meta` anahtar/değer çiftleri. Tablo yoksa boş sözlük.
+
+    DALGA E'DEN ÖNCEKİ indekslerde tablo bulunmayabilir; `durum` bu yüzden
+    `son_indeks` bilinmiyorken `null` döner (uydurma tarih basmaz).
+    """
+    try:
+        return {k: v for k, v in baglanti.execute("SELECT anahtar, deger FROM indeks_meta")}
+    except sqlite3.OperationalError:
+        return {}
+
+
+def son_not_mtime(baglanti: sqlite3.Connection) -> float | None:
+    """İndeksteki en yeni notun `mtime`'si (bayatlık ölçütü)."""
+    satir = baglanti.execute("SELECT MAX(mtime) FROM notes").fetchone()
+    return None if satir is None or satir[0] is None else float(satir[0])
 
 
 def linkleri_coz(baglanti: sqlite3.Connection) -> None:

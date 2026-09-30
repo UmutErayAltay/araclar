@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 from pathlib import Path
 
-from . import __version__, guard
+from . import __version__, guard, quota
 from .models import Durum, OrkestraHata
 from .queue import Queue
 from .runner import ClaudeRunner
@@ -16,7 +17,7 @@ DURUM_LISTESI = [d.value for d in Durum]
 
 ACIKLAMA = (
     "Ajan Orkestrasi — gorev kuyrugu. Dalga A: kuyruk + CLI. "
-    "Dalga B: headless claude calistirici."
+    "Dalga B: headless claude calistirici. Dalga C: web paneli + kota."
 )
 
 ALT_KOMUT_ACIKLAMA = {
@@ -28,10 +29,21 @@ ALT_KOMUT_ACIKLAMA = {
     "calistir": "Bekleyen gorevleri sirayla calistirir",
     "kurtar": "Yarim kalan calisiyor gorevleri kurtarir",
     "rapor": "Gorevin son kosusunu raporlar",
+    "web": "Salt-okunur web panelini 127.0.0.1 uzerinde baslatir",
+    "kota": "Model basina gunluk kota durumunu gosterir",
+    "kota-guncelle": "cor proxy.log dosyasini okuyup kotayi gunceller",
 }
 
 RAPOR_SON_SATIR = 40
 VARSAYILAN_LIMIT = 1000
+VARSAYILAN_PORT = 8780
+
+DEFAULT_KOTA_TOML_ACIKLAMA = (
+    "Limit dosyasi (varsayilan ~/.orkestra/kota.toml)"
+)
+DEFAULT_COR_LOG_ACIKLAMA = (
+    "cor proxy.log yolu (varsayilan COR_LOG veya /root/.claude-openrouter/proxy.log)"
+)
 
 
 def _utf8_konfigure() -> None:
@@ -106,6 +118,30 @@ def _kur() -> argparse.ArgumentParser:
     p_rapor = alt.add_parser("rapor", help=ALT_KOMUT_ACIKLAMA["rapor"])
     p_rapor.add_argument("id", type=int, metavar="ID")
     p_rapor.add_argument("--db", dest="alt_db", default=None, metavar="YOL", help=DB_YARDIM)
+
+    p_web = alt.add_parser("web", help=ALT_KOMUT_ACIKLAMA["web"])
+    p_web.add_argument("--port", type=int, default=VARSAYILAN_PORT, metavar="N",
+                       help=f"Port (varsayilan {VARSAYILAN_PORT})")
+    p_web.add_argument("--cikti-dizini", default=None, metavar="DIR",
+                       help="Log dizini siniri (varsayilan ~/.orkestra/runs)")
+    p_web.add_argument("--cor-log", default=None, metavar="YOL",
+                       help=DEFAULT_COR_LOG_ACIKLAMA + " (COR_LOG olarak aktarilir)")
+    p_web.add_argument("--kota-toml", default=None, metavar="YOL",
+                       help="Limit dosyasi (varsayilan ~/.orkestra/kota.toml)")
+    p_web.add_argument("--db", dest="alt_db", default=None, metavar="YOL", help=DB_YARDIM)
+
+    p_kota = alt.add_parser("kota", help=ALT_KOMUT_ACIKLAMA["kota"])
+    p_kota.add_argument("--json", action="store_true", help="JSON olarak bas")
+    p_kota.add_argument("--kota-toml", default=None, metavar="YOL", help=DEFAULT_KOTA_TOML_ACIKLAMA)
+    p_kota.add_argument("--db", dest="alt_db", default=None, metavar="YOL", help=DB_YARDIM)
+
+    p_kota_guncelle = alt.add_parser(
+        "kota-guncelle", help=ALT_KOMUT_ACIKLAMA["kota-guncelle"]
+    )
+    p_kota_guncelle.add_argument("--cor-log", default=None, metavar="YOL",
+                                 help=DEFAULT_COR_LOG_ACIKLAMA)
+    p_kota_guncelle.add_argument("--kota-toml", default=None, metavar="YOL", help=DEFAULT_KOTA_TOML_ACIKLAMA)
+    p_kota_guncelle.add_argument("--db", dest="alt_db", default=None, metavar="YOL", help=DB_YARDIM)
     return ayrac
 
 
@@ -211,6 +247,86 @@ def _calistir(kuyruk: Queue, args) -> int:
     return 0
 
 
+# -- Dalga C: web + kota ---------------------------------------------------
+
+
+def _web(args) -> int:  # pragma: no cover — gerçek sunucu e2e'de çalıştırılır
+    """Paneli BAŞLATIR. Adres kodda sabittir (127.0.0.1); `--host` yoktur."""
+    from .web import calistir
+
+    print(f"Panel: http://127.0.0.1:{args.port}  (yalnizca yerel, salt okunur)")
+    if args.cor_log:
+        # Panel kota verisini DB'den okur; log yalnız `kota-guncelle` girdisidir.
+        # Bayrak verilmişse ortam değişkenine yazılır, böylece panelde görünen
+        # kota aynı kaynaktan türetilir (sessizce yok sayılmaz).
+        os.environ["COR_LOG"] = args.cor_log
+    calistir(
+        args.db or varsayilan_db_yolu(),
+        port=args.port,
+        cikti_dizini=args.cikti_dizini,
+        kota_toml=args.kota_toml,
+    )
+    return 0
+
+
+def _kota_guncelle(kuyruk: Queue, args) -> int:
+    """`proxy.log`'u artımlı okur ve `quota_snapshots`'a yazar."""
+    sonuc = quota.guncelle(kuyruk.baglanti_al(), args.cor_log)
+    if sonuc.yeni_satir == 0 and sonuc.taninmayan == 0:
+        print(f"Kota guncellendi: yeni istek yok ({sonuc.kaynak}).")
+    else:
+        print(
+            f"Kota guncellendi: {sonuc.yeni_satir} yeni istek, "
+            f"{sonuc.taninmayan} taninmayan satir ({sonuc.kaynak})."
+        )
+    for gun_anahtari in sorted(sonuc.gunler):
+        sayac = sonuc.gunler[gun_anahtari]
+        print(f"  {gun_anahtari}: {sayac.istek} istek")
+    return 0
+
+
+def _kota(kuyruk: Queue, args) -> int:
+    limitler = quota.limitleri_yukle(args.kota_toml)
+    gorunum = quota.kota_gorunumu(kuyruk.baglanti_al(), limitler)
+    if args.json:
+        import json as _json
+
+        veri = {
+            "gun": gorunum.gun,
+            "limit_kaynagi": gorunum.limit_kaynagi,
+            "toplam_istek": gorunum.toplam_istek,
+            "uyari_sayisi": gorunum.uyari_sayisi,
+            "modeller": [
+                {
+                    "model": m.model,
+                    "istek": m.istek,
+                    "limit": m.limit,
+                    "durum": m.durum,
+                    "yuzde": m.yuzde,
+                }
+                for m in gorunum.modeller
+            ],
+        }
+        print(_json.dumps(veri, ensure_ascii=False, indent=2))
+        return 0
+    if not gorunum.veri_var:
+        print("Kota verisi yok. Once 'orkestra kota-guncelle' calistirin.")
+        return 0
+    if not gorunum.modeller:
+        print("Kota verisi yok.")
+        return 0
+    print(f"Kota ({gorunum.gun} UTC, limit kaynagi: {gorunum.limit_kaynagi})")
+    for m in gorunum.modeller:
+        limit = "-" if m.limit is None else str(m.limit)
+        yuzde_m = "-" if m.yuzde is None else f"{m.yuzde:.0f}%"
+        print(
+            f"  {m.model:<40}  {m.istek:>4} istek  limit={limit:<5} "
+            f"{yuzde_m:>5}  {m.durum_etiket}"
+        )
+    print(f"Toplam {gorunum.toplam_istek} istek; {gorunum.uyari_sayisi} model uyarida.")
+    return 0
+
+
 def _kurtar(kuyruk: Queue, args) -> int:
     kurtarilan = kuyruk.kurtar()
     if not kurtarilan:
@@ -277,6 +393,15 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "alt_db", None) is not None:
         args.db = args.alt_db
 
+    if args.komut == "web":
+        # Panel kendi SALT-OKUNUR baglantisini acar; yazma yapan Queue
+        # BAGLAMI burada acilmaz (baglanti hic kurulmaz).
+        try:
+            return _web(args)
+        except OrkestraHata as hata:
+            print(f"Hata: {hata}", file=sys.stderr)
+            return 1
+
     try:
         with Queue(args.db) as kuyruk:
             if args.komut == "ver":
@@ -295,6 +420,10 @@ def main(argv: list[str] | None = None) -> int:
                 return _kurtar(kuyruk, args)
             if args.komut == "rapor":
                 return _rapor(kuyruk, args)
+            if args.komut == "kota":
+                return _kota(kuyruk, args)
+            if args.komut == "kota-guncelle":
+                return _kota_guncelle(kuyruk, args)
     except OrkestraHata as hata:
         print(f"Hata: {hata}", file=sys.stderr)
         return 1

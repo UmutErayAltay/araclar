@@ -1,0 +1,72 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<h2>Görev kuyruğu</h2>
+{% if kayitlar %}
+  <p class="aciklama">{{ toplam }} görev{% if durum %} · “{{ durum }}” filtresi{% endif %} · en yeni üstte</p>
+
+  <nav class="filtre" aria-label="Durum filtresi">
+    <a class="{% if not durum %}etkin{% endif %}" href="/">tümü</a>
+    {% for ad in durum_listesi %}
+      <a class="{% if durum == ad %}etkin{% endif %}" href="/?durum={{ ad }}">{{ ad }}</a>
+    {% endfor %}
+  </nav>
+
+  {# Masaüstü: tablo. 390 px'de `stil.css` bu bloğu gizler, kartları açar. #}
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <thead>
+        <tr>
+          <th class="sutun-id sayi">ID</th>
+          <th class="sutun-ajan">Ajan</th>
+          <th>İstem</th>
+          <th class="sutun-durum">Durum</th>
+          <th class="th">Oluşturma</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for kayit in kayitlar %}
+        <tr>
+          <td class="sayi"><a href="/gorev/{{ kayit.id }}">{{ kayit.id }}</a></td>
+          <td class="ajan">{{ kayit.ajan }}</td>
+          <td><span class="istem" title="{{ kayit.istem }}">{{ kayit.istem }}</span></td>
+          <td class="sutun-durum"><span class="rozet {{ kayit.durum }}">{{ kayit.durum_etiket }}</span></td>
+          <td class="zaman th">{{ kayit.olusturma }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# Mobil: kart görünümü. #}
+  <div class="kart-liste">
+  {% for kayit in kayitlar %}
+    <article class="kart">
+      <div class="kart-ust">
+        <span class="ajan"><a href="/gorev/{{ kayit.id }}">#{{ kayit.id }} {{ kayit.ajan }}</a></span>
+        <span class="rozet {{ kayit.durum }}">{{ kayit.durum_etiket }}</span>
+      </div>
+      <span class="istem">{{ kayit.istem }}</span>
+      <div class="kart-alt">
+        <span class="zaman">{{ kayit.olusturma }}</span>
+      </div>
+    </article>
+  {% endfor %}
+  </div>
+{% else %}
+  <div class="bos-durum">
+    <h2>{% if durum %}Bu filtrede görev yok{% else %}Kuyruk boş{% endif %}</h2>
+    <p>
+      {% if durum %}“{{ durum }}” durumunda görev bulunmuyor. <a href="/">Tümünü gör</a>.
+      {% else %}Henüz görev eklenmemiş. Komut satırından
+      <code>orkestra ver --ajan bunny-coder "…"</code> ile ekleyebilirsin.{% endif %}
+    </p>
+  </div>
+{% endif %}
+
+<p class="dipnot">
+  Panel yalnızca görüntüler ve veritabanını salt okunur açar. İptal ve yeniden deneme
+  için <code>orkestra iptal &lt;id&gt;</code> / <code>orkestra tekrar &lt;id&gt;</code> kullanılır.
+  Görev metinleri ve loglar ekrana basılmadan önce maskelenir.
+</p>
+{% endblock %}

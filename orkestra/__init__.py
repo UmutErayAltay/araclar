@@ -1,5 +1,6 @@
 """Ajan Orkestrası — görev kuyruğu çekirdeği (Dalga A kuyruk, Dalga B çalıştırıcı)."""
 
+from . import quota
 from .models import (
     Durum,
     GecersizGecis,
@@ -31,6 +32,7 @@ __all__ = [
     "Task",
     "gecis_gecerli",
     "gecisleri",
+    "quota",
     "utc_simdi",
     "varsayilan_db_yolu",
 ]

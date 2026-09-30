@@ -56,6 +56,13 @@ CREATE TABLE IF NOT EXISTS quota_snapshots (
     maliyet REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (model, gun)
 );
+
+-- Kota ayrıştırıcısının artımlı okuma konumu (Dalga C).
+CREATE TABLE IF NOT EXISTS quota_offsets (
+    kaynak TEXT PRIMARY KEY,
+    konum  INTEGER NOT NULL DEFAULT 0,
+    boyut  INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -78,6 +85,13 @@ class Queue:
         self._baglanti.executescript(SEMA)
 
     # -- yaşam döngüsü ---------------------------------------------------
+
+    def baglanti_al(self) -> sqlite3.Connection:
+        """Ham bağlantı (kota güncellemesi gibi yazma yapan işler için).
+
+        Panel BUNU KULLANMAZ; panel `mode=ro` ile kendi bağlantısını açar.
+        """
+        return self._baglanti
 
     def kapat(self) -> None:
         self._baglanti.close()

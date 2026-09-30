@@ -1,0 +1,27 @@
+{# Ortak iskelet: CSP satır içi stil/script yasaklar, bu yüzden stil değişkenleri
+   stil.css'ten gelir; şablonda `style=` özniteliği YOKTUR. #}
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ baslik|default('Panel') }} — orkestra</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='stil.css') }}">
+<script src="{{ url_for('static', filename='panel.js') }}" defer></script>
+</head>
+<body>
+<header class="ust">
+  <div class="ust-sol">
+    <h1>orkestra</h1>
+    <p class="ozet">{{ alt_baslik }}</p>
+  </div>
+  <nav class="ust-sag">
+    <a href="/" {% if yol == '/' %}aria-current="page"{% endif %}>Kuyruk</a>
+    <a href="/kota" {% if yol == '/kota' %}aria-current="page"{% endif %}>Kota</a>
+  </nav>
+</header>
+<main>
+{% block icerik %}{% endblock %}
+</main>
+</body>
+</html>

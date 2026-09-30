@@ -653,12 +653,19 @@ def test_zaman_asimi_log_dosyasi_yazilir(cikti_dizini, tmp_path):
 
 
 def test_buyuk_cikti_kirpilmasi(sahte_claude, cikti_dizini, monkeypatch):
-    """5 MiB üstü çıktı: dosyanın SONU tutulur, başa kırpıldı notu."""
+    """5 MiB üstü çıktı: dosyanın SONU tutulur, kırpıldı notu düşer.
+
+    Log'un İLK satırı ajan-tanımı uyarısı olabilir (Dalga C), dolayısıyla
+    `[kırpıldı]` notunun dosyanın başında olduğu ilk satırda aranmaz; notun
+    dosyada GEÇTİĞİ ve dosyanın sınırı aştığı doğrulanır.
+    """
     monkeypatch.setenv("FAKE_MODE", "buyuk")
     monkeypatch.setenv("FAKE_BOYUT", str(MAX_CIKTI + 500_000))
     sonuc = calistir(sahte_claude, gorev_yap(), cikti_dizini)
     metin = Path(sonuc.cikti).read_text(encoding="utf-8")
-    assert metin.startswith("[kırpıldı]")
+    assert "[kırpıldı]" in metin
+    # Not, gerçek çıktıdan hemen önce gelir (ilk satır hariç).
+    assert metin.split("\n")[1] == "[kırpıldı]"
     assert len(metin.encode("utf-8")) <= MAX_CIKTI + 100
     assert sonuc.cikis_kodu == 0
 
@@ -704,3 +711,66 @@ def test_fake_runner_hala_calisir(kuyruk):
     gorev, kosu = kuyruk.calistir_bir(FakeRunner("basari"))
     assert gorev.durum is Durum.BITTI
     assert isinstance(kosu, RunSonuc) or kosu.cikis_kodu == 0
+
+
+# -- ajan tanimi uyarisi (Dalga C) -------------------------------------
+
+
+def test_ajan_tanimi_yoksa_logun_ilk_satiri_uyari(sahte_claude, cikti_dizini, tmp_path, monkeypatch):
+    """Tanım dosyası yoksa davranış DEĞİŞMEZ, ama durum log'un İLK satırına düşer."""
+    # `cwd` altında ajan tanimi YOK (tmp_path boş).
+    r = ClaudeRunner(
+        komut=sahte_claude, cikti_dizini=cikti_dizini, cwd=tmp_path,
+        uyku=lambda _s: None,
+    )
+    onbellek_sifirla()
+    sonuc = r.calistir(gorev_yap(ajan="tanimsiz-ajan"))
+    ilk = Path(sonuc.cikti).read_text(encoding="utf-8").splitlines()[0]
+    assert ilk == "[uyari] ajan tanimi bulunamadi: tanimsiz-ajan (yalnizca istem gonderildi)"
+
+
+def test_ajan_tanimi_yoksa_komut_satiri_degismez(sahte_claude, cikti_dizini, tmp_path):
+    """Davranış değişmemeli: argv'de ajan tanimi YOK, yalnız istem gider."""
+    r = ClaudeRunner(komut=sahte_claude, cikti_dizini=cikti_dizini, cwd=tmp_path)
+    onbellek_sifirla()
+    argv = r.komut_satiri(gorev_yap(ajan="tanimsiz-ajan"))
+    assert "--agent" not in argv
+    assert "--append-system-prompt" not in argv
+
+
+def test_ajan_tanimi_varsa_uyari_yok(sahte_claude, cikti_dizini, tmp_path):
+    dizin = tmp_path / ".claude" / "agents"
+    dizin.mkdir(parents=True)
+    (dizin / "test-ajan.md").write_text(
+        "---\nname: test-ajan\n---\nSen test ajanisin.\n", encoding="utf-8"
+    )
+    r = ClaudeRunner(komut=sahte_claude, cikti_dizini=cikti_dizini, cwd=tmp_path)
+    onbellek_sifirla()
+    sonuc = r.calistir(gorev_yap(ajan="test-ajan"))
+    metin = Path(sonuc.cikti).read_text(encoding="utf-8")
+    assert "ajan tanimi bulunamadi" not in metin
+
+
+def test_uyari_satiri_yalnizca_bir_kez(sahte_claude, cikti_dizini, tmp_path, monkeypatch):
+    """Ağ hatası yeniden denemelerinde uyarı TEKRLENMEZ."""
+    monkeypatch.setenv("FAKE_MODE", "aghatasi")
+    monkeypatch.setenv("FAKE_SAYAC", "9")
+    r = ClaudeRunner(komut=sahte_claude, cikti_dizini=cikti_dizini, cwd=tmp_path, uyku=lambda _s: None)
+    onbellek_sifirla()
+    sonuc = r.calistir(gorev_yap(ajan="tanimsiz-ajan"))
+    metin = Path(sonuc.cikti).read_text(encoding="utf-8")
+    assert metin.count("ajan tanimi bulunamadi") == 1
+
+
+def test_ajan_adi_bossa_uyari_yok(sahte_claude, cikti_dizini, tmp_path):
+    r = ClaudeRunner(komut=sahte_claude, cikti_dizini=cikti_dizini, cwd=tmp_path)
+    onbellek_sifirla()
+    sonuc = r.calistir(gorev_yap(ajan=""))
+    metin = Path(sonuc.cikti).read_text(encoding="utf-8")
+    assert "ajan tanimi bulunamadi" not in metin
+
+
+def test_uyari_sablonu_ajani_yazar():
+    from orkestra.runner import AJAN_TANIMI_UYARISI
+
+    assert AJAN_TANIMI_UYARISI.format(ajan="x-ajan").startswith("[uyari] ajan tanimi bulunamadi: x-ajan")

@@ -12,7 +12,7 @@ Bu vault'u (Markdown + çift köşeli parantezli wikilink'ler) okuyup web'de gra
 "bu hafta ne yaptım" özeti üreten salt-okunur araç. Obsidian'ın grafı `search` filtresi yüzünden
 düğümleri gizlemişti (2026-09-21); aynı sorunları kendi aracımızla görünür kılmak istiyoruz.
 
-**Durum:** planlandı, kod yok. Repo adı önerisi: `harita`.
+**Durum:** Dalga A tamam (2026-09-30; 115 test yeşil; gerçek vault salt-okunur indekslendi: 296 not, 516 link, 7 kırık (hepsi gerçek), 135 yetim, 1,5 sn). Kararlar: `receipts/` kapsam dışı kalır (o linkler kırık sayılır); klasör linkleri kırık sayılır; indeks DB konumu ve yetim/"yok sayılabilir" ayrımı Dalga B'de. Ders: `sk-` deseni sol sınırsız `flask-` gibi kelimelerde yanlış pozitif verir, sol sınır şart. Sıradaki: Dalga B. Repo adı önerisi: `harita`.
 Bağlantılar: `vault-durum` skill'i (`.agents/skills/vault-durum/SKILL.md`, kırık link/yetim not mantığı için okunur),
 [[cor-bulut-oturumu-agent-tool-erisimsizligi-headless-cozum]], [[ne-izlesem-delegasyon-modeli-ajan-kendi-dogrular]].
 

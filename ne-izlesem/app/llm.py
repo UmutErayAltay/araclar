@@ -1,4 +1,4 @@
-"""Yerel cor proxy'sine konuşan ince LLM istemcisi. NOT: konak (loopback) denetimi YOK (bugünkü davranış korundu; açık karar corclient/SOZLESME.md).
+"""Yerel cor proxy'sine konuşan ince LLM istemcisi. Konak (loopback) denetimi AÇIK: kullanıcının dosyası/listesi yalnız yerel cor proxy'sine gider.
 
 Gerçek istemci `_corclient.py`'dedir: `corclient` reposundan `tools/sync.py` ile
 senkronlanır ve ELLE DÜZENLENMEZ (sapma `tests/test_corclient_senkron.py` ile
@@ -19,13 +19,15 @@ import urllib.request  # noqa: F401
 from typing import Protocol, runtime_checkable  # noqa: F401
 
 from . import _corclient
-from ._corclient import LLMClient, LLMError  # noqa: F401
+from ._corclient import LLMClient, LLMError, konak_kontrol  # noqa: F401
 
 DEFAULT_BASE_URL = os.environ.get("COR_BASE_URL", "http://127.0.0.1:8787")
 DEFAULT_MODEL = os.environ.get("COR_MODEL", "stealth/space-bunny-alpha")
 
 MAX_TOKENS = 2000
 
+#: Bağlanılabilecek konak adları. cor YERELDİR; loopback dışı adresler kuruluşta reddedilir.
+IZINLI_KONAKLAR = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
 
 
 class CorLLMClient(_corclient.CorLLMClient):
@@ -46,6 +48,6 @@ class CorLLMClient(_corclient.CorLLMClient):
             max_retries,
             retry_backoff,
             max_tokens=MAX_TOKENS,
-            izinli_konaklar=None,
+            izinli_konaklar=IZINLI_KONAKLAR,
             baslat_ipucu='cor claude',
         )

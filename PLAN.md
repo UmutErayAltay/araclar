@@ -16,6 +16,7 @@ başlatıldı; kota (nemotron 50/gün, paylaşımlı), kesintide (internet gidin
 Bağlantılar: [[ne-izlesem-delegasyon-modeli-ajan-kendi-dogrular]], [[cor-bulut-oturumu-agent-tool-erisimsizligi-headless-cozum]].
 Ders (2026-09-30): ajan raporu "hizalama mükemmel" derken ekran görüntüsünde metinler üst üste biniyordu; ajan
 kendi çıktısına bakmamıştı. Orkestra "ajan kendi doğrular" raporunu ayrıştırır ama KANIT (ekran görüntüsü yolu, test çıktısı) ister.
+Kule entegrasyonu (2026-09-30): `orkestra durum --json` eklendi (799 test yeşil, 25 yeni) — salt-okunur (`mode=ro`) tek JSON özeti; kanıt sınıfı `runs.kanit_durumu`'ndan OKUNUR (yeni sınıflandırma kuralı yoktur), hata `db_yok`/`sema_eski`/`okunamadi`.
 
 ## Amaç
 - Görev ver → ajan seç → çalıştır → çıktı/kanıt topla → gerekirse yeniden dene.

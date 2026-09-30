@@ -9,8 +9,9 @@ import sys
 from pathlib import Path
 
 from . import __version__, guard, planner, quota, report
+from . import durum as durum_mod
 from .models import Durum, OrkestraHata
-from .queue import Queue
+from .queue import Queue, varsayilan_db_yolu
 from .runner import ClaudeRunner
 
 DURUM_LISTESI = [d.value for d in Durum]
@@ -41,6 +42,7 @@ ALT_KOMUT_ACIKLAMA = {
     "planla": "Hedefi cor uzerinden is dalgalarina boler",
     "plan-goster": "Kayitli plani gosterir",
     "plan-kuyruga": "Secilen planin tek dalgasini kuyruga ekler (CALISTIRMAZ)",
+    "durum": "Kule entegrasyonu icin durum ozeti (--json)",
 }
 
 RAPOR_SON_SATIR = 40
@@ -202,6 +204,14 @@ def _kur() -> argparse.ArgumentParser:
     p_plan_kuyruga.add_argument("--tekrar", action="store_true",
                                 help="Ayni dalgayi ikinci kez eklemeye izin ver")
     p_plan_kuyruga.add_argument("--db", dest="alt_db", default=None, metavar="YOL", help=DB_YARDIM)
+
+    # -- Kule entegrasyonu: salt-okunur durum ozeti ------------------------
+    p_durum = alt.add_parser("durum", help=ALT_KOMUT_ACIKLAMA["durum"])
+    p_durum.add_argument("--json", action="store_true",
+                         help="Tek JSON nesnesi bas (kule bunu okur)")
+    p_durum.add_argument("--kota-toml", default=None, metavar="YOL",
+                         help=DEFAULT_KOTA_TOML_ACIKLAMA)
+    p_durum.add_argument("--db", dest="alt_db", default=None, metavar="YOL", help=DB_YARDIM)
     return ayrac
 
 
@@ -777,6 +787,14 @@ def main(argv: list[str] | None = None) -> int:
         except OrkestraHata as hata:
             print(f"Hata: {hata}", file=sys.stderr)
             return 1
+
+    if args.komut == "durum":
+        # Kule entegrasyonu: DB'ye YAZMAZ. Yazma yapan Queue baglami acilmaz
+        # (sema/migration tetiklenmez); `durum.durum_oku` kendi `mode=ro`
+        # baglantisini acar.
+        if args.json:
+            return durum_mod.calistir_ve_yaz(args.db, args.kota_toml)
+        return durum_mod.insan_ozeti(args.db, args.kota_toml)
 
     try:
         with Queue(args.db) as kuyruk:

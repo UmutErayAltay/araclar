@@ -267,6 +267,49 @@ Planlayıcı **kendiliğinden hiçbir görevi kuyruğa eklemez.** Yalnızca
 `plan-kuyruga ID --dalga A` ile, **seçilen** dalga `bekliyor` olarak eklenir ve
 **çalıştırılmaz**; aynı dalga ikinci kez eklenmek istenirse `--tekrar` gerekir.
 
+## `durum --json` (kule entegrasyonu)
+
+`orkestra durum --json` kule (kontrol kulesi paneli) için tek satır JSON özeti verir.
+Kule bu projeyi alt süreçte çağırır ve **yalnızca sayı ve durum** okur.
+
+```console
+$ orkestra durum --json
+{"surum": 1, "kaynak": "orkestra", "gorev_toplam": 7, "gorev_durum": {"bekliyor": 1, "calisiyor": 0, "bitti": 4, "hata": 1, "onay-bekliyor": 1, "iptal": 0}, "onay_bekleyen": 1, "kanitsiz_ya_da_supheli": 2, "basarisiz": 1, "kota": {"gun": "2026-09-30", "toplam_istek": 99, "uyari_sayisi": 1, "veri_var": true}}
+```
+
+| Alan | Anlam |
+|---|---|
+| `gorev_durum` | `models.Durum` değerleri → adet; **her zaman** tüm anahtarlar (0 olsa da) |
+| `onay_bekleyen` | `onay-bekliyor` durumundaki görev sayısı |
+| `kanitsiz_ya_da_supheli` | En son koşusunun sınıfı `kanitsiz` **veya** `reddedildi-suphesi` olan görev sayısı |
+| `basarisiz` | En son koşusunun sınıfı `basarisiz` olan görev sayısı |
+| `kota` | `{gun, toplam_istek, uyari_sayisi, veri_var}`; kota okunamazsa `null` |
+
+`kanitsiz_ya_da_supheli` **tahmin edilmez**: rapor sınıfı zaten `runs.kanit_durumu`
+sütununda saklanır ve burada yalnızca **okunur** (yeni sınıflandırma kuralı yoktur).
+Sınıfı saklayan sütun yoksa komut uydurmaz, `sema_eski` döner.
+
+`--json` verilmezse kısa bir insan-okur özet basılır.
+
+### Hata çıkışları (sabit kod, çıkış kodu 1)
+
+| `hata` | Ne zaman |
+|---|---|
+| `db_yok` | DB dosyası yok |
+| `sema_eski` | `user_version` eski ya da `runs.kanit_durumu` sütunu yok |
+| `okunamadi` | DB açılamadı/sorgu başarısız (istisna metni **asla** basılmaz) |
+
+Hata durumunda bile **stdout'a JSON basılır**; yol, SQL veya istisna metni ne
+stdout'a ne stderr'e yazılır.
+
+### Kural uyumu
+
+* **Salt-okunur**: DB `mode=ro` ile açılır; hiçbir koşulda yazma/migration yoktur.
+* **Ağ yok, alt süreç yok, tarama/indeksleme yok** — yalnızca mevcut durum okunur.
+* Yalnızca sayı/bool/sabit etiket/ISO-8601 gün çıkar; **görev metni, rapor, log,
+  ekran görüntüsü yolu, ajan adı veya dosya yolu ASLA girmez**.
+* Çıktı saf ASCII'dir (`ensure_ascii=True`); Windows cp1252 konsolunda da çalışır.
+
 ## Ekran görüntüleri
 
 `docs/ekran/` altındaki görüntüler **kurgusal** veriyle üretilmiştir (gerçek yol/anahtar/

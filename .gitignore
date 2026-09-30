@@ -15,6 +15,7 @@ htmlcov/
 
 # Dalga A geçici dosyaları
 .wave_*
+.ent_report.md
 *.db
 *.db-wal
 *.db-shm

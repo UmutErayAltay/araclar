@@ -1,4 +1,4 @@
-"""Ajan Orkestrası — görev kuyruğu çekirdeği (Dalga A)."""
+"""Ajan Orkestrası — görev kuyruğu çekirdeği (Dalga A kuyruk, Dalga B çalıştırıcı)."""
 
 from .models import (
     Durum,
@@ -14,9 +14,10 @@ from .models import (
     utc_simdi,
 )
 from .queue import Queue, varsayilan_db_yolu
-from .runner import FakeRunner, Runner
+from .runner import ClaudeRunner, FakeRunner, Runner
 
 __all__ = [
+    "ClaudeRunner",
     "Durum",
     "FakeRunner",
     "GecersizGecis",

@@ -170,3 +170,93 @@ def test_kuyruk_ekle_gecersiz_ajani_reddeder(kuyruk):
 def test_kuyruk_ekle_turkce_istemi_kabul(kuyruk):
     gorev = kuyruk.ekle("bunny-coder", "Şu ızgara ğğğ öüç test et")
     assert "ızgara" in kuyruk.al(gorev.id).istem
+
+
+# -- Dalga B: sk- yanlış pozitifi düzeltmesi -----------------------------
+# Gerçek anahtar test kaynağında tam literal olarak YAZILMAZ; çalışma zamanında
+# parçalardan kurulur (kaynak taraması sırrı bulmasın).
+
+# Sol sınırsız desenle 112 yanlış pozitif üreten paket adları.
+KEBAB_TEMIZ = [
+    "flask-sqlalchemy-migrate-extension paketini requirements.txt'e ekle",
+    "python-json-logger ve python-dateutil surumlerini yukselt",
+    "kebab-case-ad-landirma-kurallarina uy",
+    "ortam-ozellikleri-aciklama-belgesi dosyasini oku",
+    "django-rest-framework ile API yaz",
+    "azure-storage-blob-batch paketini kur",
+    "npm-run-all betigini calistir",
+    "async-timeout-bir-dahika-daha",
+]
+
+
+@pytest.mark.parametrize("metin", KEBAB_TEMIZ)
+def test_kebab_case_paket_adi_kabul(metin):
+    """`sk-` içermeyen kebab-case adlar zaten temizdi; rakam içerenler de olmalı."""
+    assert gizli_desen_ara(metin) == []
+    istem_kontrol(metin)
+    assert maskele(metin) == metin
+
+
+@pytest.mark.parametrize(
+    "paket",
+    [
+        "flask-sqlalchemy-migrate-extension-2024",
+        "logger-transport-udp-9000",
+        "some-package-name-with-digits-42-x",
+    ],
+)
+def test_rakamlı_kebab_paket_adi_kabul(paket):
+    """Rakam içeren kebab-case adlar da reddedilmemeli (asıl yanlış pozitif)."""
+    assert gizli_desen_ara(paket) == []
+    istem_kontrol(paket)
+
+
+def test_rakam_icermeyen_sk_gozyuzu_kabul():
+    assert gizli_desen_ara("sk-" + "a" * 30) == []
+    istem_kontrol("sk-" + "a" * 30)
+
+
+def test_gercek_bicimli_sk_anahtari_reddedilir():
+    """Çalışma zamanında kurulan gerçek biçimli anahtar (rakam içerir) yakalanmalı."""
+    anahtar = "sk-" + "a1" * 15
+    assert len(anahtar) > 20
+    assert gizli_desen_ara(anahtar)
+    with pytest.raises(GecersizGirdi):
+        istem_kontrol(f"bak: {anahtar}")
+
+
+@pytest.mark.parametrize("sonek", ["a1", "1a", "0", "1234567890"])
+def test_sonraki_karakterde_rakam_olan_anahtar_reddedilir(sonek):
+    anahtar = "sk-" + "a" * 20 + sonek
+    assert gizli_desen_ara(anahtar)
+
+
+def test_sol_sinir_kurali():
+    """`sk-`'den önce harf/rakam varsa eşleşme olmaz."""
+    assert gizli_desen_ara("xsk-" + "a1" * 15) == []
+    assert gizli_desen_ara("1sk-" + "a1" * 15) == []
+
+
+def test_maskele_gercek_anahtari_maskeler():
+    """`maskele` aynı `_SK` kuralını kullanır (tek kaynak)."""
+    anahtar = "sk-" + "a1" * 15
+    assert maskele(anahtar) == "[maskeli]"
+    assert anahtar not in maskele(f"anahtar: {anahtar} son")
+    # Aynı kural: temiz kebab-case maskelemeden de geçer.
+    assert maskele("flask-sqlalchemy-migrate-extension") == "flask-sqlalchemy-migrate-extension"
+
+
+def test_maskele_ve_kontrol_ayni_kurali_kullanir():
+    """Kabul/ret davranışı ile maskeleme aynı deseni paylaşmalı."""
+    for metin in [*KEBAB_TEMIZ, "sk-" + "a1" * 15, "sk-" + "a" * 30, "sk-1234"]:
+        yakalandi = bool(gizli_desen_ara(metin))
+        maskelendi = maskele(metin) != metin
+        assert yakalandi == maskelendi, metin
+
+
+def test_diger_desenler_degismedi():
+    """Bu düzeltme YALNIZCA `sk-` desenini etkiler."""
+    assert gizli_desen_ara(SIRLAR["aws erisim anahtari"])
+    assert gizli_desen_ara(SIRLAR["ozel anahtar"])
+    assert gizli_desen_ara(SIRLAR["env dosyasi"])
+    assert gizli_desen_ara(SIRLAR["sifre/anahtar atamasi"])

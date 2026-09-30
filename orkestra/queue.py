@@ -193,17 +193,37 @@ class Queue:
 
     # -- calistirma ------------------------------------------------------
 
+    def _atomik_al(self) -> Task | None:
+        """En eski bekleyen görevi TEK atomik `UPDATE` ile çalar.
+
+        İki süreç aynı anda çalıştırırsa `WHERE durum='bekliyor'` koşulu yalnızca
+        birinde eşleşir; diğeri `rowcount == 0` görür ve bir sonrakine geçer.
+        """
+        while True:
+            bekleyen = self.sonraki_bekleyen()
+            if bekleyen is None:
+                return None
+            imlec = self._baglanti.execute(
+                "UPDATE tasks SET durum = ? WHERE id = ? AND durum = ?",
+                (Durum.CALISIYOR.value, bekleyen.id, Durum.BEKLIYOR.value),
+            )
+            if imlec.rowcount == 1:
+                return self.al(bekleyen.id)
+            # Başka süreç aldı; sıradakine geç.
+
     def calistir_bir(self, runner) -> tuple[Task, Run] | None:
         """Sıradaki bekleyen görevi `runner` ile çalıştırır.
+
+        Bekliyor -> calisiyor geçişi atomiktir: iki eşzamanlı süreç aynı görevi
+        asla ikisi birden alamaz.
 
         Runner istisna fırlatırsa görev `hata` olur, kuyruk ayakta kalır.
         Kuyruk boşsa `None` döner.
         """
-        bekleyen = self.sonraki_bekleyen()
-        if bekleyen is None:
+        gorev = self._atomik_al()
+        if gorev is None:
             return None
 
-        gorev = self.gecis(bekleyen.id, Durum.CALISIYOR)
         baslangic = utc_simdi()
         run_id = self._baglanti.execute(
             "INSERT INTO runs (task_id, baslangic) VALUES (?, ?)",
@@ -213,7 +233,11 @@ class Queue:
         try:
             sonuc = runner.calistir(gorev)
         except Exception as istisna:  # noqa: BLE001 — kuyruk düşmemeli
-            sonuc = RunSonuc(cikis_kodu=1, hata=f"{type(istisna).__name__}: {istisna}")
+            # İstisna metni runner çıktısından sır taşıyabilir; maskele.
+            sonuc = RunSonuc(
+                cikis_kodu=1,
+                hata=guard.maskele(f"{type(istisna).__name__}: {istisna}"),
+            )
 
         if not isinstance(sonuc, RunSonuc):
             sonuc = RunSonuc(cikis_kodu=1, hata="runner RunSonuc donmedi")
@@ -226,16 +250,18 @@ class Queue:
             yeni_durum = Durum.BITTI
 
         bitis = utc_simdi()
-        kanit = list(sonuc.kanit_yollari or [])
+        kanit = [guard.maskele(yol) for yol in (sonuc.kanit_yollari or [])]
         self._baglanti.execute(
             "UPDATE runs SET bitis = ?, cikis_kodu = ?, cikti_yolu = ?, "
             "kanit_yollari = ?, hata = ? WHERE id = ?",
             (
                 bitis,
                 sonuc.cikis_kodu,
-                sonuc.cikti,
+                # `cikti` artık GERÇEKTEN log dosyasının yoludur (Dalga B);
+                # yine de gizli kalıp taşıyabileceği için maskelenir.
+                guard.maskele(sonuc.cikti) if sonuc.cikti else sonuc.cikti,
                 json.dumps(kanit, ensure_ascii=False),
-                sonuc.hata,
+                guard.maskele(sonuc.hata) if sonuc.hata else sonuc.hata,
                 run_id,
             ),
         )

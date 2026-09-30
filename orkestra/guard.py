@@ -13,8 +13,14 @@ from .models import GecersizGirdi
 ISTEM_EN_FAZLA = 20_000
 AJAN_DESENI = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
+# Gerçek `sk-` anahtarları rakam içerir. Kebab-case paket adları
+# (`flask-sqlalchemy-migrate-extension`) sol sınırsız desenle eşleşiyordu; sol sınır
+# + "eşleşen parçada en az bir rakam" şartı yanlış pozitifleri keser. Tek kaynak:
+# hem `istem_kontrol` hem `maskele` bu `_SK` desenini kullanır.
+_SK = re.compile(r"(?<![A-Za-z0-9])sk-(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]{20,}")
+
 GIZLI_DESENLERI: tuple[tuple[str, str, re.Pattern[str]], ...] = (
-    ("api anahtari", "sk- ile baslayan anahtar", re.compile(r"sk-[A-Za-z0-9_-]{20,}")),
+    ("api anahtari", "sk- ile baslayan anahtar", _SK),
     ("aws erisim anahtari", "AKIA... anahtari", re.compile(r"AKIA[0-9A-Z]{16}")),
     ("ozel anahtar", "BEGIN PRIVATE KEY blogu", re.compile(r"-----BEGIN .*PRIVATE KEY-----")),
     ("env dosyasi", ".env dosya adi", re.compile(r"(^|[\s/\\])\.env(\.|\s|$)", re.MULTILINE)),

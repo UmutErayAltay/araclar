@@ -1,5 +1,8 @@
 """Kuyruk: ekleme, listeleme, FIFO, gecisler, iptal, tekrar, kalicilik, kurtarma."""
 
+import os
+from pathlib import Path
+
 import pytest
 
 from orkestra.models import (
@@ -12,6 +15,7 @@ from orkestra.models import (
     utc_simdi,
 )
 from orkestra.queue import YARIM_KALDI_HATASI, Queue
+from orkestra.runner import FakeRunner
 
 
 # -- ekleme / listeleme -------------------------------------------------
@@ -233,3 +237,179 @@ def test_db_dosyasi_klasoru_olusur(tmp_path):
 
 def test_bos_kuyruk_calistir_bir_none(kuyruk):
     assert kuyruk.calistir_bir(object()) is None
+
+
+# -- Dalga B: cikti_yolu artik gercek dosya yolu; kayitlar maskelenir ----
+
+# Gerçek anahtar test kaynağında tam literal olarak YAZILMAZ.
+GIZLI_ANAHTAR = "sk-" + "a1" * 15
+
+
+def test_cikti_yolu_gercek_dosya_yolu(kuyruk, tmp_path):
+    """`runs.cikti_yolu` metin DEĞİL, log dosyasının yoludur."""
+    log = tmp_path / "gorev-1.log"
+    log.write_text("kayitli cikti\n", encoding="utf-8")
+    kuyruk.ekle("bunny-coder", "is")
+    _, kosu = kuyruk.calistir_bir(FakeRunner(calistir_ile=lambda t: RunSonuc(cikti=str(log))))
+    assert kosu.cikti_yolu == str(log)
+    assert Path(kosu.cikti_yolu).is_file()
+
+
+def test_hata_kaydi_maskelenir(kuyruk):
+    """Runner hata metni kayda ÖNCE maskelenir (çıktıda sır olabilir)."""
+    kuyruk.ekle("bunny-coder", "is")
+    sirli = f"claude patladi: {GIZLI_ANAHTAR}"
+    _, kosu = kuyruk.calistir_bir(FakeRunner(calistir_ile=lambda t: RunSonuc(cikis_kodu=1, hata=sirli)))
+    assert GIZLI_ANAHTAR not in kosu.hata
+    assert "[maskeli]" in kosu.hata
+
+
+def test_cikti_yolu_kaydi_maskelenir(kuyruk):
+    kuyruk.ekle("bunny-coder", "is")
+    sirli = f"/tmp/{GIZLI_ANAHTAR}/log.txt"
+    _, kosu = kuyruk.calistir_bir(FakeRunner(calistir_ile=lambda t: RunSonuc(cikti=sirli)))
+    assert GIZLI_ANAHTAR not in kosu.cikti_yolu
+
+
+def test_istisna_metni_maskelenir(kuyruk):
+    """İstisna metni runner çıktısından sır taşıyabilir; kayda maskeli gider."""
+    kuyruk.ekle("bunny-coder", "is")
+
+    def patlat(_task):
+        raise RuntimeError(f"baglanti hatasi: {GIZLI_ANAHTAR}")
+
+    _, kosu = kuyruk.calistir_bir(FakeRunner(calistir_ile=patlat))
+    assert "RuntimeError" in kosu.hata
+    assert GIZLI_ANAHTAR not in kosu.hata
+    assert "[maskeli]" in kosu.hata
+
+
+def test_kanit_yollari_maskelenir(kuyruk):
+    kuyruk.ekle("bunny-coder", "is")
+    _, kosu = kuyruk.calistir_bir(
+        FakeRunner(calistir_ile=lambda t: RunSonuc(kanit_yollari=[f"/k/{GIZLI_ANAHTAR}/a.png"]))
+    )
+    assert GIZLI_ANAHTAR not in " ".join(kosu.kanit_yollari)
+
+
+def test_temiz_hata_metni_bozulmaz(kuyruk):
+    kuyruk.ekle("bunny-coder", "is")
+    _, kosu = kuyruk.calistir_bir(
+        FakeRunner(calistir_ile=lambda t: RunSonuc(cikis_kodu=1, hata="claude cikis kodu 3"))
+    )
+    assert kosu.hata == "claude cikis kodu 3"
+
+
+def test_none_hata_ve_cikti_kaydedilir(kuyruk):
+    kuyruk.ekle("bunny-coder", "is")
+    _, kosu = kuyruk.calistir_bir(FakeRunner(calistir_ile=lambda t: RunSonuc()))
+    assert kosu.hata is None and kosu.cikti_yolu is None
+
+
+# -- Dalga B: atomik bekliyor -> calisiyor ------------------------------
+
+
+def test_atomik_al_bekleyeni_calisiyora_cekir(kuyruk):
+    gorev = kuyruk.ekle("bunny-coder", "is")
+    alinan = kuyruk._atomik_al()
+    assert alinan.id == gorev.id
+    assert alinan.durum is Durum.CALISIYOR
+    # İkinci çağrı aynı görevi alamaz.
+    assert kuyruk._atomik_al() is None
+
+
+def test_atomik_al_ikinci_goreve_gecer(kuyruk):
+    kuyruk.ekle("bunny-coder", "bir")
+    kuyruk.ekle("bunny-coder", "iki")
+    ilk = kuyruk._atomik_al()
+    ikinci = kuyruk._atomik_al()
+    assert ilk.id == 1 and ikinci.id == 2
+    assert ilk.istem == "bir" and ikinci.istem == "iki"
+
+
+def test_atomik_al_bos_kuyruk_none(kuyruk):
+    assert kuyruk._atomik_al() is None
+
+
+YARIS_SENARYO = "yaris_senaryo.py"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX sinyalleri (start_new_session) gerekli")
+def test_iki_surec_yarisi_her_gorevi_tek_kez_calistirir(tmp_path):
+    """GERÇEK iki süreç aynı kuyruğa yarışır: her görev tam bir kez çalışır.
+
+    `multiprocessing` ile iki bağımsız Queue bağlantısı açılır; ikisi de
+    `calistir_bir` çağırır. Atomik UPDATE olmazsa aynı görev iki kez çalışırdı.
+    """
+    import subprocess
+    import sys
+    import textwrap
+
+    db = tmp_path / "yaris.db"
+    gorev_sayisi = 24
+
+    with Queue(db) as q:
+        for i in range(gorev_sayisi):
+            q.ekle("bunny-coder", f"gorev {i}")
+
+    senaryo = tmp_path / YARIS_SENARYO
+    senaryo.write_text(
+        textwrap.dedent(
+            f"""
+            import sys
+            from orkestra.queue import Queue
+            from orkestra.runner import FakeRunner
+
+            db, kimlik = sys.argv[1], sys.argv[2]
+            q = Queue(db)
+            cizilen = []
+            for _ in range({gorev_sayisi + 5}):
+                sonuc = q.calistir_bir(FakeRunner("basari"))
+                if sonuc is None:
+                    break
+                gorev, _kosu = sonuc
+                cizilen.append(gorev.id)
+            with open(db + "." + kimlik, "w", encoding="utf-8") as f:
+                f.write(",".join(map(str, cizilen)))
+            q.kapat()
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    repo = Path(__file__).resolve().parent.parent
+    cevre = dict(os.environ)
+    # Alt süreç `orkestra`'yı PYTHONPATH üzerinden görsün (cwd yetmiyor).
+    cevre["PYTHONPATH"] = str(repo) + os.pathsep + cevre.get("PYTHONPATH", "")
+    surecler = [
+        subprocess.Popen(
+            [sys.executable, str(senaryo), str(db), kimlik],
+            cwd=str(repo),
+            env=cevre,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for kimlik in ("a", "b")
+    ]
+    hatalar = []
+    for s in surecler:
+        _, hata = s.communicate(timeout=120)
+        if s.returncode != 0:
+            hatalar.append(hata)
+    assert not hatalar, hatalar
+
+    tum = []
+    for kimlik in ("a", "b"):
+        yol = tmp_path / f"{db}.{kimlik}"
+        icerik = yol.read_text(encoding="utf-8").strip()
+        if icerik:
+            tum += [int(x) for x in icerik.split(",")]
+
+    # Her görev tam bir kez: ne eksik ne fazla.
+    assert sorted(tum) == list(range(1, gorev_sayisi + 1))
+    assert len(tum) == len(set(tum)), "ayni gorev birden fazla calistirildi"
+
+    with Queue(db) as q:
+        assert all(g.durum is Durum.BITTI for g in q.liste())
+        assert len(q.liste()) == gorev_sayisi

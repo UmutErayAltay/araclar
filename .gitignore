@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Dalga 1 raporu (dalga 1 cikti dosyasi, kaynak degil)
+.dalga1_rapor.md

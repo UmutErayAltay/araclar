@@ -165,6 +165,117 @@ def test_sadece_yarim_remote_suz_tum_commitleri_saymaz(tmp_path: Path):
         conn.close()
 
 
+def test_sadece_yarim_null_unpushedi_disarida_birakir(tmp_path: Path):
+    """`unpushed` NULL (bilinmiyor) olan repo filtreye GIRMEZ.
+
+    Gerekce: `dirty > 0 OR (NULL > 0 AND ...)` -> NULL, WHERE yalnizca TRUE kabul
+    eder. Yani "bilinmiyor" asla "yarim is" sayilmaz.
+    """
+    conn = db_mod.connect(tmp_path / "a.db")
+    try:
+        db_mod.upsert_repos(
+            conn,
+            [
+                satir("/a/bilinmeyen", "bilinmeyen", unpushed=None, has_remote=1),
+                satir("/a/bilinmeyen-dirty", "bilinmeyen-dirty", dirty=2, unpushed=None, has_remote=1),
+                satir("/a/temiz", "temiz"),
+                satir("/a/push-bekleyen", "push-bekleyen", unpushed=2, has_remote=1),
+            ],
+        )
+        adlar = sorted(r["name"] for r in db_mod.list_repos(conn, only_dirty=True))
+        # NULL olan temiz repo cikmiyor; NULL olan kirli repo dirty>0 sayesinde cikiyor.
+        assert adlar == ["bilinmeyen-dirty", "push-bekleyen"]
+        assert len(db_mod.list_repos(conn)) == 4
+    finally:
+        conn.close()
+
+
+def test_unpushed_null_saklanir_sifir_yazilmaz(tmp_path: Path):
+    """None DB'ye NULL olarak gider; 0'a CEVRILMEZ."""
+    conn = db_mod.connect(tmp_path / "a.db")
+    try:
+        db_mod.upsert_repos(conn, [satir("/a/x", "x", unpushed=None, has_remote=1)])
+        tek = db_mod.list_repos(conn)[0]
+        assert tek["unpushed"] is None
+        assert tek["has_remote"] == 1
+    finally:
+        conn.close()
+
+
+def test_eski_sema_not_null_gocu_calisir_veri_kaybolmaz(tmp_path: Path):
+    """A.1 oncesi elle kurulmus DB (unpushed NOT NULL) acilirsa gocer ve veri korunur."""
+    yol = tmp_path / "eski.db"
+    eski_sema = """
+    CREATE TABLE repos (
+        path            TEXT PRIMARY KEY,
+        name            TEXT NOT NULL,
+        scanned_at      TEXT NOT NULL,
+        dirty           INTEGER NOT NULL DEFAULT 0,
+        unpushed        INTEGER NOT NULL DEFAULT 0,
+        branch          TEXT,
+        last_commit_at  TEXT,
+        has_remote      INTEGER NOT NULL DEFAULT 0
+    );
+    """
+    conn = sqlite3.connect(str(yol))
+    try:
+        conn.executescript(eski_sema)
+        conn.executemany(
+            "INSERT INTO repos (path, name, scanned_at, dirty, unpushed, branch, "
+            "last_commit_at, has_remote) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("/a/bir", "bir", "2024-01-02T03:04:05+00:00", 0, 3, "main",
+                 "2024-01-02T03:04:05+00:00", 1),
+                ("/a/iki", "iki", "2024-01-02T03:04:05+00:00", 2, 0, "dal",
+                 "2024-01-02T03:04:05+00:00", 0),
+            ],
+        )
+        conn.commit()
+        assert db_mod._repos_unpushed_notnull(conn)
+    finally:
+        conn.close()
+
+    conn = db_mod.connect(yol)  # goc burada calisir
+    try:
+        assert not db_mod._repos_unpushed_notnull(conn)  # NOT NULL gitti
+        assert int(conn.execute("PRAGMA user_version").fetchone()[0]) == db_mod.SCHEMA_VERSION
+        satirlar = {r["name"]: dict(r) for r in db_mod.list_repos(conn)}
+        assert set(satirlar) == {"bir", "iki"}  # veri KAYBOLMADI
+        assert satirlar["bir"]["unpushed"] == 3  # degerler korundu
+        assert satirlar["bir"]["has_remote"] == 1
+        assert satirlar["bir"]["branch"] == "main"
+        assert satirlar["bir"]["scanned_at"] == "2024-01-02T03:04:05+00:00"
+        assert satirlar["iki"]["dirty"] == 2
+        assert satirlar["iki"]["branch"] == "dal"
+        # goc sonrasi yeni NULL satiri yazilabilmeli ve filtreye girmemeli
+        db_mod.upsert_repos(conn, [satir("/a/uc", "uc", unpushed=None, has_remote=1)])
+        uc = next(r for r in db_mod.list_repos(conn) if r["name"] == "uc")
+        assert uc["unpushed"] is None  # NULL yazildi, 0 degil
+        adlar = sorted(r["name"] for r in db_mod.list_repos(conn, only_dirty=True))
+        # "bir" unpushed=3+remote; "iki" dirty=2; "uc" NULL -> DIŞARIDA kalır
+        assert adlar == ["bir", "iki"]
+    finally:
+        conn.close()
+
+
+def test_goc_idempotent_iki_acilis_bozulmaz(tmp_path: Path):
+    """Ayni DB'yi iki kez acmak gocu tekrar tetiklemez, veri ayni kalir."""
+    yol = tmp_path / "iki-kere.db"
+    conn = db_mod.connect(yol)
+    db_mod.upsert_repos(conn, [satir("/a/tek", "tek", unpushed=4, has_remote=1)])
+    conn.close()
+    conn = db_mod.connect(yol)
+    try:
+        assert db_mod.list_repos(conn)[0]["unpushed"] == 4
+    finally:
+        conn.close()
+    conn = db_mod.connect(yol)
+    try:
+        assert len(db_mod.list_repos(conn)) == 1
+    finally:
+        conn.close()
+
+
 def test_liste_ada_gore_sirali(tmp_path: Path):
     conn = db_mod.connect(tmp_path / "a.db")
     try:

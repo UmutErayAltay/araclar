@@ -12,6 +12,10 @@ from . import __version__, config, db, scan
 #: Yazilari terminal genisligine gore sutunlara dizer.
 _MIN_WIDTH = 8
 
+#: `unpushed` bilinmiyorsa (remote var ama yerelde uzak-takip ref'i yok).
+BILINMIYOR_ISARETI = "?"
+BILINMIYOR_ACIKLAMA = "uzak-takip bilgisi yok (git fetch gerekir); atlas fetch yapmaz."
+
 
 def _display_width(text: str) -> int:
     try:
@@ -121,13 +125,15 @@ def _cmd_liste(args: argparse.Namespace) -> int:
             r["name"] or "-",
             r["branch"] or "-",
             str(r["dirty"]),
-            str(r["unpushed"]),
+            BILINMIYOR_ISARETI if r["unpushed"] is None else str(r["unpushed"]),
             _short_date(r["last_commit_at"]),
             r["path"],
         ]
         for r in rows
     ]
     print(render_table(headers, table_rows))
+    if any(r["unpushed"] is None for r in rows):
+        print(f"\n{BILINMIYOR_ISARETI} = {BILINMIYOR_ACIKLAMA}")
     print(f"\nToplam: {len(rows)}")
     return 0
 

@@ -134,6 +134,54 @@ def test_liste_unpushed_de_gosterir(db_file: Path, tmp_path: Path):
     assert rows_for(db_file)[str(repo)]["unpushed"] == 1
 
 
+def test_liste_bilinmeyen_unpushed_isearet_ve_aciklama(db_file: Path, tmp_path: Path):
+    """remote var + yerelde ref yok -> '?' basilir ve altta aciklama satirı olur."""
+    from atlas.cli import BILINMIYOR_ACIKLAMA
+
+    bilinen = make_repo(tmp_path / "bilinen")
+    remote = make_bare_remote(tmp_path / "uzak.git")
+    git("remote", "add", "origin", str(remote), cwd=bilinen)
+    git("push", "-q", "-u", "origin", "main", cwd=bilinen)
+
+    bilinmeyen = make_repo(tmp_path / "bilinmeyen")
+    git("remote", "add", "origin", "https://ornek.invalid/yok.git", cwd=bilinmeyen)
+
+    run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+    proc = run_module_cli("liste", "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    assert rows_for(db_file)[str(bilinmeyen)]["unpushed"] is None
+    assert rows_for(db_file)[str(bilinen)]["unpushed"] == 0
+
+    lines = proc.stdout.splitlines()
+    satir_bilinmeyen = next(l for l in lines if l.startswith("bilinmeyen "))
+    assert satir_bilinmeyen.split()[3] == "?"
+    satir_bilinen = next(l for l in lines if l.startswith("bilinen "))
+    assert satir_bilinen.split()[3] == "0"  # sayi degil '?'
+    assert BILINMIYOR_ACIKLAMA in proc.stdout
+    assert "? = uzak-takip bilgisi yok (git fetch gerekir); atlas fetch yapmaz." in proc.stdout
+
+
+def test_liste_sadece_yarim_bilinmeyeni_gostermez(db_file: Path, tmp_path: Path):
+    """NULL satiri --sadece-yarim ciktisinda yer almaz (ekranlama yok)."""
+    bilinmeyen = make_repo(tmp_path / "bulut")
+    git("remote", "add", "origin", "https://ornek.invalid/yok.git", cwd=bilinmeyen)
+    run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+    proc = run_module_cli("liste", "--db", str(db_file), "--sadece-yarim")
+    assert proc.returncode == 0, proc.stderr
+    assert "Yarim is olan repo yok" in proc.stdout
+    assert "bulut" not in proc.stdout
+
+
+def test_liste_temiz_repoda_aciklama_satiri_yok(db_file: Path, tmp_path: Path):
+    """Hicbir '?' yoksa aciklama satiri yazilmaz (gürültü yok)."""
+    make_repo(tmp_path / "sade")
+    run_module_cli("tara", "--root", str(tmp_path), "--db", str(db_file))
+    proc = run_module_cli("liste", "--db", str(db_file))
+    assert proc.returncode == 0, proc.stderr
+    assert "uzak-takip bilgisi yok" not in proc.stdout
+    assert "Toplam: 1" in proc.stdout
+
+
 def test_liste_detached_gosterir(db_file: Path, tmp_path: Path):
     repo = make_repo(tmp_path / "ayrik")
     commit_file(repo, "a.txt", "1", "ikinci")

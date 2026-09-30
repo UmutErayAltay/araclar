@@ -22,7 +22,7 @@ from conftest import (
 )
 
 #: Taramanin kullanmasina izin verilen alt komutlar.
-IZINLI = {"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote"}
+IZINLI = {"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote", "for-each-ref"}
 
 #: Bu komsularin hicbiri calistirilmamali.
 YAZAN_KOMUTLAR = (
@@ -52,7 +52,7 @@ def _git_shim(dizin: Path) -> Path:
         'printf "%s\\n" "$*" >> "{kayit}"\n'
         'shift 2\n'  # 'git -C <yol>' atlanir
         'case "$1" in\n'
-        "  status|log|rev-parse|rev-list|symbolic-ref|remote) exec {gercek} \"$@\" ;;\n"
+        "  status|log|rev-parse|rev-list|symbolic-ref|remote|for-each-ref) exec {gercek} \"$@\" ;;\n"
         '  *) echo "YASAK alt komut: $1" >&2; exit 97 ;;\n'
         "esac\n".format(kayit=kayit, gercek=GERCEK_GIT),
         encoding="utf-8",
@@ -233,7 +233,8 @@ def test_bozuk_uzak_adresi_cozertmez(tmp_path: Path, db_file: Path):
     assert proc.returncode == 0, proc.stderr
     satir = rows_for(db_file)[str(repo)]
     assert satir["has_remote"] == 1
-    assert satir["unpushed"] == 1  # yerel commit, hicbir remote ref'inde degil
+    # Yerelde hicbir uzak-takip ref'i yok ve fetch yasak: sayi UYDURULAMAZ.
+    assert satir["unpushed"] is None
     assert satir["dirty"] == 0
 
 

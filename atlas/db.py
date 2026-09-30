@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS repos (
     name            TEXT NOT NULL,
     scanned_at      TEXT NOT NULL,
     dirty           INTEGER NOT NULL DEFAULT 0,
-    unpushed        INTEGER NOT NULL DEFAULT 0,
+    unpushed        INTEGER,          -- NULL = bilinmiyor (bkz. scan._unpushed_count)
     branch          TEXT,
     last_commit_at  TEXT,
     has_remote      INTEGER NOT NULL DEFAULT 0
@@ -49,6 +49,51 @@ CREATE INDEX IF NOT EXISTS idx_findings_repo ON findings(repo);
 CREATE INDEX IF NOT EXISTS idx_todos_repo    ON todos(repo);
 """
 
+#: `repos.unpushed` sutunu NULL kabul edecek sekilde cevrildi (A.1).
+#: 0 = eski sema (NOT NULL), 1 = gecerli sema.
+SCHEMA_VERSION = 1
+
+#: 0'a cekilirsen `unpushed` yerine `COALESCE(unpushed, 0)` yazilir; boylece
+#: A.1 oncesinden kalma DB'ler de anlamli gorunur, ama yeni semayi zorlamaz.
+UNKNOWN_AS_ZERO_SQL = "COALESCE(unpushed, 0)"
+
+
+def _repos_unpushed_notnull(conn: sqlite3.Connection) -> bool:
+    """`repos.unpushed` NOT NULL mi? (Tablo yoksa False: zaten goc yok.)
+
+    `PRAGMA table_info` sutunlari: (cid, name, type, notnull, dflt_value, pk).
+    Konumsal erisim kullanilir; boylece satir tipi (tuple / sqlite3.Row) onemsiz.
+    """
+    return any(
+        row[3] for row in conn.execute("PRAGMA table_info(repos)") if row[1] == "unpushed"
+    )
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Semayi ilerletir. Mevcut DB'ler veri kaybetmeden guncellenir."""
+    surum = int(conn.execute("PRAGMA user_version").fetchone()[0])
+    if surum >= SCHEMA_VERSION:
+        return
+
+    if _repos_unpushed_notnull(conn):
+        # Eski sema: `unpushed NOT NULL`. Guvenli goc sirasi:
+        #   gecici isim ver -> yeni semali tabloyu kur -> veriyi tasi -> eskisini sil.
+        # Boylece hicbir an icin veri yoktur ve yeni tablo NOT NULL'suz olur.
+        conn.execute("ALTER TABLE repos RENAME TO repos_eski")
+        conn.executescript(
+            SCHEMA.replace("CREATE TABLE IF NOT EXISTS repos", "CREATE TABLE repos")
+        )
+        conn.execute(
+            "INSERT INTO repos "
+            "(path, name, scanned_at, dirty, unpushed, branch, last_commit_at, has_remote) "
+            "SELECT path, name, scanned_at, dirty, "
+            f"{UNKNOWN_AS_ZERO_SQL}, branch, last_commit_at, has_remote FROM repos_eski"
+        )
+        conn.execute("DROP TABLE repos_eski")
+
+    conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    conn.commit()
+
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -62,6 +107,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    _migrate(conn)
     conn.commit()
     return conn
 
@@ -70,7 +116,10 @@ REPO_COLUMNS = ("path", "name", "dirty", "unpushed", "branch", "last_commit_at",
 
 
 def upsert_repos(conn: sqlite3.Connection, repos: Sequence[dict[str, Any]]) -> None:
-    """Ayni path'i UPDATE eder, cogaltmaz (path PRIMARY KEY)."""
+    """Ayni path'i UPDATE eder, cogaltmaz (path PRIMARY KEY).
+
+    `unpushed=None` "bilinmiyor" demektir ve NULL olarak yazilir; 0'a CEVRILMEZ.
+    """
     if not repos:
         return
     now = utc_now()
@@ -80,7 +129,7 @@ def upsert_repos(conn: sqlite3.Connection, repos: Sequence[dict[str, Any]]) -> N
             r["path"],
             r["name"],
             int(r.get("dirty") or 0),
-            int(r.get("unpushed") or 0),
+            None if r.get("unpushed") is None else int(r["unpushed"]),
             r.get("branch"),
             r.get("last_commit_at"),
             1 if r.get("has_remote") else 0,
@@ -118,10 +167,14 @@ def list_repos(conn: sqlite3.Connection, only_dirty: bool = False) -> list[sqlit
     Remote'i olmayan repoda sozlesme geregi `unpushed` tum commit sayisidir;
     bu bir tanim sonucu, gercek bir "push bekliyor" durumu degildir, ancak
     filtrede sayilmaz.
+
+    `unpushed` NULL (bilinmiyor) olan repo: `unpushed > 0` ifadesi NULL verir ve
+    `OR` ile birlesince tum ifade NULL olur; WHERE yalnizca TRUE kabul ettigi icin
+    bu satir dogal olarak filtreye GIRMEZ. SQL semantigiyle guvence altindadir.
     """
     sql = "SELECT * FROM repos"
     if only_dirty:
-        sql += " WHERE dirty > 0 OR (unpushed > 0 AND has_remote = 1)"
+        sql += f" WHERE dirty > 0 OR ({UNKNOWN_AS_ZERO_SQL} > 0 AND has_remote = 1)"
     sql += " ORDER BY name COLLATE NOCASE, path"
     return list(conn.execute(sql))
 

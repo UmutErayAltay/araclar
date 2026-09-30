@@ -18,10 +18,36 @@ CLI ile tablo olarak gösterir. **Dalga A** (çekirdek tarayıcı + DB) uygulanm
 
 `unpushed` kuralı:
 - Upstream varsa → `@{u}..HEAD` arası commit sayısı.
-- Upstream yok ama remote varsa → HEAD'in hiçbir remote ref'inde olmayan commit sayısı.
+- Upstream yok, remote var **ve yerelde `refs/remotes/` altında en az bir ref
+  varsa** → HEAD'in hiçbir remote ref'inde olmayan commit sayısı.
+- Upstream yok, remote var ama **yerelde hiç uzak-takip ref'i yoksa** →
+  `?` (bilinmiyor). Aşağıdaki "Bilinen sınır" başlığına bakın.
 - **Remote hiç yoksa** → depodaki toplam commit sayısı. (Yerelde duran işin
   göstergesi; "push bekliyor" anlamına gelmez. Bu yüzden `liste --sadece-yarim`
   bu durumu filtreye almaz.)
+
+## Bilinen sınır: `?` ne demek
+
+`unpushed` **yalnızca yerel ref'lere** bakar. `git fetch` çalıştırmaz (ağ erişimi
+bilerek yok), dolayısıyla uzakla ilgili her şey *bu makinenin daha önce indirdiği
+`refs/remotes/*` ref'lerinden* ibarettir.
+
+Bazı ortamlarda (ör. proxy üzerinden klonlanan/pushlanan repolar) remote tanımlı
+olsa da yerelde **hiç `refs/remotes/` ref'i bulunmaz**. O durumda "kaç commit
+push edilmemiş" sorusunun cevabı gerçekten bilinmez: `--remotes` hiçbir şeyi
+dışlamaz ve tüm commitleri döndürür, ama doğru sonuç 0 da olabilir (hepsi
+push edilmiş olabilir). atlas bu durumda **sayı uydurmaz**, `?` gösterir:
+
+```
+danis   main   0   ?   2026-09-28 20:03  /home/user/danis
+? = uzak-takip bilgisi yok (git fetch gerekir); atlas fetch yapmaz.
+```
+
+Bu bir hata değil, ölçülebilir bir bilgidir. Çözüm atlas'ta değil, repoda:
+`git fetch` (veya `git fetch origin`) bir kez çalıştırılırsa ref'ler dolar ve
+atlas bir sonraki taramada gerçek sayıyı gösterir. Bu sırada `?` olan repo
+`liste --sadece-yarim` çıktısına **giremez** — "yarım iş" olduğu bilinmiyor, bu
+yüzden listelenmemek doğrudur.
 
 ## Kurulum
 
@@ -77,9 +103,10 @@ boş olarak oluşturulmuştur; bu dalda doldurulmaz.
 
 - **Salt okunur.** Taranan repolara hiçbir şey yazılmaz. atlas yalnızca okuyan git
   komutlarını çalıştırır (`status`, `log`, `rev-parse`, `rev-list`, `symbolic-ref`,
-  `remote`). `push`, `fetch`, `pull`, `reset`, `checkout`, `clean`, `gc` gibi komutlar
-  kodda yoktur ve çalıştırılması teknik olarak engellenir. Git her seferinde
-  `GIT_OPTIONAL_LOCKS=0` ile çağrılır, böylece `status` bile index'i tazelemez.
+  `remote`, `for-each-ref`). `push`, `fetch`, `pull`, `reset`, `checkout`, `clean`,
+  `gc` gibi komutlar kodda yoktur ve çalıştırılması teknik olarak engellenir. Git
+  her seferinde `GIT_OPTIONAL_LOCKS=0` ile çağrılır, böylece `status` bile index'i
+  tazelemez.
 - Bu davranış testlerle kanıtlanır: taranan repoların `.git` içeriği, çalışma ağacı ve
   index dosyası tarama öncesi ve sonrası bayt bayt aynıdır.
 - Bir repo bozuk/erişilemez ise atlanır ve uyarı olarak stderr'a yazılır; tüm tarama

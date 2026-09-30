@@ -73,15 +73,79 @@ def test_upstream_ustune_yakalaninca_unpushed_sifir(tmp_path: Path):
 
 
 def test_remote_var_upstream_yok_tum_commitler(tmp_path: Path):
-    """upstream yoksa 'hicbir remote ref'indeki olmayan' commit sayilir."""
+    """upstream yoksa 'hicbir remote ref'indeki olmayan' commit sayilir.
+
+    NOT: `git push` yerel `refs/remotes/origin/*` ref'ini yazdigindan ref vardir;
+    `for-each-ref` kontrolu ancak ref hic yoksa tetiklenir.
+    """
     remote = make_bare_remote(tmp_path / "uzak.git")
     repo = make_repo(tmp_path / "yerel")
     git("remote", "add", "origin", str(remote), cwd=repo)
+    # Ref'i elle yaz (ilk commit'te): "remote ref'i var, upstream yok" durumu.
+    git("update-ref", "refs/remotes/origin/main", "HEAD", cwd=repo)
     satir = collect_repo(repo)
     assert satir["has_remote"] == 1
-    assert satir["unpushed"] == 1  # hic push edilmemis tek commit
+    assert satir["unpushed"] == 0  # HEAD, remote ref'inde
     commit_file(repo, "a.txt", "1", "ek")
-    assert collect_repo(repo)["unpushed"] == 2
+    assert collect_repo(repo)["unpushed"] == 1  # yeni commit ref'in disinda
+
+
+def test_remote_var_ref_yoksa_unpushed_bilinmiyor(tmp_path: Path):
+    """A.1'in asil bulgusu: remote var + yerelde ref YOK -> sayi UYDURULAMAZ.
+
+    `--not --remotes` hicbir sey dislamaz ve tum commitleri dondurur; oysa gercek
+    durum 0 da olabilir. fetch yasak oldugu icin cevap `None` (bilinmiyor).
+    """
+    repo = make_repo(tmp_path / "bulut")
+    git("remote", "add", "origin", "https://ornek.invalid/olmayan.git", cwd=repo)
+    commit_file(repo, "a.txt", "1", "ikinci")
+    commit_file(repo, "b.txt", "2", "ucuncu")
+    assert git("for-each-ref", "--count=1", "refs/remotes", cwd=repo, check=False).strip() == ""
+    satir = collect_repo(repo)
+    assert satir["has_remote"] == 1
+    assert satir["unpushed"] is None  # 3 DEGIL: bilinmiyor
+
+
+def test_remote_var_ref_eklenince_unpushed_sifir(tmp_path: Path):
+    """AYNI repo: `update-ref` ile ref yazilir yazmaz sayi bilinir olur."""
+    repo = make_repo(tmp_path / "bulut")
+    git("remote", "add", "origin", "https://ornek.invalid/olmayan.git", cwd=repo)
+    assert collect_repo(repo)["unpushed"] is None
+    # Yapay olarak ref'i HEAD'e isaret ettir: artik "hicbir remote ref'inde degil"
+    # bos kume olur -> unpushed 0.
+    git("update-ref", "refs/remotes/origin/main", "HEAD", cwd=repo)
+    satir = collect_repo(repo)
+    assert satir["has_remote"] == 1
+    assert satir["unpushed"] == 0
+
+
+def test_remote_ref_eski_commit_gosteriyorsa_dogru_fark(tmp_path: Path):
+    """Ref bayat: HEAD 3 commit ilerideyse unpushed 3 olmali (bilinmiyor degil)."""
+    repo = make_repo(tmp_path / "bayat")
+    git("remote", "add", "origin", "https://ornek.invalid/olmayan.git", cwd=repo)
+    ilk = git("rev-parse", "HEAD", cwd=repo).strip()
+    git("update-ref", "refs/remotes/origin/main", ilk, cwd=repo)
+    commit_file(repo, "a.txt", "1", "ikinci")
+    commit_file(repo, "b.txt", "2", "ucuncu")
+    commit_file(repo, "c.txt", "3", "dorduncu")
+    satir = collect_repo(repo)
+    assert satir["has_remote"] == 1
+    assert satir["unpushed"] == 3  # ref ilk commit'te kaldi
+
+
+def test_remote_hic_yok_unpushed_toplam_commit_degismedi(tmp_path: Path):
+    """`has_remote=0` davranisi DEGISMEDIR: toplam commit sayisi (NULL degil)."""
+    repo = make_repo(tmp_path / "yalniz")
+    commit_file(repo, "a.txt", "1", "ikinci")
+    commit_file(repo, "b.txt", "2", "ucuncu")
+    satir = collect_repo(repo)
+    assert satir["has_remote"] == 0
+    assert satir["unpushed"] == 3
+    # has_remote=0 iken "bilinmiyor" kurali TETIKLENMEZ (kural remote'a bakar).
+    # Satir ancak `HEAD --not --remotes` sayesinde daralir; bu, eski ve korunmus
+    # davranistir. Kilit olan nokta: sonuc hicbir zaman NULL olmaz.
+    git("update-ref", "refs/remotes/origin/main", "HEAD", cwd=repo)
+    assert collect_repo(repo)["unpushed"] == 0
 
 
 def test_remote_var_push_edilmis_ama_upstream_yok(tmp_path: Path):

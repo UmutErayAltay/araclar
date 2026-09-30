@@ -196,4 +196,5 @@ def test_bozuk_uzak_adresi_ag_yok(tmp_path: Path):
     assert proc.returncode == 0, proc.stderr
     satir = rows_for(db)[str(repo)]
     assert satir["has_remote"] == 1
-    assert satir["unpushed"] == 1
+    # Ag yok, yerel ref yok: "bilinmiyor" (None), uydurma sayi degil.
+    assert satir["unpushed"] is None

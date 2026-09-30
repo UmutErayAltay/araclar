@@ -1,7 +1,8 @@
 """Repo kesfi + salt-okunur git durumu.
 
 Guvenlik: repolara HIC BIR SEY yazilmaz. Yalnizca okuyan git komutlari calistirilir
-(`status`, `log`, `rev-parse`, `rev-list`, `rev-parse --abbrev-ref`, `symbolic-ref`).
+(`status`, `log`, `rev-parse`, `rev-list`, `rev-parse --abbrev-ref`, `symbolic-ref`,
+`for-each-ref`).
 `fetch/push/pull/checkout/reset/clean/gc` hic calistirilmaz.
 `GIT_OPTIONAL_LOCKS=0` ile index'in tazelenmesi engellenir.
 """
@@ -21,7 +22,11 @@ SKIP_DIRS = frozenset(
 
 #: Sadece bunlar calistirilir; liste sinirli ve bilerek dar tutulur.
 #: `fetch/push/pull/checkout/reset/clean/gc/filter-branch` burada YOK ve eklenmez.
-ALLOWED_GIT_SUBCOMMANDS = frozenset({"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote"})
+#: `for-each-ref` yalnizca `refs/remotes` ALTINDA ref olup olmadigini sorar
+#: (--count=1): salt-okunur, hicbir sey yazmaz/guncellemez.
+ALLOWED_GIT_SUBCOMMANDS = frozenset(
+    {"status", "log", "rev-parse", "rev-list", "symbolic-ref", "remote", "for-each-ref"}
+)
 
 GIT_TIMEOUT = 60
 
@@ -180,7 +185,27 @@ def _dirty_count(repo: Path) -> int:
     return len([line for line in out.splitlines() if line.strip()])
 
 
-def _unpushed_count(repo: Path, has_commits: bool) -> int:
+def _has_remote_ref(repo: Path) -> bool:
+    """`refs/remotes/` altinda en az bir ref var mi?
+
+    Bu, uzak-takip (remote-tracking) bilgisinin YERELDE olup olmadigini sorar;
+    ag erisimi gerektirmez, yalnizca yerel ref deposunu okur.
+    """
+    try:
+        out = run_git(repo, ["for-each-ref", "--count=1", "refs/remotes"])
+    except GitError:
+        return False
+    return bool(out.strip())
+
+
+def _unpushed_count(repo: Path, has_commits: bool) -> int | None:
+    """Push edilmemiş commit sayisi.
+
+    `None` = BILINMIYOR: remote tanimli ama yerelde HICBIR uzak-takip ref'i yok.
+    Bu durumda `--remotes` hicbir sey dislamaz ve sonuc "tum commitler" gibi
+    gorunur; oysa gercek durum 0 da olabilir (her sey pushlanmis olabilir).
+    `fetch` yasak oldugu icin burada dogru cevap "bilmiyorum"dur, uydurma sayi degil.
+    """
     if not has_commits:
         return 0
     upstream = _upstream(repo)
@@ -190,7 +215,10 @@ def _unpushed_count(repo: Path, has_commits: bool) -> int:
             return int(out.strip() or 0)
         except GitError:
             pass
-    # Upstream yok: once hicbir remote ref'inde olmayan commitler, sonra tum commitler.
+    if _has_remote(repo) and not _has_remote_ref(repo):
+        return None  # uzak-takip bilgisi yok: bilinmiyor
+    # Upstream yok, ref var: once hicbir remote ref'inde olmayan commitler,
+    # sonra (gUVENLI onlem) tum commitler.
     try:
         out = run_git(repo, ["rev-list", "--count", "HEAD", "--not", "--remotes"])
         return int(out.strip() or 0)
@@ -219,7 +247,10 @@ def _last_commit_at(repo: Path, has_commits: bool) -> str | None:
 
 
 def collect_repo(path: Path) -> dict:
-    """Tek repo icin DB satirini dondurur. Hata olursa GitError firlatir."""
+    """Tek repo icin DB satirini dondurur. Hata olursa GitError firlatir.
+
+    `unpushed` deger `None` olabilir (= bilinmiyor, bkz. `_unpushed_count`).
+    """
     path = Path(path)
     has_commits = _has_commits(path)
     return {

@@ -1,0 +1,51 @@
+name: Testler
+
+# Kök (ortak istemci + kopya güncelliği) ve her proje klasörü için birim testleri.
+# Web e2e (Playwright) ve gerçek cor isteyen entegrasyon testleri BURADA KOŞMAZ:
+# onlar tarayıcı kurulumu / yerel cor proxy'si ister, yerelde koşturulur.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cekirdek:
+    name: kök (ortak istemci + kopya güncelliği)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pytest
+      - run: python -m pytest -q
+
+  projeler:
+    name: ${{ matrix.proje }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - proje: atlas
+            kur: pip install pytest "Flask>=3.0"
+          - proje: harita
+            kur: pip install pytest -r requirements.txt
+          - proje: orkestra
+            kur: pip install "pytest>=8.0" -r requirements.txt
+          - proje: danis
+            kur: pip install -r requirements-dev.txt
+          - proje: anlat
+            kur: pip install -r requirements.txt
+    defaults:
+      run:
+        working-directory: ${{ matrix.proje }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Bağımlılıkları kur
+        run: ${{ matrix.kur }}
+      - name: Birim testleri
+        run: python -m pytest -q --ignore-glob='*web_e2e*' --ignore-glob='*integration_cor*'

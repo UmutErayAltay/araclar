@@ -1,0 +1,4 @@
+# Anlatı üreticisi yalnızca Python standart kütüphanesini kullanır
+# (urllib ile cor proxy'ye bağlanır, subprocess ile git çalıştırır).
+# Testler için gereken tek harici bağımlılık:
+pytest>=7.0

@@ -395,13 +395,28 @@ class Queue:
                 json.dumps(kanit, ensure_ascii=False),
                 guard.maskele(sonuc.hata) if sonuc.hata else sonuc.hata,
                 degerlendirme.sonuc,
-                json.dumps(degerlendirme.json(), ensure_ascii=False),
+                json.dumps(self._kanit_ozeti(degerlendirme), ensure_ascii=False),
                 run_id,
             ),
         )
         gorev = self.gecis(gorev.id, yeni_durum)
         kosu = next(r for r in self.kosular(gorev.id) if r.id == run_id)
         return gorev, kosu
+
+    @staticmethod
+    def _kanit_ozeti(degerlendirme: report.Degerlendirme) -> dict:
+        """`runs.kanit_ozeti` JSON'u (Dalga E: `yapisal` alt nesnesi içerir).
+
+        DB ŞEMASI DEĞİŞMEZ — anahtar zaten var olan JSON sütununa yazılır.
+        Yapısal veri YOKSA anahtar hiç yazılmaz → eski satırlarla aynı biçim,
+        okuyanlar `.get("yapisal")` ile None-güvenli kalır.
+        """
+        ozet = degerlendirme.json()
+        if degerlendirme.yapisal:
+            yapisal = dict(degerlendirme.yapisal)
+            yapisal["gozlemlenen_test_sayisi"] = degerlendirme.gozlemlenen_temiz_test_sayisi()
+            ozet["yapisal"] = yapisal
+        return ozet
 
     def _raporu_degerlendir(
         self, sonuc: RunSonuc, gorev: Task, baslangic: str, git_once: str | None,
@@ -425,6 +440,9 @@ class Queue:
             except OSError:
                 metin = ""
         git_sonra = report.git_ozeti(calisma_dizini) if git_once is not None else None
+        # Dalga E: yapısal akış özeti. `getattr` güvenli — FakeRunner ve eski
+        # çalıştırıcılar `yapisal` ALANI OLMAYAN `RunSonuc` döndürebilir.
+        yapisal = getattr(sonuc, "yapisal", None)
         degerlendirme = report.degerlendir(
             metin,
             calisma_dizini=calisma_dizini,
@@ -432,6 +450,7 @@ class Queue:
             git_once=git_once,
             git_sonra=git_sonra,
             rapor_dosyasi=getattr(sonuc, "rapor_dosyasi", None) or gorev.rapor_dosyasi,
+            yapisal=yapisal if isinstance(yapisal, dict) else None,
         )
         # Runner'ın bildirdiği kanıt yolları GÖZLEMLENEN kanıttır; raporda
         # geçmese de kanıt sayılır (dosya gerçekten orada).

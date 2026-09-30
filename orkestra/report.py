@@ -296,6 +296,13 @@ class Degerlendirme:
     rapor_dosyasi: str = ""
     kanit_durumu: str = DEGERLENDIRILMEDI
     ozet: str = ""
+    # Dalga E: `claude -p --output-format stream-json` akışından gelen araç
+    # sonuçları. `None` = akış kullanılmadı (eski koşu) → aşağıdaki kurallar
+    # işlemez, davranış DALGA D'DEKİ GİBİDİR.
+    yapisal: dict | None = None
+    # Dalga E: akıştan GÖZLEMLENEN test sonuçları (beyan DEĞİLDİR; orkestra
+    # `Bash` aracının gerçek çıktısını kendisi okumuştur).
+    gozlemlenen_testler: list[TestBeyani] = field(default_factory=list)
 
     # -- türetilmiş görünümler ----------------------------------------
 
@@ -308,8 +315,19 @@ class Degerlendirme:
         return sum(1 for t in self.testler if not t.basarisiz_mi)
 
     def gozlemlenen_kanit_sayi(self) -> int:
-        """GÖZLEMLENEN kanıt sayısı (beyan SAYILMAZ)."""
-        return self.gecerli_gorsel_sayisi + (1 if self.git_degisti else 0)
+        """GÖZLEMLENEN kanıt sayısı (beyan SAYILMAZ).
+
+        Dalga E: akıştan okunan (gözlemlenen) temiz test koşuları da sayılır.
+        """
+        return (
+            self.gecerli_gorsel_sayisi
+            + (1 if self.git_degisti else 0)
+            + self.gozlemlenen_temiz_test_sayisi()
+        )
+
+    def gozlemlenen_temiz_test_sayisi(self) -> int:
+        """GÖZLEMLENEN (beyan olmayan) ve BAŞARILI test koşusu sayısı."""
+        return len([t for t in self.gozlemlenen_testler if not t.basarisiz_mi])
 
     @property
     def kanitli_mi(self) -> bool:
@@ -534,6 +552,44 @@ def _kanit_bolumu(metin: str) -> str | None:
     return "\n".join(govde)
 
 
+# -- Dalga E: yapısal (GÖZLEMLENEN) akış kanıtı -------------------------
+
+
+def _gozlemlenen_testler(yapisal: dict | None) -> list[TestBeyani]:
+    """Akıştaki `Bash` araç çıktılarından test sonucu okur.
+
+    `Bash` çıktısı orkestranın KENDİ gördüğü veridir → beyan değildir. Başarısız
+    bir `pytest` (çıkış kodu 1) canlıda `is_error=true` gelir ve GÖZLEMLENEN bir
+    gerçektir: `hata` bayrağı ELENMEZ, `basarisiz` sınıfını üretmesi beklenir.
+    Yalnız izin/onay reddi (`red`) atlanır: o bir test çıktısı değildir.
+    """
+    bulunan: list[TestBeyani] = []
+    if not yapisal:
+        return bulunan
+    for sonuc in yapisal.get("arac_sonuclari") or []:
+        if not isinstance(sonuc, dict):
+            continue
+        if sonuc.get("arac") != "Bash" or sonuc.get("red"):
+            continue
+        cikti = sonuc.get("cikti")
+        if isinstance(cikti, str) and cikti:
+            bulunan.extend(testleri_ayikla(cikti))
+    return bulunan
+
+
+def _gozlemlenen_basarisiz(testler: list[TestBeyani]) -> TestBeyani | None:
+    """GÖZLEMLENEN son test koşusu başarısız mı?
+
+    Aynı test koşusunun ARACIN SON gözlemi belirleyicidir: ajan "hepsi geçti"
+    dese bile gözlem onu düşeltir. Beyan gözleme ASLA yükseltmez.
+    """
+    for tur in ("pytest", "unittest", "jest", "cargo", "go"):
+        o_tur = [t for t in testler if t.tur == tur]
+        if o_tur and o_tur[-1].basarisiz_mi:
+            return o_tur[-1]
+    return None
+
+
 # -- ana giriş noktası ----------------------------------------------------
 
 
@@ -545,13 +601,17 @@ def degerlendir(
     git_once: str | None = None,
     git_sonra: str | None = None,
     rapor_dosyasi: str | None = None,
+    yapisal: dict | None = None,
 ) -> Degerlendirme:
     """Ajan raporunu bağımsız kanıtlarla karşılaştırır.
 
     `calisma_dizini` dışına çıkılmaz; git durumu dışarıdan verilir (saf fonksiyon).
     `rapor_dosyasi` verilirse log + dosya içeriği BİRLİKTE ayrıştırılır.
+    `yapisal` (Dalga E) stream-json akış özetidir: verilmezse (varsayılan)
+    davranış DALGA D'DEKİ GİBİ AYNEN çalışır.
     """
     d = Degerlendirme()
+    d.yapisal = yapisal
     kok = Path(calisma_dizini)
 
     # -- rapor dosyası (yol güvenliği + boyut sınırı) ----------------------
@@ -629,6 +689,8 @@ def degerlendir(
 
     # -- 2) test beyanları ------------------------------------------------
     d.testler = testleri_ayikla(metin)
+    # Dalga E: akıştan GÖZLEMLENEN test sonuçları (beyandan AYRI tutulur).
+    d.gozlemlenen_testler = _gozlemlenen_testler(yapisal)
 
     # -- 3) görsel kanıt (GÖZLEMLENEN) ------------------------------------
     kanit_bolumu = _kanit_bolumu(metin)
@@ -641,7 +703,10 @@ def degerlendir(
         )
     # Gerçek bir görsel kanıtı varsa kısa-rapor kuralı geçerli değildir:
     # kanıt zaten gözlemlendi, raporun kısa olması onu geçersiz kılmaz.
-    gozlemlenen_var = d.gecerli_gorsel_sayisi > 0
+    # Dalga E: gözlemlenen TEMİZ test koşusu da aynı ölçüdedir.
+    gozlemlenen_var = (
+        d.gecerli_gorsel_sayisi > 0 or d.gozlemlenen_temiz_test_sayisi() > 0
+    )
     # Kanıt bölümünde görsel satırı "gördüğüm kusur" metnini de beyan olarak saklar.
     if kanit_bolumu is not None:
         for satir in kanit_bolumu.splitlines():
@@ -670,8 +735,32 @@ def degerlendir(
             "onceki/kucuk kosuda basarisizlik anilmis, en buyuk sonuc temiz: "
             + ", ".join(f"{t.tur}: {t.failed or 0} failed" for t in gecmis_basarisiz[:3])
         )
+    # Dalga E — YAPISAL RED: izin/onay kalıbı akışta GÖZLEMLENDİ. Metin
+    # heuristiği gerekmez: ajanın son mesajı temiz olsa da yakalanır.
+    if yapisal and d.sonuc != REDDEDILDI:
+        if (
+            int(yapisal.get("izin_reddi_sayisi") or 0) > 0
+            or any(r.get("red") for r in yapisal.get("arac_sonuclari") or [])
+        ):
+            d.sonuc = REDDEDILDI
+            d.gerekceler.append(
+                Gerekce("yapisal-red", REDDEDILDI,
+                        "izni reddedilen arac sonucu var; izin reddi sayisi: "
+                        f"{yapisal.get('izin_reddi_sayisi') or 0}")
+            )
+    # Dalga E — GÖZLEMLENEN TEST: akıştaki son `Bash` test koşusu başarısızsa
+    # BEYAN ne derse desin `basarisiz` olur (beyan gözlemi ASLA yükseltmez).
+    gozlemlenen_bozuk = _gozlemlenen_basarisiz(d.gozlemlenen_testler)
     if d.sonuc != REDDEDILDI:
-        if basarisiz or _traceback_var(son_mesaj):
+        if gozlemlenen_bozuk is not None:
+            d.sonuc = BASARISIZ
+            d.gerekceler.append(
+                Gerekce("gozlemlenen-test-basarisiz", BASARISIZ,
+                        f"akis son {gozlemlenen_bozuk.tur} kosusu: "
+                        f"{gozlemlenen_bozuk.failed or 0} failed/"
+                        f"{gozlemlenen_bozuk.error or 0} error")
+            )
+        elif basarisiz or _traceback_var(son_mesaj):
             d.sonuc = BASARISIZ
             k = ", ".join(
                 f"{t.tur}: {t.failed or 0} failed/{t.error or 0} error" for t in basarisiz
@@ -702,6 +791,15 @@ def degerlendir(
             d.gerekceler.append(
                 Gerekce("iddia-kanitsiz", KANITSIZ,
                         "iddia var, gozlemlenen kanit yok")
+            )
+        elif d.gozlemlenen_testler:
+            # Gözlemlenen (beyan OLMAYAN) kanıt: `iddialar` boş olsa da kanıtlı.
+            d.sonuc = KANITLI
+            temiz = [t for t in d.gozlemlenen_testler if not t.basarisiz_mi]
+            d.gerekceler.append(
+                Gerekce("gozlemlenen-akis-kaniti", KANITLI,
+                        f"{len(temiz)} gozlemlenen temiz test kosusu: "
+                        + ", ".join(f"{t.tur}: {t.passed or 0} passed" for t in temiz[:3]))
             )
         else:
             d.sonuc = KANITLI

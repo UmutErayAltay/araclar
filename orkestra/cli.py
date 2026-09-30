@@ -185,6 +185,8 @@ def _kur() -> argparse.ArgumentParser:
                           help="cor'a gonderilecek baglam dosyasi (en fazla 4000 karakter)")
     p_planla.add_argument("--kuru", action="store_true",
                           help="Aga cikmaz; promptun karakter sayisini yazar")
+    p_planla.add_argument("--model", default=None, metavar="M",
+                          help="Planlama modeli (varsayilan ucretsiz nemotron)")
     p_planla.add_argument("--json", action="store_true", help="JSON olarak bas")
     p_planla.add_argument("--db", dest="alt_db", default=None, metavar="YOL", help=DB_YARDIM)
 
@@ -511,6 +513,24 @@ def _kanit_bolumu_yaz(kosu) -> None:
             print(f"    - {g.get('kural')}: {g.get('kanit')}")
 
 
+def _yapisal_satiri_yaz(ozet: dict | None) -> None:
+    """`rapor` çıktısına yapısal (akış) kanıt satırı ekler.
+
+    Satır YALNIZ yapısal veri varsa basılır; eski koşularda hiç basılmaz.
+    `cikti` alanları maskeli olduğu için ekrana sır sızmaz.
+    """
+    if not ozet:
+        return
+    yapisal = ozet.get("yapisal")
+    if not isinstance(yapisal, dict):
+        return
+    print(
+        f"  Yapisal: {yapisal.get('arac_sayisi', 0)} arac sonucu, "
+        f"{yapisal.get('izin_reddi_sayisi', 0)} red, "
+        f"{yapisal.get('gozlemlenen_test_sayisi', 0)} gozlemlenen test kosusu"
+    )
+
+
 def _rapor(kuyruk: Queue, args) -> int:
     gorev = kuyruk.al(args.id)
     kosular = kuyruk.kosular(gorev.id)
@@ -528,6 +548,7 @@ def _rapor(kuyruk: Queue, args) -> int:
         print(f"  hata      : {guard.maskele(kosu.hata)}")
     # Kanıt bölümü: gözlemlenen kanıt ile beyan AYRI gösterilir.
     _kanit_bolumu_yaz(kosu)
+    _yapisal_satiri_yaz(kosu.kanit_ozeti)
     log = kosu.cikti_yolu
     if not log:
         print("  log       : (yok)")
@@ -645,8 +666,11 @@ def args_kati_mi(args) -> bool:
 
 
 def _planla(kuyruk: Queue, args) -> int:
-    from .llm import DEFAULT_BASE_URL, DEFAULT_MODEL, CorLLMClient, LLMError
+    from .llm import DEFAULT_MODEL, CorLLMClient, LLMError
 
+    # `--model` verilirse O, yoksa `COR_MODEL`/varsayılan ücretsiz nemotron.
+    # Kota PAYLAŞIMLIDIR: bu arac otomatik model DEĞİŞTİRMEZ, seçim kullanıcının.
+    model = getattr(args, "model", None) or DEFAULT_MODEL
     hedef = args.hedef.strip()
     baglam = planner.baglam_oku(args.baglam) if args.baglam else ""
     if args.kuru:
@@ -658,7 +682,7 @@ def _planla(kuyruk: Queue, args) -> int:
         print(f"  prompt karakter: {len(prompt)}")
         return 0
     try:
-        plan = planner.planla(hedef, istemci=CorLLMClient(), baglam=baglam)
+        plan = planner.planla(hedef, istemci=CorLLMClient(model=model), baglam=baglam)
     except planner.PlanHatasi as hata:
         # Geçersiz çıktıda KISMİ SONUÇ YOK: net hata, çıkış kodu 3.
         print(f"Plan reddedildi: {hata}", file=sys.stderr)

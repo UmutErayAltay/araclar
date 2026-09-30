@@ -121,3 +121,7 @@ class RunSonuc:
     kanit_yollari: list[str] = field(default_factory=list)
     hata: str | None = None
     onay_gerekli: bool = False
+    # Dalga E: `--output-format stream-json` akışından çıkarılan YAPISAL özet
+    # (araç sonuçları, izin reddi, tur/maliyet tahmini). `None` = akış kullanılmadı
+    # (eski düz akış, FakeRunner, eski koşular) → kanıt katmanı eskisi gibi çalışır.
+    yapisal: dict | None = None

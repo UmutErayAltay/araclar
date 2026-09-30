@@ -2,7 +2,7 @@
 
 Ajan Orkestrasi: bunny/nemotron/deepseek ajanlari icin gorev kuyrugu, kota takibi ve web panel.
 
-Durum: **Dalga D** (planlayici + kanit degerlendirme) bitti. Dalga A/B/C tamam.
+Durum: **Dalga E** (stream-json akisi + yapisal kanit) bitti. Dalga A/B/C/D tamam.
 Calisma zamani bagimliligi yalnizca **Flask**; testler icin `pytest` ve `playwright`.
 
 ## Kurulum
@@ -239,7 +239,24 @@ başına hata **değildir** (eski istemler bu biçimi bilmez).
 
 ## Planlayıcı (Dalga D) — gizlilik tablosu
 
-`orkestra planla "HEDEF" [--baglam DOSYA]` hedefi iş dalgalarına böler.
+`orkestra planla "HEDEF" [--baglam DOSYA] [--model M]` hedefi iş dalgalarına böler.
+
+### Planlama modeli (Dalga E)
+
+- **Varsayılan model ücretsizdir:** `nvidia/nemotron-3-ultra-550b-a55b:free`
+  (`COR_MODEL` ortam değişkeniyle değiştirilebilir).
+- **Kota PAYLAŞIMLIDIR.** Ücretsiz modelin kotası cor üzerinden paylaşılır; limit
+  dolduğunda `orkestra planla` HTTP hatası verir ve **kısmi plan üretmez**.
+- **`stealth/space-bunny-alpha` planlamada BOŞ dönüyor.** Gözlem: planlama
+  isteminde `max_tokens`'ın tamamını düşünme tokena harcayıp
+  `stop_reason=max_tokens` ve boş metin döndürüyor. Bu yüzden varsayılan model
+  değiştirildi; bu model **çalıştırma** (`--model`) tarafında hâlâ kullanılabilir.
+- **Ücretli model seçimi kullanıcının kararıdır.** Orkestra otomatik model
+  DEĞİŞTİRMEZ, kota sayacı tutmaz, model düşürmez. Seçim:
+
+  ```bash
+  orkestra planla "HEDEF" --model <model-adı>
+  ```
 
 ### cor'a GİDEN veri
 

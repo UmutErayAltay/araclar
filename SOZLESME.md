@@ -182,4 +182,9 @@ verdi (`git subtree add`, commit geçmişi korunarak; `danis` artık özel). Son
   kurulumda hata alır; bilerek kabul edildi.
 - `danis`'in Windows CI'ı `.github/workflows/danis-build-windows.yml` olarak köke taşındı
   (`working-directory: danis`, yol filtreli). Windows'ta henüz koşturulmadı.
-- `anlat` ve `readbunny` kapsam dışı kaldı (6. bölüm geçerli).
+- `readbunny` kapsam dışı kaldı (6. bölüm geçerli): güvenlik denetiminden geçmiş temizlenmiş hata mesajları, `requests` kütüphanesi ve tekrar deneme yok.
+- **`anlat` sonradan eklendi (aynı gün):** klasör olarak taşındı ve istemcisi ortak kaynağa geçti. Farkı: kendi
+  `NarratorError`'ı var; `NarratorError`, `LLMError`'un alt sınıfı yapıldı ve `_post_once` her `LLMError`'u
+  `NarratorError`'a çevirir (çağıran kod ve yeniden deneme mantığı değişmedi). Tek davranış farkı boş yanıt mesajının
+  metni ("Sahte anlatı…" → "Sahte yanıt…"); gövde (8000 token), timeout (300 sn), hata türü ve deneme sayısı aynı.
+  Konak denetimi bilerek kapalı (`izinli_konaklar=None`), karar Umut'un.

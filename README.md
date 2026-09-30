@@ -4,7 +4,7 @@ Yerel **cor** proxy'sine (`POST /v1/messages`) konuşan küçük Python araçlar
 deposu. Ortak parça, hepsinin kullandığı **tek LLM istemcisidir** (`corclient.py`);
 araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 
-> Not: Depo adı yalnızca istemciyi anlatıyor; içinde istemciyi kullanan 5 uygulama da var.
+> Not: Depo adı yalnızca istemciyi anlatıyor; içinde istemciyi kullanan 6 uygulama da var.
 > GitHub'da adı değiştirilebilir (Settings → Rename; eski bağlantılar yönlenir).
 
 ## İçindekiler
@@ -17,6 +17,7 @@ araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 | `orkestra/` | Ajan görev kuyruğu, kota takibi, kanıt değerlendirme ve web panel |
 | `danis/` | Terminalde hata asistanı + "bu dosyayı cor'a sor" (Windows `.exe` derlemesi var) |
 | `ne-izlesem/` | Film/dizi/kitap takip listesi + ruh haline göre öneri |
+| `anlat/` | Git deposunun geçmişinden Türkçe teknik anlatı üretir; NotebookLM ile sesli özet hazırlar |
 
 Her klasör **bağımsız bir projedir**: kendi `README.md`, `pyproject.toml` ve testi var.
 Testler klasörün içinden koşulur (kökteki `pytest` yalnızca ortak istemciyi sınar):
@@ -54,10 +55,15 @@ farkı hash'i bozmaz.
 | orkestra | `nvidia/nemotron-3-ultra-550b-a55b:free` | 4000 | 120 | loopback | `cor start` |
 | danis | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor` |
 | ne-izlesem | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor claude` |
+| anlat | `stealth/space-bunny-alpha` | 8000 | 300 | **yok** (açık karar, aşağıda) | `cor claude` |
 
 Loopback denetimi, kullanıcı verisi yanlışlıkla başka bir makineye gitmesin diye cor adresi
 `127.0.0.1`/`localhost`/`::1` dışındaysa istemciyi kurarken hata verir. `COR_BASE_URL` ve
-`COR_MODEL` ortam değişkenleri varsayılanları değiştirir.
+`COR_MODEL` ortam değişkenleri varsayılanları değiştirir (`anlat` bunları okumaz, `--base-url`/`--model` bayraklarını kullanır).
+
+`anlat`'ta konak denetimi bugünkü davranış korunarak kapalı bırakıldı (`--base-url` ile uzak adres verilebilir).
+Kapatmak tek satır: `anlat/generator/narrator.py` içinde `izinli_konaklar=None` → `IZINLI_KONAKLAR`; ama
+uzak cor kullanan bir kurulumu kırar, bu yüzden Umut'un kararına bırakıldı.
 
 ## CI
 

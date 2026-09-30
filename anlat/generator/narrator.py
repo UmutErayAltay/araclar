@@ -2,24 +2,30 @@
 
 LLM'e erişim `LLMClient` protokolü üzerinden soyutlanmıştır; testler sahte bir
 implementasyon kullanır, gerçek implementasyon yerel cor proxy'sine HTTP ile
-bağlanır. LLM çağrısı başarısız olursa sahte/boş bir anlatı üretmek yerine
+bağlanır (ortak istemci: `generator/_corclient.py`, kaynak repo kökündeki
+`corclient.py`). LLM çağrısı başarısız olursa sahte/boş bir anlatı üretmek yerine
 `NarratorError` yükselir.
 """
 
 from __future__ import annotations
 
-import json
-import sys
-import time
-import urllib.error
-import urllib.request
+# Testler bu adlar üzerinden yama yapabilir (`narrator.urllib.request.urlopen`, `narrator.time.sleep`).
+import json  # noqa: F401
+import sys  # noqa: F401
+import time  # noqa: F401
+import urllib.error  # noqa: F401
+import urllib.request  # noqa: F401
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable  # noqa: F401
 
+from generator import _corclient
+from generator._corclient import LLMClient  # noqa: F401
 from generator.scanner import RepoScan
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8787"
 DEFAULT_MODEL = "stealth/space-bunny-alpha"
+
+MAX_TOKENS = 8000
 
 REQUIRED_SECTIONS = (
     "## Özellikler ve Zaman Çizelgesi",
@@ -30,24 +36,21 @@ REQUIRED_SECTIONS = (
 MIN_NARRATION_CHARS = 200
 
 
-class NarratorError(RuntimeError):
-    """Anlatı üretilemediğinde yükselir."""
+class NarratorError(_corclient.LLMError):
+    """Anlatı üretilemediğinde yükselir.
+
+    `corclient.LLMError`'un alt sınıfıdır: ortak istemcinin yeniden deneme mantığı
+    (yalnız 5xx) bu hatayı da tanır, `except NarratorError` ise eskisi gibi çalışır.
+    """
 
 
-@runtime_checkable
-class LLMClient(Protocol):
-    """Prompt alıp metin döndüren en küçük arayüz."""
+class CorLLMClient(_corclient.CorLLMClient):
+    """Yerel cor proxy'sine Anthropic uyumlu HTTP ile bağlanır (bkz. `_corclient`).
 
-    def complete(self, prompt: str) -> str: ...
-
-
-class CorLLMClient:
-    """Yerel cor proxy'sine Anthropic uyumlu HTTP ile bağlanır.
-
-    Neden HTTP ve `cor claude -p` subprocess'i değil: proxy zaten
-    Anthropic uyumlu `/v1/messages` ucunu (kimlik doğrulama gerekmeden) sunuyor;
-    subprocess'e göre test edilebilir, zaman aşımları ve hata mesajları
-    doğrudan kontrol edilebilir, ayrıca alt süreç yönetimi yok.
+    Neden HTTP ve `cor claude -p` subprocess'i değil: proxy zaten Anthropic uyumlu
+    `/v1/messages` ucunu (kimlik doğrulama gerekmeden) sunuyor; subprocess'e göre
+    test edilebilir, zaman aşımları ve hata mesajları doğrudan kontrol edilebilir.
+    Ortak istemcinin her hatası `NarratorError`'a çevrilir (çağıran kod değişmez).
     """
 
     def __init__(
@@ -58,75 +61,24 @@ class CorLLMClient:
         max_retries: int = 3,
         retry_backoff: float = 3.0,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-        self.timeout = timeout
-        self.max_retries = max_retries
-        self.retry_backoff = retry_backoff
+        super().__init__(
+            base_url,
+            model,
+            timeout,
+            max_retries,
+            retry_backoff,
+            max_tokens=MAX_TOKENS,
+            izinli_konaklar=None,  # bugünkü davranış: konak denetimi yok (açık karar)
+            baslat_ipucu="cor claude",
+        )
 
     def _post_once(self, prompt: str) -> str:
-        payload = json.dumps(
-            {
-                "model": self.model,
-                "max_tokens": 8000,
-                "messages": [{"role": "user", "content": prompt}],
-            }
-        ).encode("utf-8")
-        request = urllib.request.Request(
-            f"{self.base_url}/v1/messages",
-            data=payload,
-            headers={"content-type": "application/json"},
-            method="POST",
-        )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                body = response.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise NarratorError(
-                f"cor proxy HTTP {exc.code} döndü: {detail[:500]}"
-            ) from exc
-        except (urllib.error.URLError, OSError) as exc:
-            raise NarratorError(
-                f"cor proxy'ye ({self.base_url}) bağlanılamadı: {exc}. "
-                "Önce `cor claude` ile proxy'yi başlatmayı deneyin."
-            ) from exc
-
-        try:
-            parsed = json.loads(body)
-            text = parsed["content"][0]["text"]
-        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
-            raise NarratorError(
-                f"cor proxy'den beklenmeyen yanıt biçimi: {body[:500]}"
-            ) from exc
-
-        # Boş metin, HTTP 200'e rağmen başarısızlıktır: sahte anlatı üretmeyelim.
-        if not text or not text.strip():
-            raise NarratorError(
-                "LLM boş yanıt döndü (muhtemelen max_tokens kısa kaldı). "
-                "Sahte anlatı üretmek yerine hata fırlatıldı."
-            )
-        return text
-
-    def complete(self, prompt: str) -> str:
-        """İsteği gönderir; sağlayıcının geçici hatalarında sınırlı sayıda tekrar dener."""
-        last_error: NarratorError | None = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                return self._post_once(prompt)
-            except NarratorError as exc:
-                last_error = exc
-                # Bağlantı hatası ve bozuk yanıt kalıcıdır; yalnızca HTTP 5xx geçicidir.
-                if "HTTP 5" not in str(exc) or attempt == self.max_retries:
-                    raise
-                delay = self.retry_backoff * (2**attempt)
-                print(
-                    f"Geçici sağlayıcı hatası, {delay:.0f}s sonra tekrar denenecek "
-                    f"({attempt + 1}/{self.max_retries}): {exc}",
-                    file=sys.stderr,
-                )
-                time.sleep(delay)
-        raise last_error if last_error else NarratorError("Bilinmeyen hata")
+            return super()._post_once(prompt)
+        except NarratorError:
+            raise
+        except _corclient.LLMError as hata:
+            raise NarratorError(str(hata), status=hata.status) from hata
 
 
 @dataclass

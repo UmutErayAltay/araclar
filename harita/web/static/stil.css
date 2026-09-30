@@ -139,17 +139,19 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 /* -------------------------------------------------------------------- lejant */
 
+/* C.1 (b): lejant artık `<details>`; mobilde (≤600 px) JS `open` niteliğini
+   KALDIRIR, yani kapalı gelir ve grafın alanını kaplamaz. Kapalıyken
+   etiket çakışma denetimi lejantı ENGEL saymaz. */
 .lejant {
   /* `position: fixed` DEĞİL: sabitlenirse mobilde üst şeridin altında kalır,
      ama lejant grafın sol altında istenen yerde durmalı. Panel açıkken
-     (geniş ekran) panelin altına girsin diye z-indeks düşürülür. */
+     (geniş ekran) panelin altına girsin diye z-indeks düşürülür.
+     C.1: lejantın sol kenarı "Sığdır" düğmesinden uzakta tutulur; düğme
+     sağ üstte olduğu için lejant üst kenara yaslanır. */
   position: absolute;
   left: 16px;
-  bottom: 14px;
+  top: 14px;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
   padding: 9px 12px;
   border: 1px solid var(--kenar);
   border-radius: 8px;
@@ -158,8 +160,19 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   color: var(--ikincil);
   max-width: min(220px, 46vw);
 }
-.lejant:empty { display: none; }
-.lejant-ust { color: var(--yazi); font-weight: 600; margin-bottom: 2px; }
+.lejant-baslik {
+  cursor: pointer;
+  color: var(--yazi);
+  font-weight: 600;
+  list-style: revert;
+  user-select: none;
+}
+.lejant-baslik:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 2px;
+}
+.lejant-ic { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+.lejant-ic:empty { margin-top: 0; }
 .lejant-satir { display: flex; align-items: center; gap: 8px; }
 .lejant-kutu { width: 11px; height: 11px; border-radius: 3px; flex: none; }
 .lejant-ad {
@@ -313,10 +326,13 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 .dugum-etiket {
   /* B.1: etiket rengi zemin üzerinde ≥4.5:1 (hatta 9.9:1) kontrast verir.
-     `font-size` JS tarafından telafi edilir; buradaki değer yalnız
-     SVG'yi JS'siz açan ilk kare için güvenli alt sınırdır. */
+     C.1: `font-size` BİLEREK burada YAZILMAZ. CSS bildirimi SVG
+     sunum niteliğini (`font-size="7.57"`) GEÇERSİR kılıyor ve telafi
+     çalışmıyordu: etiketler ölçekle birlikte 1.59 katına kadar büyüyor,
+     yerleşim sırasındaki kutularıyla uyuşmuyor ve HİÇBİRİ sığmıyordu.
+     Kök `font` kısayolundan gelen devralınan değer JS'in `font-size`
+     niteliğini ezmez. */
   fill: #c8d4e2;
-  font-size: 12px;
   font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
   paint-order: stroke;
   stroke: rgba(15, 17, 21, 0.85);
@@ -406,15 +422,18 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   /* 390 px'de 8 klasörlü lejant ~205 px yer kapıyordu; iki sütuna bölünür. */
   .lejant {
     left: 10px;
-    bottom: 10px;
+    top: 10px;
     padding: 7px 10px;
+    max-width: calc(100vw - 20px);
+  }
+  /* JS `open` niteliğini kaldırdığı için lejant varsayılan KAPALI gelir;
+     kullanıcı açarsa satırlar iki sütuna bölünür. */
+  .lejant[open] .lejant-ic {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 14px;
     row-gap: 2px;
-    max-width: calc(100vw - 20px);
   }
-  .lejant-ust { grid-column: 1 / -1; }
   .liste { padding: 14px; }
   /* Panel alttayken "Sığdır" düğmesi panelin altında kalmasın. */
   .sigdir { top: 10px; right: 10px; padding: 5px 10px; font-size: 12px; }

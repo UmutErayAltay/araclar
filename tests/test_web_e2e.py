@@ -372,28 +372,58 @@ GORUNUR_ETIKET = """() => [...document.querySelectorAll('#graf .dugum-etiket')]
     .filter(t => Number(t.getAttribute('opacity') || 0) > 0.5)"""
 
 
-def test_yakinlastirma_etiketleri_acilir(tarayici, mini_web) -> None:
-    """Yakınlaştıkça daha fazla etiket görünür (B.1 çakışma önleme kuralı).
+def test_yakinlastirma_etiket_kutulari_buyutmez(tarayici, mini_web) -> None:
+    """C.1: yakınlaştıkça etiketlerin EKRAN boyutu sabit kalır (≥11 px).
 
-    Görünürlük artık CSS seçicisiyle değil, JS greedy seçimiyle YAZILIR: etiket
-    kutuları seyrelttikçe daha fazlası sığar. `data-etiket` yalnız aday sayısını
-    belirler; küçük graflarda sığdırma ölçeği kelepçeye takılıp yakın açılabildiği
-    için başlangıçta da `hepsi` olabilir — test sayı karşılaştırır.
+    B.1'in eski testi "yakınlaştıkça etiket SAYISI artar" diyordu; C.1 ile
+    bu önerme bozuldu: (a) etiket artık dairelere de çakışmamak zorunda ve
+    (b) etiketin tamamı görünür sahnenin İÇİNDE olmalı. Yakınlaşınca
+    düğümlerin çoğu ekran dışına taşır, dolayısıyla etiket sayısı AZALIR —
+    bu doğru davranıştır. Ölçülebilir değişmez: yakınlaştırınca etiket
+    daha da KÜÇÜK olmaz ve görünür etiket ekranın dışına taşmaz.
     """
     sayfa, _, _ = sayfa_ac(tarayici, mini_web)
     katman = sayfa.locator("#graf .dugum-katmani")
-    uzak = sayfa.evaluate(f"{GORUNUR_ETIKET}.length")
+    sayfa.wait_for_timeout(250)
+    uzak = sayfa.evaluate(OLC_ETIKET)
+    assert uzak, "başlangıçta etiket yok"
+
+    sayfa.mouse.move(640, 400)
+    for _ in range(40):
+        sayfa.mouse.wheel(0, -120)
+    sayfa.wait_for_timeout(500)
+    yakin = sayfa.evaluate(OLC_ETIKET)
+    yakin += _etiketleri_dogrula(sayfa, "yakın")  # ≥11 px ve kesişmez
+    _etiketler_ekranda(sayfa, yakin, "yakın")
+    assert katman.get_attribute("data-etiket") in ("derece", "hepsi")
+    sayfa.close()
+
+
+def test_yakinlastirma_daha_genis_etiket_adayi_acar(tarayici, mini_web) -> None:
+    """C.1: yakınlaştıkça etiket ADAYI sayısı artar (`data-etiket` = "hepsi").
+
+    B.1'in "daha çok etiket görünür" iddiası C.1 ile daralmıştır: etiket artık
+    (a) dairelere de çakışmamalı, (b) tamamen ekranın içinde olmalı. Bu yüzden
+    GÖRÜNEN sayı yakınlaştıkça azalabilir (düğümler ekran dışına taşar). Ölçülebilir
+    ve doğru olan değişmez, aday havuzunun genişlemesidir: yakınlaştırınca
+    `data-etiket` "hepsi"ye geçer ve daha çok etiket DENENİR.
+    """
+    sayfa, _, _ = sayfa_ac(tarayici, mini_web)
+    sayfa.wait_for_timeout(250)
+    assert sayfa.evaluate("() => document.getElementById('lejant') !== null")
 
     sayfa.mouse.move(640, 400)
     for _ in range(40):
         sayfa.mouse.wheel(0, -120)
     sayfa.wait_for_function(
-        f"{GORUNUR_ETIKET}.length >= {uzak}", timeout=5000
+        "() => document.getElementById('graf').querySelector('.dugum-katmani')"
+        ".getAttribute('data-etiket') === 'hepsi'",
+        timeout=6000,
     )
-    sayfa.wait_for_timeout(200)
-    yakin = sayfa.evaluate(f"{GORUNUR_ETIKET}.length")
-    assert yakin >= uzak, (uzak, yakin)
-    assert katman.get_attribute("data-etiket") in ("derece", "hepsi")
+    # Yakın görünümde de kurallar geçerli: etiketler okunur, kesişmez, ekranda.
+    sayfa.wait_for_timeout(300)
+    etiketler = _etiketleri_dogrula(sayfa, "yakin hepsi")
+    _etiketler_ekranda(sayfa, etiketler, "yakin hepsi")
     sayfa.close()
 
 
@@ -991,17 +1021,50 @@ def test_yerlesim_deterministik(demo_web, tarayici) -> None:
     assert enFazla <= 0.5, f"yerleşim deterministik değil: {enFazla:.3f} px fark"
 
 
-# --- K5: etiketler ---------------------------------------------------------
+# --- K5: etiketler (C.1 a/b) ---------------------------------------------
 
 def _etiket_kesisiyor(a: dict, b: dict) -> bool:
     return a["sol"] < b["sag"] and b["sol"] < a["sag"] and a["ust"] < b["alt"] and b["ust"] < a["alt"]
 
 
+OLC_ETIKET = r"""() => {
+    // EKRAN puntosu = SVG `font-size` × kök `scale`. `getComputedStyle`
+    // telafi edilmiş (ölçekten küçük) değeri verir; kullanıcının gördüğü
+    // boyut ekran ölçeğiyle çarpılır (C.1 (a)).
+    const kok = document.getElementById('graf').querySelector('g.kok');
+    const m = /scale\(([-\d.]+)\)/.exec(kok.getAttribute('transform') || '');
+    const olcek = m ? Number(m[1]) : 1;
+    return [...document.querySelectorAll('#graf .dugum-etiket')]
+        .filter(t => Number(t.getAttribute('opacity') || 0) > 0.5)
+        .map(t => {
+            const r = t.getBoundingClientRect();
+            return {
+                metin: t.textContent,
+                fs: parseFloat(getComputedStyle(t).fontSize) * olcek,
+                sol: r.left, ust: r.top, sag: r.right, alt: r.bottom,
+            };
+        });
+}"""
+
+OLC_DAIRE = r"""() => {
+    const kok = document.getElementById('graf').querySelector('g.kok');
+    const m = /translate\(([-\d.]+),([-\d.]+)\) scale\(([-\d.]+)\)/.exec(kok.getAttribute('transform'));
+    const kx = Number(m[1]), ky = Number(m[2]), sc = Number(m[3]);
+    return [...document.querySelectorAll('#graf .dugum')].map(g => {
+        const t = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute('transform'));
+        return {id: Number(g.dataset.id),
+                x: Number(t[1]) * sc + kx, y: Number(t[2]) * sc + ky,
+                r: Number(g.querySelector('circle.dugum-daire').getAttribute('r')) * sc};
+    });
+}"""
+
+
 def _etiketleri_dogrula(sayfa, etiket: str) -> list[dict]:
+    """Görünen etiketler: okunur, kesişmez, daireye binmez, tamamen ekranda."""
     etiketler = sayfa.evaluate(OLC_ETIKET)
     assert etiketler, f"{etiket}: hiç görünür etiket yok"
     enKucuk = min(e["fs"] for e in etiketler)
-    assert enKucuk >= 11.0, f"{etiket}: en küçük ekran puntosu {enKucuk} < 11 px"
+    assert enKucuk >= 11.0, f"{etiket}: en küçük EKRAN puntosu {enKucuk:.1f} < 11 px"
     cakisan = [
         (a["metin"], b["metin"])
         for i, a in enumerate(etiketler)
@@ -1012,18 +1075,113 @@ def _etiketleri_dogrula(sayfa, etiket: str) -> list[dict]:
     return etiketler
 
 
+def _etiket_daireye_biniyor(sayfa, etiket: dict, daireler: list[dict], bosluk: float = 1.0) -> int | None:
+    """Etiket hangi düğüm dairesine basıyor? (yoksa None) — C.1 (a)."""
+    for d in daireler:
+        r = d["r"] + bosluk
+        en = max(d["x"], min(max(etiket["sol"], d["x"]), etiket["sag"]))
+        enY = max(d["y"], min(max(etiket["ust"], d["y"]), etiket["alt"]))
+        # Kutu/daire kesişimi: daire merkezinin kutunun en yakın noktasına uzaklığı
+        if ((en - d["x"]) ** 2 + (enY - d["y"]) ** 2) < r * r:
+            return int(d["id"])
+    return None
+
+
+def _etiketler_ekranda(sayfa, etiketler: list[dict], etiket: str, pay: float = 0.5) -> None:
+    """Her etiketin kutusu görünür sahnenin TAMAMI içinde (panel/lejant hariç)."""
+    s = sayfa.evaluate(
+        """() => {const s=document.getElementById('sahne').getBoundingClientRect();
+           return {sol:s.left, ust:s.top, sag:s.right, alt:s.bottom};}"""
+    )
+    tasan = [
+        e["metin"] for e in etiketler
+        if e["sol"] < s["sol"] - pay or e["ust"] < s["ust"] - pay
+        or e["sag"] > s["sag"] + pay or e["alt"] > s["alt"] + pay
+    ]
+    assert not tasan, f"{etiket}: ekrandan taşan etiketler {tasan[:4]}"
+
+
+def _lejant_engeli(sayfa, etiketler: list[dict]) -> list[str]:
+    """Lejantla kesişen etiketler (lejant açıksa) — C.1 (b)."""
+    l = sayfa.evaluate(
+        """() => {const d=document.getElementById('lejant');
+           if (!d.open) return null; const r=d.getBoundingClientRect();
+           return {sol:r.left, ust:r.top, sag:r.right, alt:r.bottom};}"""
+    )
+    if l is None:
+        return []
+    return [e["metin"] for e in etiketler if _etiket_kesisiyor(e, l)]
+
+
 @pytest.mark.parametrize("boyut", [(1440, 900), (390, 844)], ids=["masaustu", "mobil"])
 def test_demo_grafinda_etiketler_okunur_ve_cakismaz(demo_web, tarayici, boyut) -> None:
-    """K5 (demo): görünen tüm etiketler ≥11 px ve hiçbiri kesişmiyor.
-
-    B.1 kusur #5: masaüstünde etiketler ~7 px'e düşüyordu (ölçek bölünmesi),
-    ayrıca çakışma önlemesi yoktu.
-    """
+    """C.1 (a)+(b): etiketler ≥11 px, kesişmez, daireye binmez, ekranda kalır."""
     sayfa, _, _ = sayfa_ac(tarayici, demo_web, boyut=boyut)
     sayfa.wait_for_timeout(300)
     etiketler = _etiketleri_dogrula(sayfa, f"demo {boyut}")
+    _etiketler_ekranda(sayfa, etiketler, f"demo {boyut}")
     print(f"\n[ETİKET] demo {boyut}: {len(etiketler)} görünür etiket, "
-          f"en küçük {min(e['fs'] for e in etiketler)} px")
+          f"en küçük {min(e['fs'] for e in etiketler):.1f} px")
+    sayfa.close()
+
+
+def test_etiketler_hicbir_dugum_dairesine_binmez(demo_web, tarayici) -> None:
+    """C.1 (a): görünür etiket, TÜM düğüm dairelerine (kendi hariç) binmez.
+
+    B.1 kusur: etiket–etiket kesişimi engellendi ama daireler ETİKETİN
+    ÜSTÜNE biniyordu ("Kuyruk Tasarımı", "Kafes Teorisi Notları").
+    """
+    sayfa, _, _ = sayfa_ac(tarayici, demo_web)
+    sayfa.wait_for_timeout(300)
+    etiketler = _etiketleri_dogrula(sayfa, "demo daire")
+    daireler = sayfa.evaluate(OLC_DAIRE)
+    assert daireler, "daire yok"
+    # Her etiket için, kendi düğümü hariç TÜM dairelerle denetle.
+    ihlal = []
+    for e in etiketler:
+        # etiketin sol kenarındaki daire = kendi düğümü (etiket dairenin sağında)
+        kendi = None
+        for d in daireler:
+            if abs(d["y"] - (e["ust"] + e["alt"]) / 2) < 3 and d["x"] < e["sol"] + 2:
+                if d["x"] + d["r"] + 6 >= e["sol"]:
+                    kendi = d["id"]
+                    break
+        for d in daireler:
+            if d["id"] == kendi:
+                continue
+            r = d["r"] + 1
+            enX = max(e["sol"], min(d["x"], e["sag"]))
+            enY = max(e["ust"], min(d["y"], e["alt"]))
+            if ((enX - d["x"]) ** 2 + (enY - d["y"]) ** 2) < r * r:
+                ihlal.append((e["metin"], d["id"]))
+    assert not ihlal, f"etiket daireye biniyor: {ihlal[:6]}"
+    sayfa.close()
+
+
+def test_mobilde_lejant_kapali_gelir(demo_web, tarayici) -> None:
+    """C.1 (b): ≤600 px'de lejant `<details>` KAPALI; masaüstünde AÇIK."""
+    sayfa_m, _, _ = sayfa_ac(tarayici, demo_web, boyut=(390, 844))
+    sayfa_m.wait_for_timeout(250)
+    assert sayfa_m.evaluate("() => document.getElementById('lejant').open") is False, \
+        "mobilde lejant açık gelmeli (grafın alanını kaplar)"
+    sayfa_m.close()
+
+    sayfa_g, _, _ = sayfa_ac(tarayici, demo_web, boyut=(1440, 900))
+    sayfa_g.wait_for_timeout(250)
+    assert sayfa_g.evaluate("() => document.getElementById('lejant').open") is True, \
+        "masaüstünde lejant açık olmalı"
+    sayfa_g.close()
+
+
+def test_mobilde_lejant_acilinca_ustune_binen_etiket_gizlenir(demo_web, tarayici) -> None:
+    """C.1 (b): lejantı elle açınca üstüne binen etiketler GİZLENİR."""
+    sayfa, _, _ = sayfa_ac(tarayici, demo_web, boyut=(390, 844))
+    sayfa.wait_for_timeout(250)
+    sayfa.evaluate("() => {document.getElementById('lejant').open = true;}")
+    sayfa.wait_for_timeout(350)
+    etiketler = _etiketleri_dogrula(sayfa, "mobil lejant açık")
+    cakisan = _lejant_engeli(sayfa, etiketler)
+    assert not cakisan, f"lejantın üstünde kalan etiketler {cakisan[:4]}"
     sayfa.close()
 
 
@@ -1035,10 +1193,10 @@ def _sentetik_ilk_50_yuksek_derece(sunucu: WebSunucu) -> list[int]:
 
 @pytest.mark.parametrize("boyut", [(1440, 900), (390, 844)], ids=["masaustu", "mobil"])
 def test_sentetik_vault_ilk_50_derecede_etiketler_okunur(tarayici, tmp_path: Path, boyut) -> None:
-    """K5 (gerçek boyut): 1200 notlu vault'un ilk 50 yüksek dereceli düğümü.
+    """C.1 (a)+(b) gerçek boyut: 1200 notluk vault'un ilk 50 yüksek dereceli düğümü.
 
-    Seçilen 50 düğümün HEPSİ etiketli görünmelidir; satırlar halinde konumları
-    (en üstte soldan sağa) sayesinde geniş pencerede de kesişmezler.
+    Seçilen 50 düğümün HER BİRİ etiketli görünür; etiketler ekranda kalır,
+    kesişmez ve daireye binmez.
     """
     vault = sentetik_vault(tmp_path, not_sayisi=1200, link_ortalamasi=2)
     db = tmp_path / "etiket1200.db"
@@ -1048,22 +1206,112 @@ def test_sentetik_vault_ilk_50_derecede_etiketler_okunur(tarayici, tmp_path: Pat
     try:
         sayfa, _, _ = sayfa_ac(tarayici, sunucu, boyut=boyut)
         sayfa.wait_for_timeout(400)
-        hedefler = set(_sentetik_ilk_50_yuksek_derece(sunucu))
-
-        # 50 düğümü kümeler halinde seç: her tıklamada panel açılır, görünür
-        # alana kayar ve seçili düğümün etiketi HER ZAMAN görünür kalır.
-        gosterilen: list[dict] = []
-        for not_id in sorted(hedefler):
-            dugum_tikla(sayfa, not_id)
+        hedefler = sorted(set(_sentetik_ilk_50_yuksek_derece(sunucu)))
+        daireler = sayfa.evaluate(OLC_DAIRE)
+        for not_id in hedefler:
+            # Seçim, uygulamanın KENDİ klavye yolunu kullanılır: düğüm
+            # odaklanıp Enter'a basılır. Fare tıklaması, bir önceki seçim
+            # görünür alanı kaydırdığı için hedefi ekran dışında
+            # bırakabiliyordu (düğüm artık tıklanabilir konumda değildi).
+            sayfa.evaluate(
+                """(id) => {
+                    const g = document.querySelector('#graf .dugum[data-id="' + id + '"]');
+                    g.focus();
+                    g.dispatchEvent(new KeyboardEvent('keydown',
+                        {key: 'Enter', bubbles: true, cancelable: true}));
+                }""",
+                not_id,
+            )
             sayfa.wait_for_selector("#panel:not([hidden])", timeout=10000)
-            sayfa.wait_for_timeout(60)
-            gosterilen = sayfa.evaluate(OLC_ETIKET)
-            assert gosterilen, "etiket görünmez"
+            # Seçim iki geçiş yapar: panel açılmadan ÖNCE ve SONRA yeniden
+            # ortalar; etiket görünürlüğü `requestAnimationFrame` içinde
+            # hesaplanır. Yerleşene kadar iki kare bekle.
+            sayfa.evaluate(
+                "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
+            )
+            assert sayfa.evaluate(
+                "(id) => !!document.querySelector('#graf .dugum[data-id=\"' + id + '\"].dugum-secili')",
+                not_id,
+            ), f"id={not_id} tıklanamadı"
+            etiketler = sayfa.evaluate(OLC_ETIKET)
+            assert etiketler, f"id={not_id}: etiket görünmez"
             _etiketleri_dogrula(sayfa, f"sentetik {boyut} id={not_id}")
-            # Paneli kapatmadan diğerlerine geçmek için seçimi doğrudan değiştir.
-        assert len(gosterilen) >= 1
-        print(f"\n[ETİKET] sentetik {boyut}: 50 yüksek dereceli düğüm kontrol edildi, "
-              f"her biri etiketli ve kesişmesiz")
+            _etiketler_ekranda(sayfa, etiketler, f"sentetik {boyut} id={not_id}")
+        print(f"\n[ETİKET] sentetik {boyut}: {len(hedefler)} yüksek dereceli düğüm kontrol edildi, "
+              f"her biri etiketli, kesişmesiz ve ekranda")
         sayfa.close()
     finally:
         sunucu.kapat()
+
+
+# --- K6: düğüm daireleri ve seçim (C.1 c/d) ---------------------------------
+
+def test_dugum_yaricaplari_ekranda_en_fazla_16px(demo_web, tarayici) -> None:
+    """C.1 (d): ekran yarıçapı ≤ 16 px (sığdırma sonrası)."""
+    sayfa, _, _ = sayfa_ac(tarayici, demo_web)
+    sayfa.wait_for_timeout(300)
+    daireler = sayfa.evaluate(OLC_DAIRE)
+    enBuyuk = max(d["r"] for d in daireler)
+    assert enBuyuk <= 16.0 + 0.5, f"en büyük ekran yarıçapı {enBuyuk:.1f} > 16 px"
+    sayfa.close()
+
+
+def test_bagli_ciftler_daireleri_binmez(demo_web, tarayici) -> None:
+    """C.1 (d): bağlı her çiftte `mesafe > r1 + r2 + 4` (ekran px'i)."""
+    veri = api_json(demo_web, "/api/graf")
+    sayfa, _, _ = sayfa_ac(tarayici, demo_web)
+    sayfa.wait_for_timeout(300)
+    daireler = {d["id"]: d for d in sayfa.evaluate(OLC_DAIRE)}
+    ihlal = []
+    for k in veri["kenarlar"]:
+        a, b = daireler.get(k["kaynak"]), daireler.get(k["hedef"])
+        if a is None or b is None:
+            continue
+        import math
+        d = math.hypot(a["x"] - b["x"], a["y"] - b["y"])
+        gerek = a["r"] + b["r"] + 4
+        if d <= gerek:
+            ihlal.append((k["kaynak"], k["hedef"], round(d, 1), round(gerek, 1)))
+    assert not ihlal, f"bağlı daireler üst üste: {ihlal[:6]}"
+    sayfa.close()
+
+
+@pytest.mark.parametrize("boyut", [(1440, 900), (390, 844)], ids=["masaustu", "mobil"])
+def test_secili_dugum_gorunur_alanin_merkezinde_ve_ic_bosluklu(demo_web, tarayici, boyut) -> None:
+    """C.1 (c): panel açıkken seçili düğüm görünür alanın merkezinde.
+
+    Ayrıca dairesinin görünür alanda en az 16 px iç boşluğu vardır
+    (başlık çubuğuna/panel kenarına değmez).
+    """
+    veri = api_json(demo_web, "/api/graf")
+    hedef = max(veri["dugumler"], key=lambda d: d["derece"])
+    sayfa, _, _ = sayfa_ac(tarayici, demo_web, boyut=boyut)
+    dugum_tikla(sayfa, hedef["id"])
+    sayfa.wait_for_selector("#panel:not([hidden])", timeout=10000)
+    sayfa.wait_for_timeout(250)
+    o = sayfa.evaluate(
+        """(id) => {
+            const c = document.querySelector('#graf .dugum[data-id="' + id + '"] circle.dugum-daire')
+                .getBoundingClientRect();
+            const p = document.getElementById('panel').getBoundingClientRect();
+            const s = document.getElementById('sahne').getBoundingClientRect();
+            const serit = document.querySelector('header.ust').getBoundingClientRect();
+            // Görünür alan: panelin kaplamadığı kısım. Panel SAĞDA duruyorsa
+            // (sahneyle aynı üst kenarı paylaşan, dar) genişlik, ALTTA
+            // duruyorsa (tüm genişliği kaplayan) yükseklik kırpılır.
+            const yan = Math.abs(p.top - s.top) < 8 && p.right <= s.right + 1;
+            const alan = yan
+                ? {sol: s.left, sag: p.left, ust: s.top, alt: s.bottom}
+                : {sol: s.left, sag: s.right, ust: s.top, alt: p.top};
+            return {cx: c.x + c.width / 2, cy: c.y + c.height / 2, r: c.width / 2,
+                    alan, seritAlt: serit.bottom,
+                    mx: (alan.sol + alan.sag) / 2, my: (alan.ust + alan.alt) / 2};
+        }""",
+        hedef["id"],
+    )
+    # Daire görünür alanda ≥16 px iç boşluk bırakır.
+    assert o["cx"] - o["r"] >= o["alan"]["sol"] + 16 - 1, f"sol kenar boşluğu yetersiz: {o}"
+    assert o["cx"] + o["r"] <= o["alan"]["sag"] - 16 + 1, f"sağ kenar boşluğu yetersiz: {o}"
+    assert o["cy"] - o["r"] >= o["alan"]["ust"] + 16 - 1, f"üst kenar boşluğu yetersiz: {o}"
+    assert o["cy"] + o["r"] <= o["alan"]["alt"] - 16 + 1, f"alt kenar boşluğu yetersiz: {o}"
+    sayfa.close()

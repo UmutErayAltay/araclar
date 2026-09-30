@@ -211,13 +211,30 @@ def test_ayristirma_yalnizca_okuma_modunda(mini_vault: Path) -> None:
 
 
 def test_hicbir_modulde_vault_yazma_yolu_yok() -> None:
-    """Tüm modüllerde yazma çağrısı aranmaz (indeks DB'si hariç konu dışı)."""
-    for ad in ("parse.py", "index.py", "cli.py"):
+    """Tüm modüllerde yazma çağrısı aranmaz (indeks DB'si hariç konu dışı).
+
+    Dalga C `harita ozet --yaz DOSYA` ekledi: bu komut kullanıcının ADI
+    girdiği bir dosyaya yazar. Bu YAZMA yolunun vault'a ULAŞAMADIĞI
+    ayrıca kanıtlanır (aşağıdaki testler); bu yüzden `cli.py`'deki tek
+    yazma çağrısı, vault içi yolları REDDEDEN yardımcının İÇİNDEDİR.
+    """
+    for ad in ("parse.py", "index.py", "ozet.py", "tutarlilik.py"):
         kaynak = (KOK / "harita" / ad).read_text(encoding="utf-8")
         assert ".write_text" not in kaynak, ad
         assert ".write_bytes" not in kaynak, ad
         assert "os.remove" not in kaynak, ad
         assert "shutil" not in kaynak, ad
+
+    # cli.py: yalnız `_ozet_dosyaya_yaz` içinde yazma olmalı, o da vault
+    # içi yolu reddeden bir yardımcıdır.
+    cli = (KOK / "harita" / "cli.py").read_text(encoding="utf-8")
+    yazan = [i for i, satir in enumerate(cli.split("\n")) if ".write_text" in satir]
+    assert len(yazan) == 1, f"cli.py'de {len(yazan)} yazma çağrısı (1 olmalı)"
+    # Bu çağrı, vault kontrolünden geçen yardımcının içinde olmalı.
+    govde = cli.split("def _ozet_dosyaya_yaz")[1].split("\ndef ")[0]
+    assert ".write_text" in govde, "yazma `_ozet_dosyaya_yaz` içinde olmalı"
+    assert "kok in hedef.parents" in govde, "vault içi yol REDDEDİLMELİ"
+    assert "os.remove" not in cli and "shutil" not in cli, ad
 
 
 def test_dosya_izinleri_degismiyor(mini_vault: Path, tmp_path: Path) -> None:

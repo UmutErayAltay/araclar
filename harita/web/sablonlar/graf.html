@@ -31,7 +31,13 @@
     <p>Bu veritabanında henüz not bulunmuyor. Önce <code>harita indeksle VAULT</code> çalıştırın.</p>
   </div>
   <div id="yukleniyor" class="yukleniyor">Graf yükleniyor…</div>
-  <div id="lejant" class="lejant" aria-label="Klasör renkleri"></div>
+  <!-- C.1 (b): mobilde (≤600 px) lejant `<details>` ile KAPALI gelir; açıkken
+       üstüne binen etiketler gizlenir. Masaüstünde `open` ile AÇIK kalır.
+       Satırlar JS tarafından `.lejant-ic` içine, `textContent` ile yazılır. -->
+  <details id="lejant" class="lejant" open aria-label="Klasör renkleri">
+    <summary class="lejant-baslik">Klasör</summary>
+    <div class="lejant-ic"></div>
+  </details>
   <button id="sigdir" type="button" class="sigdir" hidden>Sığdır</button>
 
   <!-- Panel `#sahne` İÇİNDE yerleşir: `position: absolute` göreli kapsayıcısı

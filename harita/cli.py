@@ -1,6 +1,6 @@
-"""`harita` komut satırı arayüzü (Dalga A + Dalga B).
+"""`harita` komut satırı arayüzü (Dalga A + Dalga B + Dalga C).
 
-Alt komutlar: indeksle, kirik, yetim, etiketler, web.
+Alt komutlar: indeksle, kirik, yetim, etiketler, web, ozet, tutarlilik.
 """
 
 from __future__ import annotations
@@ -8,11 +8,21 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
 
 from . import __version__, index as indeks_modulu
 
 BOSLUK = " "
+
+VARSAYILAN_VAULT = Path.home() / "Mt3Ui55OS"
+
+
+def _tarih_coz(metin: str) -> date:
+    """`YYYY-MM-DD` → date (testlerin "bugün"ü sabitlemesi için)."""
+    from datetime import datetime
+
+    return datetime.strptime(metin, "%Y-%m-%d").date()
 
 
 def _akisi_ayarla() -> None:
@@ -149,6 +159,140 @@ def komut_web(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ozet_dosyaya_yaz(ozet_modulu, dosya: str, vault: Path, cikti: str, veri, gonderilen) -> None:
+    """Özeti dosyaya yazar; çözümlenen yol vault KÖKÜNDEYSE reddeder.
+
+    Özet vault'a yazılmaz (Umut'un kararı): özet bir NOT değil, türetilmiş
+    bir çıktıdır; vault'un kendisi salt okunur kalır.
+    """
+    hedef = Path(dosya).expanduser().resolve()
+    kok = vault.expanduser().resolve()
+    if hedef == kok or kok in hedef.parents:
+        raise ValueError(f"özet vault'a yazılamaz (hedef vault içinde): {hedef}")
+    hedef.parent.mkdir(parents=True, exist_ok=True)
+    durum = (
+        f"cor'a gönderildi: evet ({gonderilen} karakter)"
+        if gonderilen is not None
+        else "cor'a gönderildi: hayır"
+    )
+    kirp = f"\n{veri.kesilen_karakter} karakter kırpıldı" if veri.kesilen_karakter else ""
+    hedef.write_text(
+        f"{cikti}\n\n{ozet_modulu.kaynak_satiri(veri)}\n{durum}{kirp}\n",
+        encoding="utf-8",
+    )
+
+
+def komut_ozet(args: argparse.Namespace) -> int:
+    """Haftalık özet.
+
+    Gizlilik (bağlayıcı): varsayılan davranış AĞA ÇIKMAZ, çıktı deterministik
+    bir ham listedir. cor'a YALNIZCA açık `--cor` bayrağıyla gider.
+    `--kuru` hiçbir içerik göstermeden ağa çıkmadan hangi dosyaların
+    gönderileceğini yazar.
+    """
+    from . import llm as llm_modulu
+    from . import ozet as ozet_modulu
+
+    vault = Path(args.vault)
+    if not vault.is_dir():
+        print(f"Hata: vault bulunamadı: {vault}", file=sys.stderr)
+        return 2
+
+    try:
+        veri = ozet_modulu.veri_topla(vault, gun=args.gun, bugun=args.bugun)
+    except OSError as exc:
+        print(f"Hata: vault okunamadı: {exc}", file=sys.stderr)
+        return 2
+
+    if args.kuru:
+        toplam = veri.toplam_karakter
+        print(f"Kuru çalışma: {len(veri.kaynaklar)} dosya, toplam {toplam} karakter")
+        for kaynak in veri.kaynaklar:
+            print(f"  {kaynak.karakter:>6}  {kaynak.yol}")
+        print(f"Toplam: {toplam} karakter")
+        return 0
+
+    gonderilen: int | None = None
+    if args.cor:
+        try:
+            istemci = llm_modulu.CorLLMClient(
+                base_url=args.cor_url or llm_modulu.DEFAULT_BASE_URL,
+                model=args.cor_model or llm_modulu.DEFAULT_MODEL,
+            )
+            cikti, gonderilen = ozet_modulu.ozet_yaz(veri, cor=True, istemci=istemci)
+        except llm_modulu.LLMError as exc:
+            # Başarı gibi GÖRÜNMEZ: uyarı + ham liste + çıkış kodu 3.
+            print(f"UYARI: cor'a gönderilemedi ({exc}). Ham liste basılıyor.", file=sys.stderr)
+            print(ozet_modulu.ham_liste(veri))
+            print()
+            print(ozet_modulu.kaynak_satiri(veri))
+            print("cor'a gönderildi: hayır")
+            return 3
+    else:
+        cikti, gonderilen = ozet_modulu.ozet_yaz(veri)
+
+    if args.yaz:
+        try:
+            _ozet_dosyaya_yaz(ozet_modulu, args.yaz, vault, cikti, veri, gonderilen)
+        except ValueError as exc:
+            print(f"Hata: {exc}", file=sys.stderr)
+            return 2
+
+    print(cikti)
+    print()
+    print(ozet_modulu.kaynak_satiri(veri))
+    if gonderilen is not None:
+        print(f"cor'a gönderildi: evet ({gonderilen} karakter)")
+    else:
+        print("cor'a gönderildi: hayır")
+    if veri.kesilen_karakter:
+        print(f"{veri.kesilen_karakter} karakter kırpıldı")
+    return 0
+
+
+def komut_tutarlilik(args: argparse.Namespace) -> int:
+    """Vault↔repo tutarlılığı. SALT OKUNUR; hiçbir şeyi değiştirmez."""
+    from . import tutarlilik as tut_modulu
+
+    vault = Path(args.vault)
+    if not vault.is_dir():
+        print(f"Hata: vault bulunamadı: {vault}", file=sys.stderr)
+        return 2
+
+    atlas_db = args.atlas_db or tut_modulu.VARSAYILAN_ATLAS_DB
+    try:
+        atlas = tut_modulu.atlas_oku(atlas_db)
+    except SystemExit as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    esleme_yolu = Path(args.esleme).expanduser() if args.esleme else tut_modulu.VARSAYILAN_ESLESME
+    eslesme = tut_modulu.eslesme_dosyasi_oku(esleme_yolu)
+
+    rapor = tut_modulu.bulgular_uret(vault, atlas, eslesme, esik_gun=args.esik_gun)
+
+    if args.json:
+        import json
+
+        print(json.dumps(rapor.sozluk(), ensure_ascii=False, indent=2))
+    else:
+        if rapor.atlas_uyari:
+            print(f"UYARI: {rapor.atlas_uyari}")
+        for baslik, liste in (("Uyarılar", rapor.uyarilar), ("Bilgiler", rapor.bilgiler)):
+            print(f"{baslik} ({len(liste)}):")
+            for b in liste:
+                print(f"  [{b.guven}] {b.baslik} — {b.kural}")
+                print(f"      gerekçe: {b.gerekce}")
+                print(f"      öneri:   {b.oneri}")
+        print(f"Kontrol edilemeyenler ({len(rapor.kontrol_edilemeyenler)}):")
+        for ad in sorted(rapor.kontrol_edilemeyenler):
+            print(f"  {ad}")
+
+    if args.kati and rapor.uyarilar:
+        return 1
+    return 0
+
+
 def arg_parser() -> argparse.ArgumentParser:
     # `--db` hem `harita --db X kirik` hem `harita kirik --db X` biçiminde çalışsın.
     # SUPPRESS: alt komut `--db` verilmediğinde, `default=None` üstteki değeri
@@ -193,6 +337,44 @@ def arg_parser() -> argparse.ArgumentParser:
     p.add_argument("vault", nargs="?", help="Verilirse önce salt-okunur indeksler")
     p.add_argument("--port", type=int, default=8765, help="Dinlenecek port (varsayılan: 8765)")
     p.set_defaults(fonksiyon=komut_web)
+
+    p = alt.add_parser("ozet", parents=[ortak], help="Haftalık özet (varsayılan: ağa çıkmaz)")
+    p.add_argument("vault", nargs="?", default=str(VARSAYILAN_VAULT), help="Vault kökü")
+    p.add_argument("--hafta", action="store_true", help="7 günlük pencere (varsayılan)")
+    p.add_argument("--gun", type=int, default=7, help="Pencere gün sayısı (varsayılan: 7)")
+    p.add_argument(
+        "--cor",
+        action="store_true",
+        help="Özeti cor'a GÖNDER (varsayılan: ağa çıkmaz, ham liste basılır)",
+    )
+    p.add_argument("--cor-url", default=None, help="cor taban adresi (varsayılan: $COR_BASE_URL)")
+    p.add_argument("--cor-model", default=None, help="cor modeli (varsayılan: $COR_MODEL)")
+    p.add_argument(
+        "--kuru",
+        action="store_true",
+        help="Hiçbir içerik göstermeden, ağa çıkmadan gönderilecek dosyaları yaz",
+    )
+    p.add_argument("--yaz", metavar="DOSYA", default=None, help="Özeti dosyaya yaz (vault içi REDDEDİLİR)")
+    p.add_argument("--bugun", type=_tarih_coz, default=None, help=argparse.SUPPRESS)
+    p.set_defaults(fonksiyon=komut_ozet)
+
+    p = alt.add_parser(
+        "tutarlilik", parents=[ortak], help="Vault notları ile atlas repo durumunu karşılaştır"
+    )
+    p.add_argument("vault", nargs="?", default=str(VARSAYILAN_VAULT), help="Vault kökü")
+    p.add_argument(
+        "--atlas-db",
+        default=None,
+        help="atlas SQLite DB'si (varsayılan: ~/.atlas/atlas.db)",
+    )
+    p.add_argument(
+        "--esleme", default=None, help="Eşleme dosyası (varsayılan: ~/.harita/repolar.toml)"
+    )
+    p.add_argument("--esik-gun", type=int, default=30, help="Durgunluk eşiği (varsayılan: 30 gün)")
+    p.add_argument("--json", action="store_true", help="JSON olarak bas")
+    p.add_argument("--kati", action="store_true", help="Uyarı varsa çıkış kodu 1")
+    p.add_argument("--bugun", type=_tarih_coz, default=None, help=argparse.SUPPRESS)
+    p.set_defaults(fonksiyon=komut_tutarlilik)
 
     return parser
 

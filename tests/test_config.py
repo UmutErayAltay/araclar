@@ -236,12 +236,20 @@ def test_expand_paths_is_shared_by_both_path_fields(tmp_path, monkeypatch):
     assert result["discover_roots"] == result["search_roots"] == [str(tmp_path / "a")]
 
 
-def test_expand_path_expands_tilde_and_env(monkeypatch):
-    monkeypatch.setenv("HOME", "/home/test")
-    monkeypatch.setenv("VAR", "/opt/x")
+def test_expand_path_expands_tilde_and_env(monkeypatch, tmp_path):
+    # Gerçek bir ana dizin yolu kullanılır: sahte POSIX "/home/test" Windows'ta
+    # `\home\test` olurdu ve ayraç farkı testi anlamından saptırırdı. Beklenti de
+    # `str(Path(..) / ..)` ile üretilir, elle yazılmış "/" ile değil.
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("VAR", str(tmp_path / "opt"))
 
-    assert expand_path("~/kule") == "/home/test/kule"
-    assert expand_path("$VAR/yol") == "/opt/x/yol"
+    assert expand_path("~/kule") == str(fake_home / "kule")
+    # `expandvars` metni DEĞİŞTİRMEZ, yalnızca yerine yazar: `$VAR/yol` →
+    # `<VAR>/yol`, ayraç config'de yazıldığı gibi kalır (Windows'ta `\` değil).
+    # Bu kasıtlıdır — yol, `Path(...)` tarafından sonradan normalleştirilir.
+    assert expand_path("$VAR/yol") == str(tmp_path / "opt") + "/yol"
     assert expand_path("") == ""
     assert expand_path("   ") == ""
     assert expand_path(42) == "42"

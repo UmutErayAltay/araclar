@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+.env
+*.db
+*.db-wal
+*.db-shm
+
+# Dalga raporları: gerçek vault çıktısı içerir, ASLA commit'lenmez.
+.wave_*
+.ent_report.md

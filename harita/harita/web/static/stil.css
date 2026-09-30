@@ -1,0 +1,539 @@
+/* harita — koyu tema. CSP satır içi stil yasaklar; burada her şey sınıflarla. */
+
+:root {
+  --zemin: #0f1115;
+  --yazi: #e6e6e6;
+  --ikincil: #9aa3b2;
+  --kenar: #232833;
+  --vurgu: #56b4e9;
+  --panel-zemin: #151922;
+  --bos: #7a8496;
+  --uyari: #d55e00;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--zemin);
+  color: var(--yazi);
+  font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Yatay taşma olmasın: 360 px mobil genişlikte de kırılmaz. */
+  overflow-x: hidden;
+}
+
+a { color: var(--vurgu); text-decoration: none; }
+a:hover, a:focus-visible { text-decoration: underline; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* ------------------------------------------------------------------ üst şerit */
+
+.ust {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 20px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--kenar);
+  background: var(--panel-zemin);
+  position: relative;
+  z-index: 3;
+}
+
+.ust-sol { min-width: 0; }
+
+.ust h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.ozet {
+  margin: 2px 0 0;
+  color: var(--ikincil);
+  font-size: 13px;
+}
+
+.sayac b { color: var(--yazi); font-weight: 620; }
+.kirik-sayac b { color: var(--uyari); }
+.ayrac { color: var(--kenar); margin: 0 2px; }
+
+.ust-sag {
+  margin-left: auto;
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+}
+
+/* --------------------------------------------------------------------- sahne */
+
+#sahne {
+  position: relative;
+  height: calc(100vh - 62px);
+  min-height: 340px;
+  /* NOT: `overflow: hidden` YOK. Panel `#sahne` İÇİNDE yerleşir
+     (`position: absolute`), yatay taşmayı `overflow-x` keser, dikey taşma
+     sayfaya akar. */
+  overflow-x: hidden;
+}
+
+#graf { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#graf.suruklu { cursor: grabbing; }
+
+/* "Sığdır": kullanıcı kaydırıp yakınlaştıktan sonra düğümleri görünür
+   sahneye geri sığdırır (gerçek `<button>`, klavyeyle erişilebilir). */
+.sigdir {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  padding: 6px 12px;
+  /* `button` tarayıcı varsayılanı BEYAZ buton verir; sıfırlama şart
+     (yalnız `background: transparent` yetmez, `border` de yazılmalı). */
+  border: 1px solid var(--kenar);
+  border-radius: 7px;
+  background: rgba(21, 25, 34, 0.92);
+  color: var(--ikincil);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.sigdir:hover { color: var(--yazi); border-color: var(--ikincil); }
+.sigdir:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 2px;
+  color: var(--yazi);
+}
+.sigdir[hidden] { display: none; }
+
+.yukleniyor {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ikincil);
+  pointer-events: none;
+}
+.yukleniyor[hidden] { display: none; }
+
+.bos-durum {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+  color: var(--ikincil);
+}
+.bos-durum[hidden] { display: none; }
+.bos-durum h2 { margin: 0; font-size: 15px; color: var(--yazi); font-weight: 600; }
+.bos-durum p { margin: 0; max-width: 42ch; }
+
+/* -------------------------------------------------------------------- lejant */
+
+/* C.1 (b): lejant artık `<details>`; mobilde (≤600 px) JS `open` niteliğini
+   KALDIRIR, yani kapalı gelir ve grafın alanını kaplamaz. Kapalıyken
+   etiket çakışma denetimi lejantı ENGEL saymaz. */
+.lejant {
+  /* `position: fixed` DEĞİL: sabitlenirse mobilde üst şeridin altında kalır,
+     ama lejant grafın sol altında istenen yerde durmalı. Panel açıkken
+     (geniş ekran) panelin altına girsin diye z-indeks düşürülür.
+     C.1: lejantın sol kenarı "Sığdır" düğmesinden uzakta tutulur; düğme
+     sağ üstte olduğu için lejant üst kenara yaslanır. */
+  position: absolute;
+  left: 16px;
+  top: 14px;
+  z-index: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  background: rgba(21, 25, 34, 0.88);
+  font-size: 12px;
+  color: var(--ikincil);
+  max-width: min(220px, 46vw);
+}
+.lejant-baslik {
+  cursor: pointer;
+  color: var(--yazi);
+  font-weight: 600;
+  list-style: revert;
+  user-select: none;
+}
+.lejant-baslik:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 2px;
+}
+.lejant-ic { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
+.lejant-ic:empty { margin-top: 0; }
+.lejant-satir { display: flex; align-items: center; gap: 8px; }
+.lejant-kutu { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.lejant-ad {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --------------------------------------------------------------------- panel */
+
+/* B.1 DÜZELTME: Panel `position: absolute` ile `#sahne` İÇİNDE yerleşir
+   (şablonda `<aside>`, `#sahne`'nin ÇOCUĞUDUR). Daha önce `<body>` altındaki
+   kardeşti; `top: 0` göreli kapsayıcı yerine PENCEREYE göre çözülüyor,
+   başlık `h2` (top 16) üst şeridin ALTINDA (sahne top ≈70) kalıyor ve
+   "başlık okunuyor" iddiası yanlış çıkıyordu. */
+.panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 360px;
+  max-width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px 18px 28px;
+  border-left: 1px solid var(--kenar);
+  background: var(--panel-zemin);
+  z-index: 2;
+}
+.panel[hidden] { display: none; }
+
+.panel-kapat {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--kenar);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ikincil);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.panel-kapat:hover, .panel-kapat:focus-visible { color: var(--yazi); border-color: var(--ikincil); }
+
+.panel h2 {
+  margin: 0 36px 4px 0;
+  font-size: 16px;
+  font-weight: 620;
+  overflow-wrap: anywhere;
+}
+.panel .yol {
+  display: block;
+  color: var(--ikincil);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.panel-etiketler { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
+.etiket {
+  padding: 2px 8px;
+  border: 1px solid var(--kenar);
+  border-radius: 999px;
+  color: var(--ikincil);
+  font-size: 12px;
+}
+.panel-ozet {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--kenar);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--yazi);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Karar Q4: özet kesildiyse devamının olduğu yazılır. */
+.ozet-devam {
+  margin: 4px 0 0;
+  color: var(--bos);
+  font-size: 12px;
+}
+.panel-bolum { margin-top: 18px; }
+.panel-bolum h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ikincil);
+  font-weight: 620;
+}
+.panel-liste { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.panel-liste li { font-size: 13px; }
+/* B.1 DÜZELTME: `border: 0` GEÇERSİZ CSS kısaltmasıdır ve tarayıcıyı
+   SIFIRLAMAZ — `<button>` tarayıcı varsayılanı (beyaz zemin, siyah yazı)
+   koyu temada kalır. Sıfırlama AYRI niteliklerle yazılmalıdır. */
+.panel-bag {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vurgu);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.panel-bag:hover {
+  background: rgba(86, 180, 233, 0.12);
+  border-color: rgba(86, 180, 233, 0.4);
+  text-decoration: underline;
+}
+.panel-bag:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 1px;
+  background: rgba(86, 180, 233, 0.16);
+}
+.panel-liste .bos { color: var(--bos); font-size: 12px; padding: 2px 6px; }
+.panel-kirik { color: var(--uyari); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* ---------------------------------------------------------------- graf düğümü */
+
+.dugum { cursor: pointer; }
+.dugum:focus-visible { outline: none; }
+.dugum:focus-visible .dugum-halka { opacity: 0.9; }
+
+.dugum-halka {
+  fill: none;
+  stroke: var(--vurgu);
+  stroke-width: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+.dugum-secili .dugum-halka { opacity: 1; }
+
+.dugum-daire {
+  stroke: rgba(15, 17, 21, 0.85);
+  stroke-width: 1;
+}
+
+.dugum-etiket {
+  /* B.1: etiket rengi zemin üzerinde ≥4.5:1 (hatta 9.9:1) kontrast verir.
+     C.1: `font-size` BİLEREK burada YAZILMAZ. CSS bildirimi SVG
+     sunum niteliğini (`font-size="7.57"`) GEÇERSİR kılıyor ve telafi
+     çalışmıyordu: etiketler ölçekle birlikte 1.59 katına kadar büyüyor,
+     yerleşim sırasındaki kutularıyla uyuşmuyor ve HİÇBİRİ sığmıyordu.
+     Kök `font` kısayolundan gelen devralınan değer JS'in `font-size`
+     niteliğini ezmez. */
+  fill: #c8d4e2;
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  paint-order: stroke;
+  stroke: rgba(15, 17, 21, 0.85);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+  user-select: none;
+}
+/* Görünürlük JS tarafından greedy çakışma önlemeyle YAZILIR (`opacity`).
+   CSS yalnız `pointer-events`'i keser; çakışma kuralı JS'te. */
+.dugum-secili .dugum-etiket { fill: #ffffff; }
+
+.kenar-katmani .kenar { stroke: #39414f; stroke-width: 1; fill: none; }
+
+/* ---------------------------------------------------------------- liste sayfaları */
+
+.liste-sayfa { height: auto; overflow-y: auto; }
+.liste {
+  max-width: 900px;
+  padding: 20px;
+}
+.tablo {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.tablo th {
+  text-align: left;
+  padding: 6px 10px 6px 0;
+  border-bottom: 1px solid var(--kenar);
+  color: var(--ikincil);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.tablo td {
+  padding: 7px 10px 7px 0;
+  border-bottom: 1px solid rgba(35, 40, 51, 0.55);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.tablo tr:hover td { background: rgba(255, 255, 255, 0.02); }
+.yol {
+  display: block;
+  color: var(--ikincil);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.hedef { color: var(--uyari); font-size: 13px; overflow-wrap: anywhere; }
+
+.bolum { margin-bottom: 32px; }
+.bolum h2 { margin: 0; font-size: 15px; font-weight: 620; }
+.bolum h2 .adet { color: var(--ikincil); font-weight: 500; font-size: 13px; }
+.bolum-not { margin: 4px 0 12px; color: var(--ikincil); font-size: 13px; max-width: 62ch; }
+.bolum-not code { color: var(--yazi); }
+.not-listesi { margin: 0; padding: 0; list-style: none; }
+.not-listesi li {
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(35, 40, 51, 0.55);
+}
+.liste .bos-durum {
+  position: static;
+  padding: 20px 0;
+  align-items: flex-start;
+  text-align: left;
+}
+
+/* ------------------------------------------------------------------ mobil ≤600 */
+
+@media (max-width: 600px) {
+  .ust { padding: 10px 14px; gap: 4px 14px; gap: 4px 14px; }
+  .ust h1 { font-size: 15px; }
+  .ust-sag { margin-left: 0; width: 100%; gap: 14px; }
+  #sahne { height: calc(100vh - 92px); }
+  /* Panel altta açılır: grafın üstünü kapatmaz. */
+  .panel {
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    height: 52vh;
+    max-height: 52vh;
+    border-left: 0;
+    border-top: 1px solid var(--kenar);
+  }
+  /* 390 px'de 8 klasörlü lejant ~205 px yer kapıyordu; iki sütuna bölünür. */
+  .lejant {
+    left: 10px;
+    top: 10px;
+    padding: 7px 10px;
+    max-width: calc(100vw - 20px);
+  }
+  /* JS `open` niteliğini kaldırdığı için lejant varsayılan KAPALI gelir;
+     kullanıcı açarsa satırlar iki sütuna bölünür. */
+  .lejant[open] .lejant-ic {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 14px;
+    row-gap: 2px;
+  }
+  .liste { padding: 14px; }
+  /* Panel alttayken "Sığdır" düğmesi panelin altında kalmasın. */
+  .sigdir { top: 10px; right: 10px; padding: 5px 10px; font-size: 12px; }
+}
+
+/* --------------------------------------------------------------- arama /ara */
+
+.ara-form {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+
+/* Görsel etiket yok: ekran okuyucu için metin, görünürlük için gizli.
+   `position:absolute` + `clip` klasiği ekran okuyucuyu bozmaz. */
+.gizli-etiket {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+#ara-kutu {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  background: var(--zemin);
+  color: var(--yazi);
+  font: inherit;
+  font-size: 14px;
+}
+#ara-kutu::placeholder { color: var(--bos); opacity: 1; }
+#ara-kutu:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 1px;
+  border-color: var(--vurgu);
+}
+
+.ara-form button {
+  padding: 9px 18px;
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  /* `button` tarayıcı varsayılanı BEYAZ buton verir; sıfırlama şart. */
+  background: rgba(21, 25, 34, 0.92);
+  color: var(--yazi);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.ara-form button:hover { border-color: var(--ikincil); }
+.ara-form button:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 2px;
+}
+
+.ara-sonuclar { margin: 0; padding: 0; list-style: none; }
+
+.ara-sonuc {
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(35, 40, 51, 0.55);
+}
+
+.ara-baslik {
+  font-size: 15px;
+  font-weight: 620;
+  color: var(--vurgu);
+  overflow-wrap: anywhere;
+}
+
+/* Alıntı: koyu zemin üzerinde açık metin. `overflow-wrap: anywhere` uzun
+   sözcüklerde yatay taşmayı engeller (390 px mobilde ölçülecek). */
+.ara-alinti {
+  margin: 6px 0 0;
+  color: var(--yazi);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Vurgu: metin `#0f1115` (koyu) üzerinde `#F0E442` (Okabe-Ito sarı) zemin.
+   Kontrast oranı ≈ 13.9:1 (≥4.5 eşiğinin çok üstü). */
+mark {
+  background: #f0e442;
+  color: #0f1115;
+  border-radius: 3px;
+  padding: 0 2px;
+  font-weight: 600;
+}
+
+.ara-etiketler { margin: 8px 0 0; }
+
+@media (max-width: 600px) {
+  .ara-form { flex-direction: column; }
+  .ara-form button { width: 100%; }
+  .ara-alinti { font-size: 13px; }
+}

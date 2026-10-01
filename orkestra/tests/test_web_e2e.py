@@ -12,6 +12,7 @@ kırmızıya düşmez).
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 import os
 import socket
 import sqlite3
@@ -146,7 +147,10 @@ def sunucu(tmp_path_factory):
     )
 
     # -- kurgusal kota (gercek proxy.log YOK; sahte gunler) --
-    for gun, adet in (("2026-09-24", 30), ("2026-09-26", 44), ("2026-09-28", 51), ("2026-09-30", 41)):
+    # Kota "bugünü" sayar: tarihler bugüne göre hesaplanır (sabit tarih gün değişince kırılıyordu).
+    bugun = datetime.now(timezone.utc).date()
+    for geri, adet in ((6, 30), (4, 44), (2, 51), (0, 41)):
+        gun = (bugun - timedelta(days=geri)).isoformat()
         b.execute(
             "INSERT INTO quota_snapshots (model,gun,istek,maliyet) VALUES (?,?,?,0)",
             ("nvidia/nemotron-3-ultra-550b-a55b:free", gun, adet),

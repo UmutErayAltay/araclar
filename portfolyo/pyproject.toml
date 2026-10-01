@@ -1,0 +1,20 @@
+[project]
+name = "portfolyo"
+version = "0.1.0"
+description = "Allowlist'li, tek dosyalık statik portfolyo üreticisi (ağ yok, vault içeriği yok)"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+portfolyo = "portfolyo.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["portfolyo"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

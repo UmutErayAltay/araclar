@@ -1,0 +1,48 @@
+{
+  "sahip": {
+    "ad": "Adın Soyadın",
+    "unvan": "Yazılım geliştirici",
+    "github": "UmutErayAltay",
+    "hakkinda": "Kendini iki üç cümleyle tanıt.\n\nİkinci paragraf isteğe bağlı."
+  },
+  "repolar": [
+    {
+      "ad": "Sosyal-Medya-Web",
+      "herkese_acik": true,
+      "aciklama": "Flask + Supabase ile gerçek zamanlı mesajlaşma, hikâyeler, anketler ve satır düzeyi güvenlik içeren sosyal ağ.",
+      "etiketler": ["Flask", "Supabase", "Playwright"],
+      "klon": "C:/yol/Sosyal-Medya-Web",
+      "readme": false
+    },
+    {
+      "ad": "artemis-ai-assistant",
+      "herkese_acik": true,
+      "aciklama": "Yerel, çevrimdışı öncelikli Türkçe sesli yapay zekâ asistanı. LLM yalnızca JSON araç çağrısı üretir, gerçek eylemleri Python yapar.",
+      "etiketler": ["Python", "faster-whisper", "eklenti mimarisi"]
+    },
+    {
+      "ad": "Sosyal-Medya-Mobil",
+      "herkese_acik": true,
+      "aciklama": "Sosyal-Medya-Web platformunun Kotlin ve Jetpack Compose ile yazılmış yerel Android istemcisi.",
+      "etiketler": ["Kotlin", "Jetpack Compose"]
+    },
+    {
+      "ad": "sosyal-medya-react-client",
+      "herkese_acik": true,
+      "aciklama": "Canlı API'ye karşı kimlik doğrulama, akış, beğeni, yorum ve profil içeren React/TypeScript istemcisi.",
+      "etiketler": ["React", "TypeScript"]
+    },
+    {
+      "ad": "claude-openrouter",
+      "herkese_acik": true,
+      "aciklama": "Claude Code'un /model menüsüne herhangi bir OpenRouter modelini ekleyen yerel proxy; kimlik bilgileri makineden çıkmaz.",
+      "etiketler": ["TypeScript", "proxy", "OpenRouter"]
+    },
+    {
+      "ad": "BlogSitesi",
+      "herkese_acik": true,
+      "aciklama": "ASP.NET Core + EF Core API'si ve Redux'lı React/TypeScript arayüzüyle tam yığın blog platformu.",
+      "etiketler": ["ASP.NET Core", "React", "Redux"]
+    }
+  ]
+}

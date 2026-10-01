@@ -18,6 +18,8 @@ araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 | `orkestra/` | Ajan görev kuyruğu, kota takibi, kanıt değerlendirme ve web panel |
 | `danis/` | Terminalde hata asistanı + "bu dosyayı cor'a sor" (Windows `.exe` derlemesi var) |
 | `anlat/` | Git deposunun geçmişinden Türkçe teknik anlatı üretir; NotebookLM ile sesli özet hazırlar |
+| `tekrar/` | Vault bilgi notlarından aralıklı tekrar kartları üretir, her gün Telegram'a gönderir (Leitner aralıkları) |
+| `portfolyo/` | Allowlist'li, tek dosyalık statik portfolyo sayfası üretir (ağ yok, sızıntı denetimi var) |
 
 Bu depoda olmayan ama aynı istemciyi kullanan projeler: `ne-izlesem` (film/kitap takip ürünü, ayrı repoda; kopyası
 `python3 tools/sync.py ../ne-izlesem/app/_corclient.py` ile güncellenir) ve `readbunny` (kendi istemcisi var).

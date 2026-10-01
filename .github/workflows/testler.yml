@@ -37,6 +37,10 @@ jobs:
             kur: pip install -r requirements-dev.txt
           - proje: anlat
             kur: pip install -r requirements.txt
+          - proje: tekrar
+            kur: pip install -r requirements.txt
+          - proje: portfolyo
+            kur: pip install -r requirements.txt
     defaults:
       run:
         working-directory: ${{ matrix.proje }}

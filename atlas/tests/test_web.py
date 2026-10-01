@@ -201,6 +201,57 @@ def test_satir_ici_script_ve_stil_yok(dolu_client):
 
 
 # --------------------------------------------------------------------------
+# CSP: frame-ancestors (KULE_FRAME_ORIGIN)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "origin,beklenen",
+    [
+        ("http://127.0.0.1:8790", "frame-ancestors http://127.0.0.1:8790"),
+        ("http://localhost:8790", "frame-ancestors http://localhost:8790"),
+    ],
+)
+def test_csp_frame_ancestors_acik(web_client, monkeypatch, origin: str, beklenen: str):
+    """KULE_FRAME_ORIGIN kalıba uyarsa frame-ancestors o origin olur."""
+    monkeypatch.setenv("KULE_FRAME_ORIGIN", origin)
+    r = web_client.get("/")
+    assert r.status_code == 200
+    csp_val = r.headers["Content-Security-Policy"]
+    assert beklenen in csp_val
+    assert "frame-ancestors 'none'" not in csp_val
+    # Diğer direktifler aynı kalsın
+    assert "default-src 'none'" in csp_val
+    assert "script-src 'self'" in csp_val
+    assert "style-src 'self'" in csp_val
+
+
+@pytest.mark.parametrize(
+    "gecersiz_origin",
+    [
+        "https://127.0.0.1:8790",
+        "http://evil.example:80",
+        "http://127.0.0.1:8790/yol",
+        "javascript:alert(1)",
+        "http://127.0.0.1:99999x",
+        "",
+        "http://127.0.0.1",
+        "http://localhost",
+        "http://127.0.0.1:8790\n",
+    ],
+)
+def test_csp_frame_ancestors_kapali_gecersiz(web_client, monkeypatch, gecersiz_origin: str):
+    """Geçersiz değerlerde frame-ancestors 'none' kalır."""
+    monkeypatch.setenv("KULE_FRAME_ORIGIN", gecersiz_origin)
+    r = web_client.get("/")
+    assert r.status_code == 200
+    csp_val = r.headers["Content-Security-Policy"]
+    assert "frame-ancestors 'none'" in csp_val
+    # Diğer direktifler değişmez
+    assert "default-src 'none'" in csp_val
+
+
+# --------------------------------------------------------------------------
 # Host dogrulama (DNS rebinding)
 # --------------------------------------------------------------------------
 

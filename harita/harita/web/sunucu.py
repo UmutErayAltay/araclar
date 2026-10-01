@@ -11,6 +11,7 @@ Güvenlik (bağlayıcı):
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -34,6 +35,18 @@ CSP = (
     "frame-ancestors 'none'"
 )
 
+# İframe ebeveyni izni: yalnızca http://127.0.0.1:port veya http://localhost:port
+KULE_FRAME_ORIGIN_RE = re.compile(r"^http://(127\.0\.0\.1|localhost):[0-9]{1,5}$")
+
+
+def csp() -> str:
+    """Her istekte CSP üretir: KULE_FRAME_ORIGIN kalıba uyarsa frame-ancestors açar."""
+    origin = os.environ.get("KULE_FRAME_ORIGIN", "")
+    if KULE_FRAME_ORIGIN_RE.fullmatch(origin):
+        return CSP.replace("frame-ancestors 'none'", f"frame-ancestors {origin}")
+    return CSP
+
+
 # Renk körü-güvenli palet (Okabe-Ito). Sıra sabittir; `graf.js` aynı sırayı
 # kullanır, böylece bir klasörün rengi graf ile lejantta aynıdır.
 OKABE_ITO = (
@@ -50,7 +63,7 @@ OKABE_ITO = (
 
 def guvenli_basliklar(cevap: Response) -> Response:
     """Her yanıta bağlayıcı güvenlik başlıklarını ekler."""
-    cevap.headers["Content-Security-Policy"] = CSP
+    cevap.headers["Content-Security-Policy"] = csp()
     cevap.headers["X-Content-Type-Options"] = "nosniff"
     cevap.headers["Referrer-Policy"] = "no-referrer"
     cevap.headers["Cache-Control"] = "no-store"

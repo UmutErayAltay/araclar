@@ -14,6 +14,7 @@ Guvenlik (baglayici):
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from pathlib import Path
@@ -43,6 +44,18 @@ CSP = (
     "form-action 'none'; "
     "frame-ancestors 'none'"
 )
+
+# İframe ebeveyni izni: yalnızca http://127.0.0.1:port veya http://localhost:port
+KULE_FRAME_ORIGIN_RE = re.compile(r"^http://(127\.0\.0\.1|localhost):[0-9]{1,5}$")
+
+
+def csp() -> str:
+    """Her istekte CSP üretir: KULE_FRAME_ORIGIN kalıba uyarsa frame-ancestors açar."""
+    origin = os.environ.get("KULE_FRAME_ORIGIN", "")
+    if KULE_FRAME_ORIGIN_RE.fullmatch(origin):
+        return CSP.replace("frame-ancestors 'none'", f"frame-ancestors {origin}")
+    return CSP
+
 
 # Renk kor-goren (Okabe-Ito). Sira sabittir; `panel.js` ve sablonlar ayni
 # sirayi kullanir, boylece onem/tur rengi lejantla hep ayni.
@@ -101,7 +114,7 @@ SAYFA_BOYUTU = 100
 
 def guvenli_basliklar(cevap: Response) -> Response:
     """Her yanita baglayici guvenlik basliklarini ekler."""
-    cevap.headers["Content-Security-Policy"] = CSP
+    cevap.headers["Content-Security-Policy"] = csp()
     cevap.headers["X-Content-Type-Options"] = "nosniff"
     cevap.headers["Referrer-Policy"] = "no-referrer"
     cevap.headers["Cache-Control"] = "no-store"

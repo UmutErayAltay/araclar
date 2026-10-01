@@ -47,7 +47,9 @@ def test_reads_py_and_json_and_csv(tmp_path: Path) -> None:
         ("a.csv", "k,v\n1,2"),
     ]:
         yol = tmp_path / ad
-        yol.write_text(icerik, encoding="utf-8")
+        # `write_text` Windows'ta `\n` -> `\r\n` çevirir (newline=None); okuyucu
+        # baytları SADIK döndürür, yani test kendi yazdığı baytı okumalı.
+        yol.write_text(icerik, encoding="utf-8", newline="")
         assert metni_cikar(yol) == icerik
 
 

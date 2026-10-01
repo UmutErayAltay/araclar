@@ -21,9 +21,11 @@ Not: bu container'da `zsh` kurulu değil, hook'un zsh dalı (`precmd_functions`)
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -31,10 +33,33 @@ import pytest
 
 HOOK = Path(__file__).resolve().parent.parent / "shell" / "danis.sh"
 
+# bash, `source C:\...\danis.sh` yazısında ters eğik çizgileri KAÇIŞ karakteri
+# sayar: yol `C:UsersArtemis...` olur, dosya hiç açılmaz ve PROMPT_COMMAND hiç
+# kurulmaz — kanca sessizce hiç çalışmaz. İleri eğik çizgi Git Bash'te de,
+# POSIX bash'ta da (orada zaten öyle) doğru yol biçimidir, bu yüzden script'e
+# yazılacak yol bu olmalı. `subprocess` argv'sindeki `str(HOOK)` ise dokunulmaz.
+HOOK_YOL = HOOK.as_posix()
+
 # API.md'de önerilen kasıntı komutu.
 BASARISIZ_KOMUT = "ls /var/olmayan-dizin-xyz-danis-testi"
 
-BASH_EXE = "/bin/bash"
+def _bash_exe() -> str:
+    """Git Bash, yoksa WSL `bash.exe` DEĞİL — WSL bash'ı bu makinede çalışmıyor."""
+    if os.name != "nt":
+        return "/bin/bash"
+    for aday in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files\Git\usr\bin\bash.exe"):
+        if Path(aday).is_file():
+            return aday
+    bulunan = shutil.which("bash")
+    return bulunan if bulunan and "System32" not in bulunan else "/bin/bash"
+
+
+BASH_EXE = _bash_exe()
+# Linux'un sabit PATH'i Windows'ta `danis`i bulunamaz kılıyor; alt süreç bunu
+# kendi ortamında görüyor, o yüzden PATH burada kurulmalı.
+BASH_PATH = os.environ["PATH"] if os.name != "nt" else os.pathsep.join(
+    filter(None, [str(HOOK.parent), shutil.os.path.dirname(sys.executable), r"C:\Program Files\Git\usr\bin", os.environ.get("PATH", "")])
+)
 
 # `_danis*` öneki hook'un kendi çağrılarını dışladığı için bu fonksiyon
 # DANIS_LAST_* değişkenlerini bozmadan okur. Son satırdaki `;` şart: bash, `}`
@@ -68,16 +93,33 @@ def _bash(script: str, path_oneshot: Path | None = None) -> Sonuc:
     `stdin` bir dosyaya yönlendirildiği için bash bunu ETKİLEŞİMLİ sayar ve
     PROMPT_COMMAND'ı her satır sonunda tetikler. Komutlar stdin'den teker teker
     okunur, böylece "source → komut → gözlem → danis" sırası garanti edilir.
+
+    Kancanın kendiliğinden çalıştığı bu yolla doğrulanır; `_danis_kaydet`
+    elle çağrılmaz.
+
+    `path_oneshot` alt sürecin PATH'inin başına eklenir — script İÇİNE
+    `PATH=...` satırı yazmak yerine. MSYS, PATH'i alt süreç başlarken kendisi
+    çevirdiği için `C:/...` biçimi burada doğru bulunur; script içinde
+    `PATH="C:/..."` demek ise bash'in PATH ARIAMASINDA görünmez kalıyor
+    (`command not found`). Linux'da da aynı yol geçerli olduğu için tek
+    mekanizma iki platformu da kapsar.
     """
-    one_shot = "\nPATH=" + f'"{path_oneshot}":$PATH\n' if path_oneshot is not None else ""
-    tam = f"source {HOOK}\n{one_shot}{_GOSTER}{script}\n"
+    yol = BASH_PATH if path_oneshot is None else os.pathsep.join(
+        filter(None, [str(path_oneshot), BASH_PATH])
+    )
+    tam = f"source {HOOK_YOL}\n{_GOSTER}{script}\n"
+    # `text=True` çıktıyı MAKİNE LOCALE'iyle çözer; hook'un `❌` ipucu baytları
+    # ise locale'den bağımsız UTF-8'dir (cp1254 gibi bir kod sayfasında okuma
+    # hatası verir). Bu yüzden çözme dili sabitlenir; `replace` bozuk baytı
+    # hata yerine yoksaydığı için test kendiliğinden çökmez.
     ham = subprocess.run(
         [BASH_EXE, "-i"],
         input=tam,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=60,
-        env={"PS1": "", "PS2": "", "PATH": "/usr/bin:/bin:/usr/local/bin", "TERM": "dumb"},
+        env={"PS1": "", "PS2": "", "PATH": yol, "TERM": "dumb"},
     )
     return Sonuc(ham.stdout, ham.stderr)
 
@@ -193,8 +235,8 @@ def test_danis_without_recorded_command_is_a_clear_noop(tmp_path: Path) -> None:
 def test_hook_is_idempotent_when_sourced_twice() -> None:
     """İki kez source edilirse ikinci yükleme hiçbir şey yapmaz (geri dönüş koruması)."""
     sonuc = _bash(
-        f"source {HOOK}\n"
-        f"source {HOOK}\n"
+        f"source {HOOK_YOL}\n"
+        f"source {HOOK_YOL}\n"
         f"{BASARISIZ_KOMUT}\n"
         "_danis_test_goster\n"
     )
@@ -223,9 +265,10 @@ def test_hook_works_in_zsh() -> None:
 
     ham = subprocess.run(
         ["zsh", "-i"],
-        input=f"source {HOOK}\n{BASARISIZ_KOMUT}\n_danis_test_goster\n",
+        input=f"source {HOOK_YOL}\n{BASARISIZ_KOMUT}\n_danis_test_goster\n",
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=60,
     )
     assert "EXIT=2" in ham.stdout, ham.stdout + ham.stderr

@@ -1,0 +1,28 @@
+[project]
+name = "anlat"
+version = "0.1.0"
+description = "Git geçmişinden Türkçe teknik anlatı + NotebookLM sesli özet"
+# Anlatı üreticisi ve bridge yalnızca Python standart kütüphanesini kullanır
+# (urllib ile cor proxy'ye bağlanır, subprocess ile git çalıştırır).
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+anlat = "cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["bridge", "generator"]
+# cli.py paket içinde değil, anlat/ kökünde; konsol script'i onu içe aktarıyor.
+py-modules = ["cli"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "integration: gerçek ağ/cor çağrısı yapan testler (varsayılan koşuda atlanır)",
+]
+addopts = "-m \"not integration\""

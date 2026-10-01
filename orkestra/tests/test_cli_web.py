@@ -6,6 +6,7 @@ Gerçek `claude`/cor ÇAĞRILMAZ; `kota` yalnızca kurgusal `proxy.log` okur.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 import sqlite3
 import subprocess
 import sys
@@ -17,11 +18,15 @@ from orkestra.queue import SEMA
 
 KOK = Path(__file__).resolve().parent.parent
 
-# Gerçek log biçiminde kurgusal satırlar.
-LOG_1 = "[2026-09-30T06:15:25.675Z] openrouter -> stealth/space-bunny-alpha (stream)"
-LOG_2 = "[2026-09-30T06:16:00.000Z] openrouter -> stealth/space-bunny-alpha"
-LOG_3 = "[2026-09-26T09:02:11.400Z] openrouter -> nvidia/nemotron-3-ultra-550b-a55b:free"
-LOG_BILINMEYEN = "[2026-09-30T06:15:00.000Z] proxy dinliyor: http://127.0.0.1:8787"
+# Gerçek log biçiminde kurgusal satırlar. Kota "bugünü" saydığı için tarihler sabit
+# yazılmaz: sabit tarih gün değişince testleri kırıyordu (2026-10-01 CI hatası).
+_BUGUN = datetime.now(timezone.utc).date()
+_D0 = _BUGUN.isoformat()
+_D4 = (_BUGUN - timedelta(days=4)).isoformat()
+LOG_1 = f"[{_D0}T00:00:25.675Z] openrouter -> stealth/space-bunny-alpha (stream)"
+LOG_2 = f"[{_D0}T00:00:26.000Z] openrouter -> stealth/space-bunny-alpha"
+LOG_3 = f"[{_D4}T09:02:11.400Z] openrouter -> nvidia/nemotron-3-ultra-550b-a55b:free"
+LOG_BILINMEYEN = f"[{_D0}T00:00:15.000Z] proxy dinliyor: http://127.0.0.1:8787"
 
 
 @pytest.fixture()

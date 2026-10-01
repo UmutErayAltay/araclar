@@ -21,6 +21,7 @@ Ağa çıkmaz, cor çağırmaz, görev çalıştırmaz; `durum` yalnızca okur.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 import os
 import sqlite3
 import sys
@@ -221,14 +222,15 @@ def test_kota_verisi_yok_null(db_yolu):
 
 def test_kota_sayilari(db_yolu):
     """Kota özeti mevcut `quota.kota_gorunumu` ile AYNI sayıları verir."""
+    bugun = datetime.now(timezone.utc).date().isoformat()  # kota "bugünü" sayar; sabit tarih gün değişince kırılır
     q = Queue(db_yolu)
     q.baglanti_al().execute(
         "INSERT INTO quota_snapshots (model, gun, istek, maliyet) "
-        "VALUES ('ornek/model-a', '2026-09-30', 40, 0)"
+        f"VALUES ('ornek/model-a', '{bugun}', 40, 0)"
     )
     q.baglanti_al().execute(
         "INSERT INTO quota_snapshots (model, gun, istek, maliyet) "
-        "VALUES ('ornek/model-b', '2026-09-30', 10, 0)"
+        f"VALUES ('ornek/model-b', '{bugun}', 10, 0)"
     )  # ikinci model -> gün toplamı 50
     q.kapat()
 

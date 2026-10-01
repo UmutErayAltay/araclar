@@ -1,0 +1,2 @@
+# Yalnızca Python standart kütüphanesi kullanılır; testler için:
+pytest>=7.0

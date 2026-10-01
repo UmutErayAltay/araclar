@@ -22,6 +22,7 @@ BEKLENEN = {
     "orkestra/orkestra/_corclient.py",
     "danis/danis/_corclient.py",
     "anlat/generator/_corclient.py",
+    "tekrar/tekrar/_corclient.py",
 }
 
 

@@ -16,6 +16,11 @@ class AyarHatasi(Exception):
     """Yapılandırma okuma/doğrulama hatası."""
 
 
+VARSAYILAN_KATEGORI = "Diğer"
+VERI_KAYNAKLARI = ("yok", "klon", "api")
+SIRALAMALAR = ("manuel", "aktivite")
+
+
 @dataclass(frozen=True)
 class Sahip:
     """Portfolyo sahibi bilgileri."""
@@ -24,6 +29,7 @@ class Sahip:
     unvan: str
     github: str
     hakkinda: str
+    site_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -36,6 +42,8 @@ class Repo:
     etiketler: tuple[str, ...]
     klon: str | None
     readme: bool
+    kategori: str = VARSAYILAN_KATEGORI
+    veri: str = "yok"  # "yok" | "klon" | "api"
 
 
 @dataclass(frozen=True)
@@ -44,6 +52,8 @@ class Ayar:
 
     sahip: Sahip
     repolar: tuple[Repo, ...]
+    kategoriler: tuple[str, ...] = ()
+    siralama: str = "manuel"  # "manuel" | "aktivite"
 
 
 # --- Sabitler ve yardımcı fonksiyonlar ---
@@ -54,6 +64,9 @@ _ETIKET_DESENI = re.compile(r"^.{1,24}$")
 _KONTROL_KARAKTER_DESENI = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MAKS_REPO_SAYISI = 24
 _MAKS_ETIKET_SAYISI = 8
+_MAKS_KATEGORI_SAYISI = 8
+_MAKS_KATEGORI_UZUNLUK = 40
+_SITE_URL_DESENI = re.compile(r"^https://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?:/[A-Za-z0-9._~/-]{0,100})?$")
 
 
 def _kontrol_karakteri_var_mi(metin: str) -> bool:
@@ -67,7 +80,7 @@ def _sahip_dogrula(obj: dict, alan_yolu: str) -> Sahip:
         raise AyarHatasi(f"{alan_yolu}: nesne bekleniyor")
 
     # Bilinmeyen alan kontrolü
-    taninan_alanlar = {"ad", "unvan", "github", "hakkinda"}
+    taninan_alanlar = {"ad", "unvan", "github", "hakkinda", "site_url"}
     for anahtar in obj:
         if anahtar not in taninan_alanlar:
             raise AyarHatasi(f"{alan_yolu}.{anahtar}: tanınmayan alan")
@@ -116,16 +129,29 @@ def _sahip_dogrula(obj: dict, alan_yolu: str) -> Sahip:
         if ord(ch) < 32 or ch == "\x7f":
             raise AyarHatasi(f"{alan_yolu}.hakkinda: kontrol karakteri içeremez")
 
-    return Sahip(ad=ad, unvan=unvan, github=github, hakkinda=hakkinda)
+    # site_url: opsiyonel; yalnız https, paylaşım meta etiketlerinde (og:url) kullanılır
+    site_url = obj.get("site_url", "")
+    if not isinstance(site_url, str):
+        raise AyarHatasi(f"{alan_yolu}.site_url: string bekleniyor")
+    if site_url and not _SITE_URL_DESENI.fullmatch(site_url):
+        raise AyarHatasi(f"{alan_yolu}.site_url: yalnız https:// adresi olabilir")
+
+    return Sahip(ad=ad, unvan=unvan, github=github, hakkinda=hakkinda, site_url=site_url)
 
 
-def _repo_dogrula(obj: dict, alan_yolu: str, github_kullanici: str, gorusulen_adlar: set[str]) -> Repo:
+def _repo_dogrula(
+    obj: dict,
+    alan_yolu: str,
+    github_kullanici: str,
+    gorusulen_adlar: set[str],
+    kategoriler: tuple[str, ...] = (),
+) -> Repo:
     """Repo nesnesini doğrular ve oluşturur."""
     if not isinstance(obj, dict):
         raise AyarHatasi(f"{alan_yolu}: nesne bekleniyor")
 
     # Bilinmeyen alan kontrolü
-    taninan_alanlar = {"ad", "herkese_acik", "aciklama", "etiketler", "klon", "readme"}
+    taninan_alanlar = {"ad", "herkese_acik", "aciklama", "etiketler", "klon", "readme", "kategori", "veri"}
     for anahtar in obj:
         if anahtar not in taninan_alanlar:
             raise AyarHatasi(f"{alan_yolu}.{anahtar}: tanınmayan alan")
@@ -185,6 +211,20 @@ def _repo_dogrula(obj: dict, alan_yolu: str, github_kullanici: str, gorusulen_ad
     if not isinstance(readme, bool):
         raise AyarHatasi(f"{alan_yolu}.readme: boolean bekleniyor")
 
+    # kategori: opsiyonel; verilirse üst düzey `kategoriler` listesinden biri olmalı
+    kategori = obj.get("kategori", VARSAYILAN_KATEGORI)
+    if not isinstance(kategori, str):
+        raise AyarHatasi(f"{alan_yolu}.kategori: string bekleniyor")
+    if "kategori" in obj and kategori not in kategoriler:
+        raise AyarHatasi(f"{alan_yolu}.kategori: üst düzey `kategoriler` listesinde olmalı")
+
+    # veri: "yok" | "klon" | "api"; verilmezse klon varsa "klon", yoksa "yok"
+    veri = obj.get("veri", "klon" if klon else "yok")
+    if not isinstance(veri, str) or veri not in VERI_KAYNAKLARI:
+        raise AyarHatasi(f"{alan_yolu}.veri: {', '.join(VERI_KAYNAKLARI)} değerlerinden biri olmalı")
+    if veri == "klon" and not klon:
+        raise AyarHatasi(f"{alan_yolu}.veri: \"klon\" için `klon` yolu gerekli")
+
     # url: KULLANICIDAN ALINMAZ, türetilir
     url = f"https://github.com/{github_kullanici}/{ad}"
 
@@ -195,7 +235,29 @@ def _repo_dogrula(obj: dict, alan_yolu: str, github_kullanici: str, gorusulen_ad
         etiketler=tuple(etiketler),
         klon=klon,
         readme=readme,
+        kategori=kategori,
+        veri=veri,
     )
+
+
+def _kategoriler_dogrula(liste: object) -> tuple[str, ...]:
+    """Üst düzey `kategoriler` listesini doğrular (görünme sırası = liste sırası)."""
+    if not isinstance(liste, list):
+        raise AyarHatasi("kategoriler: liste bekleniyor")
+    if len(liste) > _MAKS_KATEGORI_SAYISI:
+        raise AyarHatasi(f"kategoriler: en fazla {_MAKS_KATEGORI_SAYISI} kategori ({len(liste)} verildi)")
+    sonuc: list[str] = []
+    for i, ad in enumerate(liste):
+        if not isinstance(ad, str) or not ad.strip():
+            raise AyarHatasi(f"kategoriler[{i}]: boş olmayan string bekleniyor")
+        if len(ad) > _MAKS_KATEGORI_UZUNLUK:
+            raise AyarHatasi(f"kategoriler[{i}]: en fazla {_MAKS_KATEGORI_UZUNLUK} karakter")
+        if _kontrol_karakteri_var_mi(ad):
+            raise AyarHatasi(f"kategoriler[{i}]: kontrol karakteri içeremez")
+        if ad in sonuc:
+            raise AyarHatasi(f"kategoriler[{i}]: tekrar eden kategori")
+        sonuc.append(ad)
+    return tuple(sonuc)
 
 
 def ayar_oku(yol: Path) -> Ayar:
@@ -220,7 +282,7 @@ def ayar_oku(yol: Path) -> Ayar:
         raise AyarHatasi("Kök nesne bir obje olmalı")
 
     # Bilinmeyen kök alan kontrolü
-    taninan_kok_alanlar = {"sahip", "repolar"}
+    taninan_kok_alanlar = {"sahip", "repolar", "kategoriler", "siralama"}
     for anahtar in veri:
         if anahtar not in taninan_kok_alanlar:
             raise AyarHatasi(f"{anahtar}: tanınmayan kök alan")
@@ -239,10 +301,16 @@ def ayar_oku(yol: Path) -> Ayar:
     if len(repolar_veri) > _MAKS_REPO_SAYISI:
         raise AyarHatasi(f"repolar: en fazla {_MAKS_REPO_SAYISI} repo ({len(repolar_veri)} verildi)")
 
+    kategoriler = _kategoriler_dogrula(veri.get("kategoriler", []))
+
+    siralama = veri.get("siralama", "manuel")
+    if not isinstance(siralama, str) or siralama not in SIRALAMALAR:
+        raise AyarHatasi(f"siralama: {', '.join(SIRALAMALAR)} değerlerinden biri olmalı")
+
     gorusulen_adlar: set[str] = set()
     repolar: list[Repo] = []
     for i, repo_obj in enumerate(repolar_veri):
-        repo = _repo_dogrula(repo_obj, f"repolar[{i}]", sahip.github, gorusulen_adlar)
+        repo = _repo_dogrula(repo_obj, f"repolar[{i}]", sahip.github, gorusulen_adlar, kategoriler)
         repolar.append(repo)
 
-    return Ayar(sahip=sahip, repolar=tuple(repolar))
+    return Ayar(sahip=sahip, repolar=tuple(repolar), kategoriler=kategoriler, siralama=siralama)

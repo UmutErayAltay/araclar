@@ -48,13 +48,19 @@ _HAM_DESENLER = [
     ), False),
     ("dis-kaynak", re.compile(
         r"<script"
-        r"|<link\s"
         r"|<iframe"
         r"|@import"
         r"|url\(\s*['\"]?https?:"
         r"|src\s*=\s*['\"]?https?:",
     ), True),
 ]
+
+# `<link` yalnız `data:` favicon olarak serbesttir; başka her `<link` (stylesheet, preload,
+# canonical, ...) dış kaynak sayılır. Etiketin TAMAMI bu kalıba uymalıdır.
+_LINK_ETIKETI = re.compile(r"<link\b[^>]*>", re.IGNORECASE)
+_IZINLI_FAVICON = re.compile(
+    r'<link rel="icon" href="data:image/[a-z+.-]+[;,][^"\s<>]*">', re.IGNORECASE
+)
 
 _DESENLER = [
     (tur, re.compile(desen.pattern, re.IGNORECASE if ic else 0), ic)
@@ -101,6 +107,14 @@ def tara(metin: str, izinli_eposta: Collection[str] = ()) -> list[Bulgu]:
 
             gorulen.add(anahtar)
             bulunan.append((match.start(), Bulgu(tur=tur, ornek=ornek_maskeli)))
+
+    for match in _LINK_ETIKETI.finditer(metin):
+        if _IZINLI_FAVICON.fullmatch(match.group(0)):
+            continue
+        anahtar = ("dis-kaynak", _maskele(match.group(0)))
+        if anahtar not in gorulen:
+            gorulen.add(anahtar)
+            bulunan.append((match.start(), Bulgu(tur="dis-kaynak", ornek=anahtar[1])))
 
     # Konuma göre sırala
     bulunan.sort(key=lambda x: x[0])

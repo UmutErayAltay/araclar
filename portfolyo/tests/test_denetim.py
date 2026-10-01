@@ -144,3 +144,23 @@ class TestBulguDataclass:
         b3 = Bulgu(tur="eposta", ornek="test…")
         assert b1 == b2
         assert b1 < b3  # tur alfabetik sıralama
+
+class TestLinkEtiketi:
+    """`<link` yalnız data: favicon olarak serbest; geri kalanı dış kaynaktır."""
+
+    def test_data_favicon_gecer(self):
+        assert tara('<link rel="icon" href="data:image/svg+xml,%3Csvg%3E%3C%2Fsvg%3E">') == []
+
+    def test_diger_link_turleri_bulgu_verir(self):
+        for etiket in (
+            '<link rel="stylesheet" href="https://x.example/a.css">',
+            '<link rel="stylesheet" href="a.css">',
+            '<link rel="preload" href="/f.woff2" as="font">',
+            '<link rel="canonical" href="https://x.example/">',
+            '<LINK REL="icon" HREF="https://x.example/f.ico">',
+            '<link\nrel="stylesheet" href="x.css">',
+            '<link/rel="stylesheet" href="x.css">',
+            '<link rel="icon" href="javascript:alert(1)">',
+            '<link rel="icon" href="data:image/svg+xml,x" onload="y()">',
+        ):
+            assert [b.tur for b in tara(etiket)] == ["dis-kaynak"], etiket

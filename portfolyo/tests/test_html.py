@@ -31,6 +31,7 @@ def _sahte_ayar(**kwargs) -> SimpleNamespace:
         unvan=kwargs.get("sahip_unvan", "Geliştirici"),
         github=kwargs.get("sahip_github", "testuser"),
         hakkinda=kwargs.get("sahip_hakkinda", "Test hakkındayım.\nİkinci satır."),
+        site_url=kwargs.get("site_url", ""),
     )
     repolar = []
     for r in kwargs.get("repolar", [{}]):
@@ -39,9 +40,15 @@ def _sahte_ayar(**kwargs) -> SimpleNamespace:
             aciklama=r.get("aciklama", "Test açıklaması"),
             url=r.get("url", "https://github.com/testuser/test-repo"),
             etiketler=r.get("etiketler", ["python", "test"]),
+            kategori=r.get("kategori", "Diğer"),
         )
         repolar.append(repo)
-    return SimpleNamespace(sahip=sahip, repolar=repolar)
+    return SimpleNamespace(
+        sahip=sahip,
+        repolar=repolar,
+        kategoriler=tuple(kwargs.get("kategoriler", ())),
+        siralama=kwargs.get("siralama", "manuel"),
+    )
 
 
 class TestRender:
@@ -153,7 +160,7 @@ class TestRender:
 
     def test_siralama_son_commit_azalan(self):
         """Kartlar son_commit azalan sırada sıralanmalı (None en sona)."""
-        ayar = _sahte_ayar(repolar=[
+        ayar = _sahte_ayar(siralama="aktivite", repolar=[
             {"ad": "eski-repo", "aciklama": "Eski"},
             {"ad": "yeni-repo", "aciklama": "Yeni"},
             {"ad": "yok-repo", "aciklama": "Yok"},
@@ -290,7 +297,7 @@ class TestGercekVeriTurleri:
         assert "(&#x27;" not in html_out  # tuple repr'i sızmamalı
 
     def test_iso_metin_tarihlerle_siralama(self):
-        ayar = _sahte_ayar(repolar=[{"ad": "a-eski"}, {"ad": "b-yeni"}])
+        ayar = _sahte_ayar(siralama="aktivite", repolar=[{"ad": "a-eski"}, {"ad": "b-yeni"}])
         veri = {
             "a-eski": SahteRepoVerisi(son_commit="2023-05-01"),
             "b-yeni": SahteRepoVerisi(son_commit="2026-05-01"),

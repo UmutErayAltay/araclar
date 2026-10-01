@@ -21,9 +21,10 @@ class RepoVerisi:
     commit_sayisi: int
     ilk_commit: str | None      # ISO tarih (YYYY-MM-DD)
     son_commit: str | None
-    haftalik: tuple[int, ...]   # son 12 hafta, EN ESKİ başta
-    diller: tuple[tuple[str, int], ...]   # (dil adı, dosya sayısı), en çok 5
+    haftalik: tuple[int, ...] | None   # son 12 hafta, EN ESKİ başta; None = veri yok (grafik çizilmez)
+    diller: tuple[tuple[str, int], ...]   # (dil adı, sayı), en çok 5; sayı birimi `dil_birimi`
     readme_ozeti: str | None
+    dil_birimi: str = "dosya"  # "dosya" (yerel klon) | "yuzde" (GitHub API)
 
 
 # Uzantı → dil eşleşmesi

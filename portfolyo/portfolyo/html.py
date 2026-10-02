@@ -236,8 +236,8 @@ def _favicon(ad: str) -> str:
     return f'<link rel="icon" href="data:image/svg+xml,{urllib.parse.quote(svg, safe="")}">'
 
 
-def _meta(baslik: str, aciklama: str, url: str, tur: str) -> str:
-    """Açıklama + Open Graph + Twitter kartı. `og:image` yok (barındırılan görsel gerekir)."""
+def _meta(baslik: str, aciklama: str, url: str, tur: str, og_gorsel: str | None = None) -> str:
+    """Açıklama + Open Graph + Twitter kartı. `og:image` yalnız başarıyla üretilmiş mutlak URL verilirse yazılır."""
     b, a = _escape_all(baslik), _escape_all(aciklama)
     satirlar = [
         f'<meta name="description" content="{a}">',
@@ -245,12 +245,19 @@ def _meta(baslik: str, aciklama: str, url: str, tur: str) -> str:
         f'<meta property="og:description" content="{a}">',
         f'<meta property="og:type" content="{tur}">',
         '<meta property="og:locale" content="tr_TR">',
-        '<meta name="twitter:card" content="summary">',
+        f'<meta name="twitter:card" content="{"summary_large_image" if og_gorsel else "summary"}">',
         '<meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">',
         '<meta name="theme-color" content="#0f0f0f" media="(prefers-color-scheme: dark)">',
     ]
     if url:
         satirlar.append(f'<meta property="og:url" content="{_escape_all(url)}">')
+    if og_gorsel:
+        satirlar += [
+            f'<meta property="og:image" content="{_escape_all(og_gorsel)}">',
+            '<meta property="og:image:width" content="1200">',
+            '<meta property="og:image:height" content="630">',
+            f'<meta property="og:image:alt" content="{b}">',
+        ]
     return "\n    ".join(satirlar)
 
 
@@ -350,7 +357,10 @@ def _yazilar_bolumu(yazilar: Sequence[object]) -> str:
     return f'<section class="yazilar"><h2>Yazılar</h2><ul class="yazi-listesi">{"".join(satirlar)}</ul></section>'
 
 
-def _belge(ayar, *, baslik: str, aciklama: str, url: str, tur: str, ust: str, icerik: str, bugun: date) -> str:
+def _belge(
+    ayar, *, baslik: str, aciklama: str, url: str, tur: str, ust: str, icerik: str, bugun: date,
+    og_gorsel: str | None = None,
+) -> str:
     """Ortak sayfa iskeleti: CSP, meta, favicon, üst, içerik, alt bilgi."""
     sahip = getattr(ayar, "sahip", None)
     ad = getattr(sahip, "ad", "")
@@ -363,7 +373,7 @@ def _belge(ayar, *, baslik: str, aciklama: str, url: str, tur: str, ust: str, ic
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="{_CSP}">
     <title>{_escape_all(baslik)}</title>
-    {_meta(baslik, aciklama, url, tur)}
+    {_meta(baslik, aciklama, url, tur, og_gorsel)}
     {_favicon(str(ad))}
     <style>{_CSS}</style>
 </head>
@@ -381,12 +391,15 @@ def _belge(ayar, *, baslik: str, aciklama: str, url: str, tur: str, ust: str, ic
 """
 
 
-def _sayfa_url(ayar, yol: str = "") -> str:
+def sayfa_url(ayar, yol: str = "") -> str:
     taban = getattr(getattr(ayar, "sahip", None), "site_url", "") or ""
     return f"{taban.rstrip('/')}/{yol}" if taban else ""
 
 
-def render(ayar, veriler: Mapping[str, object | None], bugun: date, yazilar: Sequence[object] = ()) -> str:
+def render(
+    ayar, veriler: Mapping[str, object | None], bugun: date, yazilar: Sequence[object] = (),
+    og_gorsel: str | None = None,
+) -> str:
     """Ana sayfa HTML'ini üretir (kategoriler, kartlar, varsa yazılar)."""
     sahip = getattr(ayar, "sahip", None)
     ad = getattr(sahip, "ad", "")
@@ -411,15 +424,16 @@ def render(ayar, veriler: Mapping[str, object | None], bugun: date, yazilar: Seq
         ayar,
         baslik=str(ad),
         aciklama=_kisalt(hakkinda or unvan or ad),
-        url=_sayfa_url(ayar),
+        url=sayfa_url(ayar),
         tur="website",
         ust=ust,
         icerik="\n".join(bolumler) + _yazilar_bolumu(yazilar),
         bugun=bugun,
+        og_gorsel=og_gorsel,
     )
 
 
-def render_yazi(ayar, yazi: object, bugun: date) -> str:
+def render_yazi(ayar, yazi: object, bugun: date, og_gorsel: str | None = None) -> str:
     """Tek yazı sayfası: aynı CSS/CSP/meta, '← ana sayfa' bağlantısı ve <article>."""
     slug = str(getattr(yazi, "slug", ""))
     etiketler = "".join(
@@ -438,11 +452,12 @@ def render_yazi(ayar, yazi: object, bugun: date) -> str:
         ayar,
         baslik=f'{getattr(yazi, "baslik", "")} · {getattr(getattr(ayar, "sahip", None), "ad", "")}',
         aciklama=str(getattr(yazi, "ozet", "")),
-        url=_sayfa_url(ayar, f"yazilar/{slug}.html"),
+        url=sayfa_url(ayar, f"yazilar/{slug}.html"),
         tur="article",
         ust=ust,
         icerik=icerik,
         bugun=bugun,
+        og_gorsel=og_gorsel,
     )
 
 

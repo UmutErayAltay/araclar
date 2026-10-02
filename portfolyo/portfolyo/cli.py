@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 
-from . import denetim, git, githubapi, html, yazi
+from . import denetim, git, githubapi, html, og, yazi
 from .ayar import Ayar, AyarHatasi, ayar_oku
 
 
@@ -83,17 +85,10 @@ def komut_uret(args: argparse.Namespace) -> int:
             print(f"Bilgi: {ad}: herkese_acik: true değil, yayınlanmadı.", file=sys.stderr)
 
     # Yazılacak TÜM sayfalar (göreli yol -> içerik); denetim hepsinden geçmeden hiçbiri yazılmaz.
-    sayfalar = {"index.html": html.render(ayar, veriler, bugun, yazilar)}
-    for y in yazilar:
-        sayfalar[f"yazilar/{y.slug}.html"] = html.render_yazi(ayar, y, bugun)
-
-    bulgular = []
-    for yol, icerik in sayfalar.items():
-        bulgular += [(yol, b) for b in denetim.tara(icerik)]
+    sayfalar = _sayfalar(ayar, veriler, bugun, yazilar, {})
+    bulgular = _denetle(sayfalar)
     if bulgular:
-        print("Hata: sızıntı denetimi bulgu verdi, hiçbir dosya yazılmadı:", file=sys.stderr)
-        for yol, b in bulgular:
-            print(f"  {yol}: [{b.tur}] {b.ornek}", file=sys.stderr)
+        _bulgu_yaz(bulgular)
         return 4
 
     toplam = sum(len(s) for s in sayfalar.values())
@@ -101,14 +96,79 @@ def komut_uret(args: argparse.Namespace) -> int:
         print(f"Kuru çalışma: {len(ayar.repolar)} repo, {len(yazilar)} yazı, {toplam} karakter, denetim temiz. Yazılmadı.")
         return 0
 
-    cikti = Path(args.cikti)
-    for yol, icerik in sayfalar.items():
-        hedef = cikti / yol
-        hedef.parent.mkdir(parents=True, exist_ok=True)
-        hedef.write_text(icerik, encoding="utf-8")
-    (cikti / ".nojekyll").write_text("", encoding="utf-8")
-    print(f"Yazıldı: index.html ({len(ayar.repolar)} repo) + {len(yazilar)} yazı sayfası. Denetim temiz.")
+    # Paylaşım görselleri: yalnız ilk denetimden SONRA üretilir; başarılı olanlar sayfaya bağlanır.
+    gecici_png = tempfile.TemporaryDirectory(prefix="portfolyo-png-")
+    try:
+        pngler: dict[str, Path] = {}
+        if args.og_gorsel:
+            pngler = _og_uret(ayar, yazilar, Path(gecici_png.name))
+        if pngler:
+            og_url = {sayfa: html.sayfa_url(ayar, f"og/{png.name}") for sayfa, png in pngler.items()}
+            sayfalar = _sayfalar(ayar, veriler, bugun, yazilar, og_url)
+            bulgular = _denetle(sayfalar)  # son çıktı da kapıdan geçer
+            if bulgular:
+                _bulgu_yaz(bulgular)
+                return 4
+
+        cikti = Path(args.cikti)
+        for yol, icerik in sayfalar.items():
+            hedef = cikti / yol
+            hedef.parent.mkdir(parents=True, exist_ok=True)
+            hedef.write_text(icerik, encoding="utf-8")
+        for png in pngler.values():
+            (cikti / "og").mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(png, cikti / "og" / png.name)
+        (cikti / ".nojekyll").write_text("", encoding="utf-8")
+    finally:
+        gecici_png.cleanup()
+    ek = f", {len(pngler)} paylaşım görseli" if pngler else ""
+    print(f"Yazıldı: index.html ({len(ayar.repolar)} repo) + {len(yazilar)} yazı sayfası{ek}. Denetim temiz.")
     return 0
+
+
+def _sayfalar(ayar: Ayar, veriler, bugun: date, yazilar, og: dict[str, str]) -> dict[str, str]:
+    sayfalar = {"index.html": html.render(ayar, veriler, bugun, yazilar, og_gorsel=og.get("index.html"))}
+    for y in yazilar:
+        yol = f"yazilar/{y.slug}.html"
+        sayfalar[yol] = html.render_yazi(ayar, y, bugun, og_gorsel=og.get(yol))
+    return sayfalar
+
+
+def _denetle(sayfalar: dict[str, str]) -> list:
+    bulgular = []
+    for yol, icerik in sayfalar.items():
+        bulgular += [(yol, b) for b in denetim.tara(icerik)]
+    return bulgular
+
+
+def _bulgu_yaz(bulgular: list) -> None:
+    print("Hata: sızıntı denetimi bulgu verdi, hiçbir dosya yazılmadı:", file=sys.stderr)
+    for yol, b in bulgular:
+        print(f"  {yol}: [{b.tur}] {b.ornek}", file=sys.stderr)
+
+
+def _og_uret(ayar: Ayar, yazilar, hedef: Path) -> dict[str, Path]:
+    """Sayfa yolu -> üretilmiş PNG. `site_url` ya da tarayıcı yoksa uyarıp boş döner (hiç bozuk referans yok)."""
+    if not ayar.sahip.site_url:
+        print("UYARI: --og-gorsel için sahip.site_url gerekli (mutlak URL); görsel üretilmedi.", file=sys.stderr)
+        return {}
+    if og.tarayici_bul() is None:
+        print("UYARI: Chrome/Chromium bulunamadı; paylaşım görseli üretilmedi.", file=sys.stderr)
+        return {}
+    isler = {"index.html": ("site.png", og.kart_html(ayar.sahip.ad, ayar.sahip.unvan, ayar.sahip.ad[:1]))}
+    for y in yazilar:
+        isler[f"yazilar/{y.slug}.html"] = (
+            f"{y.slug}.png",
+            og.kart_html(y.baslik, f"{ayar.sahip.ad} · {y.tarih}", ayar.sahip.ad[:1]),
+        )
+    sonuc: dict[str, Path] = {}
+    for sayfa, (ad, kart) in isler.items():
+        png = hedef / ad
+        if og.png_uret(kart, png):
+            sonuc[sayfa] = png
+        else:
+            print(f"UYARI: {ad} üretilemedi; o sayfa görselsiz kalacak.", file=sys.stderr)
+    return sonuc
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -126,6 +186,7 @@ def _parser() -> argparse.ArgumentParser:
     u.add_argument("--bugun", default=None, help="YYYY-MM-DD (varsayılan: bugün)")
     u.add_argument("--kuru", action="store_true", help="denetle ama dosya yazma")
     u.add_argument("--yazilar", default=None, help="yazı klasörü (*.md; yalnız herkese_acik: true olanlar yayınlanır)")
+    u.add_argument("--og-gorsel", action="store_true", help="paylaşım görselleri (og/*.png) üret; Chrome/Chromium ve sahip.site_url gerekir")
     u.add_argument("--api", action="store_true", help="`veri` belirtilmeyen repolar için GitHub API'sini kullan")
     u.set_defaults(isle=komut_uret)
     return p

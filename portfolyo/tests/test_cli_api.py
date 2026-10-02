@@ -83,3 +83,34 @@ def test_ozel_repo_api_den_gelmez_sayfa_kartsiz_veriyle(tmp_path, monkeypatch):
     assert cli.main(["uret", str(ayar), "--cikti", str(_site(tmp_path))]) == 0
     sayfa = (_site(tmp_path) / "index.html").read_text(encoding="utf-8")
     assert "Yalnız yapılandırma" in sayfa and "commit ·" not in sayfa
+
+
+# --- --siki ------------------------------------------------------------------------------
+
+def test_siki_veri_alinamazsa_5_ve_hicbir_sey_yazilmaz(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(githubapi, "repo_verisi_api", lambda s, r, **k: None if r == "ozel" else SAHTE)
+    ayar = _ayar(tmp_path, [{**REPO, "veri": "api"}, {**REPO, "ad": "ozel", "veri": "api"}])
+    cikti = _site(tmp_path)
+    assert cli.main(["uret", str(ayar), "--siki", "--cikti", str(cikti)]) == 5
+    assert not cikti.exists()
+    err = capsys.readouterr().err
+    assert "--siki" in err and "ozel" in err
+
+
+def test_siki_hepsi_tamamsa_yazar(tmp_path, cagrilar):
+    ayar = _ayar(tmp_path, [{**REPO, "veri": "api"}])
+    assert cli.main(["uret", str(ayar), "--siki", "--cikti", str(_site(tmp_path))]) == 0
+    assert (_site(tmp_path) / "index.html").is_file()
+
+
+def test_siki_yok_olan_repo_sorun_degil_klon_okunamazsa_sorun(tmp_path):
+    ayar = _ayar(tmp_path, [REPO])  # veri: yok
+    assert cli.main(["uret", str(ayar), "--siki", "--cikti", str(_site(tmp_path))]) == 0
+    bozuk = _ayar(tmp_path, [{**REPO, "klon": str(tmp_path / "yok-klon")}])
+    assert cli.main(["uret", str(bozuk), "--siki", "--cikti", str(tmp_path / "s2")]) == 5
+
+
+def test_siki_olmadan_ayni_durum_yalniz_uyari(tmp_path, monkeypatch):
+    monkeypatch.setattr(githubapi, "repo_verisi_api", lambda *a, **k: None)
+    ayar = _ayar(tmp_path, [{**REPO, "veri": "api"}])
+    assert cli.main(["uret", str(ayar), "--cikti", str(_site(tmp_path))]) == 0

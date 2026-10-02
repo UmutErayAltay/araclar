@@ -41,7 +41,9 @@ portfolyo kontrol portfolyo.json            # yapılandırmayı doğrula (dosya 
 portfolyo uret portfolyo.json --kuru --cikti site   # denetle, yazma
 portfolyo uret portfolyo.json --cikti site          # site/index.html + site/.nojekyll
 portfolyo uret portfolyo.json --api --cikti site    # `veri` belirtilmeyen repolar için GitHub API'si
-portfolyo uret portfolyo.json --yazilar yazilar --cikti site   # + site/yazilar/<ad>.html
+portfolyo uret portfolyo.json --yazilar yazilar --cikti site   # + site/yazilar/<ad>.html + site/feed.xml
+portfolyo uret portfolyo.json --og-gorsel --cikti site         # + site/og/*.png (Chrome/Chromium + sahip.site_url gerekir)
+portfolyo uret portfolyo.json --api --siki --cikti site         # veri alınamayan repo varsa çıkış 5, hiçbir şey yazılmaz
 ```
 
 `portfolyo.json` biçimi (`portfolyo.ornek.json` dosyasına bak):
@@ -58,12 +60,27 @@ portfolyo uret portfolyo.json --yazilar yazilar --cikti site   # + site/yazilar/
 | `repolar[].aciklama`, `etiketler` | Kartta görünen metin (en çok 300 karakter / 8 etiket) |
 | `repolar[].kategori` | `kategoriler` listesinden biri; verilmezse "Diğer" (en sonda) |
 | `repolar[].veri` | `yok` / `klon` / `api`. Verilmezse `klon` yolu varsa `klon`, yoksa `yok` |
+| `repolar[].baglantilar` | İsteğe bağlı `[{"ad": "Demo", "url": "https://..."}]`; en çok 3, ad ≤20 karakter, **yalnız https**. Kartta düğme olarak görünür; URL'ye ağ isteği yapılmaz (yalnız biçim doğrulanır) |
 | `repolar[].klon` | İsteğe bağlı yerel klon yolu: commit sayısı, haftalık etkinlik ve diller buradan okunur |
 | `repolar[].readme` | `true` ise README'nin ilk paragrafı da kartta görünür (varsayılan `false`) |
 
 Veri yoksa (ya da okunamazsa) kart yalnız yapılandırma metnini gösterir. API verisinde diller yüzde
 olarak gösterilir; GitHub haftalık istatistiği hazırlamadıysa etkinlik grafiği çizilmez.
 Sıfır repo'lu kategori çizilmez.
+
+## Paylaşım görseli, besleme, menü
+
+- **Menü ve bağlantılar:** ana sayfada Projeler / Yazılar / GitHub menüsü; yazı sayfalarında okuma süresi
+  ve önceki/sonraki bağlantıları.
+- **`--og-gorsel`:** site için `og/site.png`, her yazı için `og/<ad>.png` (1200×630) üretir; sistemdeki Chrome/Chromium'u
+  başsız çalıştırır (`PORTFOLYO_TARAYICI` ile yol verilebilir) ve `sahip.site_url` gerektirir. Tarayıcı ya da `site_url` yoksa
+  ya da bir görsel üretilemezse uyarı verilir ve o sayfaya hiç `og:image` yazılmaz. Karta yalnız sayfada taranan alanlar
+  (ad, unvan, yazı başlığı, tarih) girer. Görseller ilk sızıntı denetiminden SONRA üretilir, son çıktı yeniden denetlenir.
+- **`feed.xml`:** `site_url` ve en az bir yayına açık yazı varsa Atom 1.0 beslemesi üretilir; sayfalara yalnız sabit göreli
+  `<link rel="alternate">` eklenir ve besleme de aynı denetimden geçer.
+- **`--siki`:** `veri` kaynağı `klon`/`api` olan bir repo için veri alınamazsa (adı değişmiş, silinmiş, özel yapılmış ya da API
+  hatası) çıkış `5` verir ve hiçbir dosya yazmaz. Haftalık yayın iş akışında açıktır: eski site yerinde kalır, Actions
+  başarısızlık e-postası gelir.
 
 ## Yazılar
 
@@ -104,13 +121,15 @@ haftalık olarak `portfolyo uret portfolyo.json --api --yazilar yazilar --cikti 
 `actions/deploy-pages` ile yayınlar (Pages kaynağı **GitHub Actions** olmalı). Üretici hata verirse
 (yapılandırma hatası, sızıntı bulgusu) yayın yapılmaz, eski site yerinde kalır. `GITHUB_TOKEN` ile
 yapılan push Pages derlemesini tetiklemediği için üretilmiş dosyayı repoya geri commit'leme yöntemi
-kullanılmaz. Üretici değişince `generator/` klasörünü bu repodan elle yeniden kopyala.
+kullanılmaz. Üretici değişince `python3 tools/portfolyo_yayinla.py <site-klonu>` (araclar kökünden) `generator/`
+klasörünü ve `KAYNAK.txt`'yi günceller; commit/push yapmaz, farkı gözden geçirip sen commit'lersin. Iş akışı yayından önce
+`generator/tests`'i de koşturur; test kırmızıysa yayın yapılmaz.
 
 Yayından önce üretilen sayfayı bir kez gözle oku: kapı yalnız bilinen desenleri yakalar.
 
 ## Çıkış kodları
 
-`0` başarı · `2` yapılandırma/kullanım hatası · `4` sızıntı denetimi bulgu verdi
+`0` başarı · `2` yapılandırma/kullanım hatası · `4` sızıntı denetimi bulgu verdi · `5` `--siki` modunda veri alınamadı
 
 ## Test
 

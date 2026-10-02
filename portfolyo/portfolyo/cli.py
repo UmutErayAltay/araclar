@@ -1,6 +1,7 @@
 """portfolyo komut satırı: kontrol / uret.
 
-Çıkış kodları: 0 başarı, 2 yapılandırma/kullanım hatası, 4 sızıntı denetimi bulgu verdi.
+Çıkış kodları: 0 başarı, 2 yapılandırma/kullanım hatası, 4 sızıntı denetimi bulgu verdi,
+5 `--siki` modunda bir repo için veri alınamadı.
 Ağa yalnız `veri: "api"` olan repolar (ya da `--api`) için ve yalnız sabit konak
 api.github.com'a çıkılır. Yalnız yapılandırmada listelenen (ve `herkese_acik: true`
 işaretli) repolar işlenir. Çıktıya yerel yollar ve token yazılmaz.
@@ -64,11 +65,22 @@ def komut_uret(args: argparse.Namespace) -> int:
     bugun = _bugun(args.bugun)
     veriler = _veriler(ayar, bugun, args.api)
 
+    eksikler: list[str] = []
     for repo in ayar.repolar:
         kaynak = _veri_kaynagi(repo, args.api)
         if kaynak != "yok" and veriler[repo.ad] is None:
             ne = "klon" if kaynak == "klon" else "GitHub verisi"
             print(f"UYARI: {repo.ad}: {ne} okunamadı, yalnız yapılandırma metni kullanılacak.", file=sys.stderr)
+            eksikler.append(repo.ad)
+
+    if args.siki and eksikler:
+        # Sıkı mod (haftalık yayın): yeniden adlandırılmış/silinmiş/özel yapılmış repo ya da API hatası
+        # sessizce kartsız yayınlanmasın; hiçbir şey yazılmaz, eski site yerinde kalır.
+        print(
+            f"Hata: --siki: {len(eksikler)} repo için veri alınamadı ({', '.join(eksikler)}); hiçbir dosya yazılmadı.",
+            file=sys.stderr,
+        )
+        return 5
 
     yazilar: list[yazi.Yazi] = []
     if args.yazilar:
@@ -195,6 +207,7 @@ def _parser() -> argparse.ArgumentParser:
     u.add_argument("--kuru", action="store_true", help="denetle ama dosya yazma")
     u.add_argument("--yazilar", default=None, help="yazı klasörü (*.md; yalnız herkese_acik: true olanlar yayınlanır)")
     u.add_argument("--og-gorsel", action="store_true", help="paylaşım görselleri (og/*.png) üret; Chrome/Chromium ve sahip.site_url gerekir")
+    u.add_argument("--siki", action="store_true", help="veri alınamayan repo olursa hata ver (çıkış 5), hiçbir şey yazma")
     u.add_argument("--api", action="store_true", help="`veri` belirtilmeyen repolar için GitHub API'sini kullan")
     u.set_defaults(isle=komut_uret)
     return p

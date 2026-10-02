@@ -85,3 +85,31 @@ def test_bilinmeyen_anahtar_hala_reddedilir(tmp_path):
         _oku(tmp_path, ekstra=1)
     with pytest.raises(AyarHatasi):
         _oku(tmp_path, repolar=[{**REPO, "ekstra": 1}])
+
+
+# --- baglantilar -------------------------------------------------------------------------
+
+def test_baglantilar_varsayilan_bos_ve_gecerli(tmp_path):
+    assert _oku(tmp_path).repolar[0].baglantilar == ()
+    b = [{"ad": "Demo", "url": "https://demo.example/a?b=1"}, {"ad": "Doküman", "url": "https://d.example"}]
+    assert _oku(tmp_path, repolar=[{**REPO, "baglantilar": b}]).repolar[0].baglantilar == (
+        ("Demo", "https://demo.example/a?b=1"), ("Doküman", "https://d.example"))
+
+
+@pytest.mark.parametrize(
+    "baglantilar",
+    [
+        "x", {"ad": "a", "url": "https://x.io"},
+        [{"ad": "a", "url": "https://x.io"}] * 4,                       # en fazla 3
+        [{"ad": "", "url": "https://x.io"}], [{"ad": "x" * 21, "url": "https://x.io"}],
+        [{"ad": "a\x00", "url": "https://x.io"}], [{"url": "https://x.io"}], [{"ad": "a"}],
+        [{"ad": "a", "url": "http://x.io"}], [{"ad": "a", "url": "javascript:alert(1)"}],
+        [{"ad": "a", "url": "//x.io"}], [{"ad": "a", "url": "https://x.io/\"onload=1"}],
+        [{"ad": "a", "url": "https://x.io/" + "a" * 300}], [{"ad": "a", "url": "https://u@x.io"}],
+        [{"ad": "a", "url": 5}], [{"ad": 5, "url": "https://x.io"}], [{"ad": "a", "url": "https://x.io", "ek": 1}],
+        ["metin"],
+    ],
+)
+def test_baglantilar_gecersiz(tmp_path, baglantilar):
+    with pytest.raises(AyarHatasi, match="baglantilar"):
+        _oku(tmp_path, repolar=[{**REPO, "baglantilar": baglantilar}])

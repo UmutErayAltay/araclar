@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from ._url import HTTPS_URL
+
 
 class AyarHatasi(Exception):
     """Yapılandırma okuma/doğrulama hatası."""
@@ -44,6 +46,7 @@ class Repo:
     readme: bool
     kategori: str = VARSAYILAN_KATEGORI
     veri: str = "yok"  # "yok" | "klon" | "api"
+    baglantilar: tuple[tuple[str, str], ...] = ()  # (ad, https url): demo/doküman düğmeleri
 
 
 @dataclass(frozen=True)
@@ -65,6 +68,9 @@ _KONTROL_KARAKTER_DESENI = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _MAKS_REPO_SAYISI = 24
 _MAKS_ETIKET_SAYISI = 8
 _MAKS_KATEGORI_SAYISI = 8
+_MAKS_BAGLANTI_SAYISI = 3
+_MAKS_BAGLANTI_AD = 20
+_MAKS_BAGLANTI_URL = 300
 _MAKS_KATEGORI_UZUNLUK = 40
 _SITE_URL_DESENI = re.compile(r"^https://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?:/[A-Za-z0-9._~/-]{0,100})?$")
 
@@ -151,7 +157,7 @@ def _repo_dogrula(
         raise AyarHatasi(f"{alan_yolu}: nesne bekleniyor")
 
     # Bilinmeyen alan kontrolü
-    taninan_alanlar = {"ad", "herkese_acik", "aciklama", "etiketler", "klon", "readme", "kategori", "veri"}
+    taninan_alanlar = {"ad", "herkese_acik", "aciklama", "etiketler", "klon", "readme", "kategori", "veri", "baglantilar"}
     for anahtar in obj:
         if anahtar not in taninan_alanlar:
             raise AyarHatasi(f"{alan_yolu}.{anahtar}: tanınmayan alan")
@@ -225,6 +231,8 @@ def _repo_dogrula(
     if veri == "klon" and not klon:
         raise AyarHatasi(f"{alan_yolu}.veri: \"klon\" için `klon` yolu gerekli")
 
+    baglantilar = _baglantilar_dogrula(obj.get("baglantilar", []), f"{alan_yolu}.baglantilar")
+
     # url: KULLANICIDAN ALINMAZ, türetilir
     url = f"https://github.com/{github_kullanici}/{ad}"
 
@@ -237,7 +245,31 @@ def _repo_dogrula(
         readme=readme,
         kategori=kategori,
         veri=veri,
+        baglantilar=baglantilar,
     )
+
+
+def _baglantilar_dogrula(liste: object, alan_yolu: str) -> tuple[tuple[str, str], ...]:
+    """Kart bağlantıları: en çok 3, `ad` + yalnız `https://` `url`."""
+    if not isinstance(liste, list):
+        raise AyarHatasi(f"{alan_yolu}: liste bekleniyor")
+    if len(liste) > _MAKS_BAGLANTI_SAYISI:
+        raise AyarHatasi(f"{alan_yolu}: en fazla {_MAKS_BAGLANTI_SAYISI} bağlantı ({len(liste)} verildi)")
+    sonuc: list[tuple[str, str]] = []
+    for i, b in enumerate(liste):
+        yol = f"{alan_yolu}[{i}]"
+        if not isinstance(b, dict):
+            raise AyarHatasi(f"{yol}: nesne bekleniyor")
+        for anahtar in b:
+            if anahtar not in {"ad", "url"}:
+                raise AyarHatasi(f"{yol}.{anahtar}: tanınmayan alan")
+        ad, url = b.get("ad"), b.get("url")
+        if not isinstance(ad, str) or not 1 <= len(ad) <= _MAKS_BAGLANTI_AD or _kontrol_karakteri_var_mi(ad):
+            raise AyarHatasi(f"{yol}.ad: 1-{_MAKS_BAGLANTI_AD} karakter, kontrol karakteri yok")
+        if not isinstance(url, str) or len(url) > _MAKS_BAGLANTI_URL or not HTTPS_URL.fullmatch(url):
+            raise AyarHatasi(f"{yol}.url: yalnız https:// adresi olabilir")
+        sonuc.append((ad, url))
+    return tuple(sonuc)
 
 
 def _kategoriler_dogrula(liste: object) -> tuple[str, ...]:

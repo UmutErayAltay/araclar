@@ -207,8 +207,8 @@ class TestRender:
         veri = {"repo1": SahteRepoVerisi(), "repo2": SahteRepoVerisi()}
         html_out = render(ayar, veri, date(2026, 1, 15))
 
-        # Her kart başlığında bir tane (2) + altbilgideki GitHub bağlantısı (1)
-        assert html_out.count('rel="noopener noreferrer"') == 3
+        # Her kart başlığında bir tane (2) + menüdeki ve altbilgideki GitHub bağlantıları (2)
+        assert html_out.count('rel="noopener noreferrer"') == 4
         assert html_out.count('<article') == 2
 
     def test_semantik_yapi(self):

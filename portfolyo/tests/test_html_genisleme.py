@@ -6,6 +6,8 @@ import re
 from datetime import date
 from types import SimpleNamespace
 
+import pytest
+
 from portfolyo.denetim import tara
 from portfolyo.git import RepoVerisi
 from portfolyo.html import render
@@ -101,7 +103,7 @@ def test_klon_verisi_dosya_sayisi_ve_grafik():
 def test_yazilar_bolumu_tarih_azalan_ve_kacisli():
     y = lambda slug, baslik, tarih: SimpleNamespace(slug=slug, baslik=baslik, tarih=tarih, ozet="Özet <b>", etiketler=())
     cikti = render(_sahte_ayar(), {}, BUGUN, [y("eski", "Eski", "2026-01-01"), y("yeni", "Yeni", "2026-09-01")])
-    assert '<section class="yazilar"><h2>Yazılar</h2>' in cikti
+    assert '<section class="yazilar" id="yazilar"><h2>Yazılar</h2>' in cikti
     assert cikti.index("yazilar/yeni.html") < cikti.index("yazilar/eski.html")
     assert "Özet &lt;b&gt;" in cikti and "Özet <b>" not in cikti
 
@@ -109,3 +111,34 @@ def test_yazilar_bolumu_tarih_azalan_ve_kacisli():
 def test_yazi_yoksa_bolum_yok():
     assert "Yazılar" not in render(_sahte_ayar(), {}, BUGUN)
     assert "Yazılar" not in render(_sahte_ayar(), {}, BUGUN, [])
+
+
+# --- navigasyon ve kart bağlantıları -----------------------------------------------------
+
+def test_menu_projeler_yazilar_github():
+    y = SimpleNamespace(slug="a", baslik="A", tarih="2026-01-01", ozet="o", etiketler=())
+    cikti = render(_sahte_ayar(), {}, BUGUN, [y])
+    menu = re.search(r'<nav class="ust-menu"[^>]*>(.*?)</nav>', cikti).group(1)
+    assert '<a href="#projeler">Projeler</a>' in menu and '<a href="#yazilar">Yazılar</a>' in menu
+    assert 'href="https://github.com/testuser" rel="noopener noreferrer" target="_blank">GitHub</a>' in menu
+    assert 'id="projeler"' in cikti and 'id="yazilar"' in cikti
+    assert tara(cikti) == []
+
+
+def test_menu_yazi_yoksa_yazilar_baglantisi_yok():
+    cikti = render(_sahte_ayar(), {}, BUGUN)
+    assert 'href="#yazilar"' not in cikti and 'id="yazilar"' not in cikti
+    assert 'href="#projeler"' in cikti
+
+
+def test_kart_baglantilari_kacisli_ve_guvenli_ozelliklerle():
+    ayar = _sahte_ayar(repolar=[{"ad": "r"}])
+    ayar.repolar[0].baglantilar = (("Demo", "https://demo.example/a?b=1&c=2"), ("<b>Doc</b>", "https://doc.example"))
+    cikti = render(ayar, {}, BUGUN)
+    assert 'class="dugme" href="https://demo.example/a?b=1&amp;c=2" rel="noopener noreferrer" target="_blank">Demo</a>' in cikti
+    assert "&lt;b&gt;Doc&lt;/b&gt;" in cikti and "<b>Doc" not in cikti
+    assert tara(cikti) == []
+
+
+def test_baglanti_yoksa_kapsayici_yok():
+    assert 'class="baglantilar"' not in render(_sahte_ayar(), {}, BUGUN)

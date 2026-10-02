@@ -144,6 +144,13 @@ h2 { margin: 40px 0 16px; font-size: 1.3rem; font-weight: 600; }
 .yazi pre code { background: none; padding: 0; overflow-wrap: normal; }
 .yazi blockquote { margin: 16px 0; padding: 0 16px; border-left: 3px solid var(--accent); color: var(--muted); }
 .geri { display: inline-block; margin-bottom: 20px; color: var(--accent); text-decoration: none; }
+.ust-menu { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 20px; }
+.ust-menu a { color: var(--accent); text-decoration: none; font-weight: 500; }
+.ust-menu a:hover { text-decoration: underline; }
+#projeler, #yazilar { scroll-margin-top: 16px; }
+.baglantilar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.dugme { font-size: 0.8rem; font-weight: 500; padding: 3px 12px; border: 1px solid var(--accent); border-radius: 999px; color: var(--accent); text-decoration: none; }
+.dugme:hover { background: var(--accent); color: var(--card-bg); }
 .diller .chip { background: transparent; border: 1px solid var(--card-border); color: var(--muted); }
 footer {
     margin-top: 40px;
@@ -280,6 +287,12 @@ def _kart_html(repo_cfg: object, veri: object | None, seviye: int = 2) -> str:
         f'<span class="chip">{_escape_all(e)}</span>' for e in (getattr(repo_cfg, "etiketler", []) or [])
     )
 
+    baglanti_html = "".join(
+        f'<a class="dugme" href="{_escape_all(url)}" rel="noopener noreferrer" target="_blank">{_escape_all(ad)}</a>'
+        for ad, url in (getattr(repo_cfg, "baglantilar", ()) or ())
+    )
+    if baglanti_html:
+        baglanti_html = f'<div class="baglantilar">{baglanti_html}</div>'
     istatistik_html = dil_html = etkinlik_html = readme_html = ""
     if veri is not None:
         commit_sayisi = getattr(veri, "commit_sayisi", 0)
@@ -305,6 +318,7 @@ def _kart_html(repo_cfg: object, veri: object | None, seviye: int = 2) -> str:
             <h{seviye} class="kart-baslik"><a href="{repo_url}" rel="noopener noreferrer" target="_blank">{repo_ad}</a></h{seviye}>
             <p class="aciklama">{repo_aciklama}</p>
             <div class="etiketler">{etiket_html}</div>
+            {baglanti_html}
             <div class="diller">{dil_html}</div>
             {istatistik_html}
             {readme_html}
@@ -354,7 +368,7 @@ def _yazilar_bolumu(yazilar: Sequence[object]) -> str:
             f'<time datetime="{_escape_all(getattr(y, "tarih", ""))}">{_escape_all(getattr(y, "tarih", ""))}</time>'
             f'<p class="aciklama">{_escape_all(getattr(y, "ozet", ""))}</p></li>'
         )
-    return f'<section class="yazilar"><h2>Yazılar</h2><ul class="yazi-listesi">{"".join(satirlar)}</ul></section>'
+    return f'<section class="yazilar" id="yazilar"><h2>Yazılar</h2><ul class="yazi-listesi">{"".join(satirlar)}</ul></section>'
 
 
 def _belge(
@@ -414,11 +428,19 @@ def render(
             bolumler.append(izgara)
         else:
             bolumler.append(f'<section class="kategori"><h2>{_escape_all(baslik)}</h2>{izgara}</section>')
+    projeler = f'<div id="projeler">{"".join(bolumler)}</div>'
 
+    github = _escape_all(getattr(sahip, "github", ""))
+    menu = ['<a href="#projeler">Projeler</a>']
+    if yazilar:
+        menu.append('<a href="#yazilar">Yazılar</a>')
+    if github:
+        menu.append(f'<a href="https://github.com/{github}" rel="noopener noreferrer" target="_blank">GitHub</a>')
     ust = f"""<header>
         <h1>{_escape_all(ad)}</h1>
         <p class="unvan">{_escape_all(unvan)}</p>
         <p class="hakkinda">{_escape_all(hakkinda)}</p>
+        <nav class="ust-menu" aria-label="Sayfa bölümleri">{"".join(menu)}</nav>
     </header>"""
     return _belge(
         ayar,
@@ -427,7 +449,7 @@ def render(
         url=sayfa_url(ayar),
         tur="website",
         ust=ust,
-        icerik="\n".join(bolumler) + _yazilar_bolumu(yazilar),
+        icerik=projeler + _yazilar_bolumu(yazilar),
         bugun=bugun,
         og_gorsel=og_gorsel,
     )

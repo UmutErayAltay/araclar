@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
+from ._url import GORELI_URL, HTTPS_URL
+
 
 class YaziHatasi(Exception):
     """Yayına açık işaretli bir yazının biçim hatası (yayın durdurulur)."""
@@ -35,8 +37,6 @@ _ANAHTARLAR = {"baslik", "tarih", "ozet", "etiketler", "herkese_acik"}
 _MAKS_BASLIK, _MAKS_OZET, _MAKS_ETIKET, _MAKS_ETIKET_UZUNLUK = 120, 200, 5, 24
 _MAKS_DOSYA = 200_000
 _KONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_HTTPS_URL = re.compile(r"^https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?(?::\d+)?(?:[/?#][^\s\"'<>()*`]*)?$")
-_GORELI_URL = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9._/-]*(?:#[A-Za-z0-9_-]+)?$")
 
 
 def _tirnak_at(deger: str) -> str:
@@ -100,9 +100,9 @@ def _metin_alani(alanlar: dict[str, str], ad: str, en_cok: int) -> str:
 def _link(eslesme: re.Match[str]) -> str:
     metin, adres = eslesme.group(1), eslesme.group(2)  # ikisi de zaten kaçışlı
     ham = html.unescape(adres)
-    if _HTTPS_URL.fullmatch(ham):
+    if HTTPS_URL.fullmatch(ham):
         return f'<a href="{adres}" rel="noopener noreferrer" target="_blank">{metin}</a>'
-    if _GORELI_URL.fullmatch(ham):
+    if GORELI_URL.fullmatch(ham):
         return f'<a href="{adres}">{metin}</a>'
     raise YaziHatasi("bağlantı yalnız https:// ya da göreli yol olabilir")
 

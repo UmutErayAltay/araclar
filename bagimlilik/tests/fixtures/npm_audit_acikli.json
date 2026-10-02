@@ -1,0 +1,127 @@
+{
+ "auditReportVersion": 2,
+ "vulnerabilities": {
+  "@babel/core": {
+   "name": "@babel/core",
+   "severity": "low",
+   "isDirect": false,
+   "via": [
+    {
+     "source": 1123528,
+     "name": "@babel/core",
+     "dependency": "@babel/core",
+     "title": "@babel/core: Arbitrary File Read via sourceMappingURL Comment",
+     "url": "https://github.com/advisories/GHSA-4x5r-pxfx-6jf8",
+     "severity": "low",
+     "cwe": [
+      "CWE-22",
+      "CWE-200"
+     ],
+     "cvss": {
+      "score": 3.2,
+      "vectorString": "CVSS:3.1/AV:L/AC:H/PR:N/UI:N/S:C/C:L/I:N/A:N"
+     },
+     "range": "<=7.29.0"
+    }
+   ],
+   "effects": [],
+   "range": "<=7.29.0",
+   "nodes": [
+    "node_modules/@babel/core"
+   ],
+   "fixAvailable": true
+  },
+  "@babel/helpers": {
+   "name": "@babel/helpers",
+   "severity": "moderate",
+   "isDirect": false,
+   "via": [
+    {
+     "source": 1104001,
+     "name": "@babel/helpers",
+     "dependency": "@babel/helpers",
+     "title": "Babel has inefficient RegExp complexity in generated code with .replace when transpiling named capturing groups",
+     "url": "https://github.com/advisories/GHSA-968p-4wvh-cqc8",
+     "severity": "moderate",
+     "cwe": [
+      "CWE-1333"
+     ],
+     "cvss": {
+      "score": 6.2,
+      "vectorString": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+     },
+     "range": "<7.26.10"
+    }
+   ],
+   "effects": [],
+   "range": "<7.26.10",
+   "nodes": [
+    "node_modules/@babel/helpers"
+   ],
+   "fixAvailable": true
+  },
+  "@babel/plugin-transform-modules-systemjs": {
+   "name": "@babel/plugin-transform-modules-systemjs",
+   "severity": "high",
+   "isDirect": false,
+   "via": [
+    {
+     "source": 1120258,
+     "name": "@babel/plugin-transform-modules-systemjs",
+     "dependency": "@babel/plugin-transform-modules-systemjs",
+     "title": "@babel/plugin-transform-modules-systemjs generates arbitrary code when compiling malicious input",
+     "url": "https://github.com/advisories/GHSA-fv7c-fp4j-7gwp",
+     "severity": "high",
+     "cwe": [
+      "CWE-94",
+      "CWE-843"
+     ],
+     "cvss": {
+      "score": 8.2,
+      "vectorString": "CVSS:3.1/AV:L/AC:L/PR:L/UI:R/S:C/C:H/I:H/A:H"
+     },
+     "range": ">=7.12.0 <=7.29.3"
+    }
+   ],
+   "effects": [],
+   "range": "7.12.0 - 7.29.0",
+   "nodes": [
+    "node_modules/@babel/plugin-transform-modules-systemjs"
+   ],
+   "fixAvailable": true
+  },
+  "@jest/core": {
+   "name": "@jest/core",
+   "severity": "low",
+   "isDirect": false,
+   "via": [
+    "jest-config",
+    "jest-runner"
+   ],
+   "effects": [],
+   "range": "27.0.1 - 27.5.1",
+   "nodes": [
+    "node_modules/@jest/core"
+   ],
+   "fixAvailable": true
+  }
+ },
+ "metadata": {
+  "vulnerabilities": {
+   "info": 0,
+   "low": 14,
+   "moderate": 17,
+   "high": 35,
+   "critical": 3,
+   "total": 69
+  },
+  "dependencies": {
+   "prod": 1553,
+   "dev": 0,
+   "optional": 4,
+   "peer": 0,
+   "peerOptional": 0,
+   "total": 1556
+  }
+ }
+}

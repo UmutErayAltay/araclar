@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bagimlilik"
+version = "0.1.0"
+description = "Tum repolarda pip-audit ve npm audit calistirip tek rapor cikaran salt-okunur CLI"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+bagimlilik = "bagimlilik.cli:main"
+
+[tool.setuptools]
+packages = ["bagimlilik"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

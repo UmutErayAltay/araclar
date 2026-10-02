@@ -1,0 +1,196 @@
+{
+ "dependencies": [
+  {
+   "name": "flask",
+   "version": "0.12",
+   "vulns": [
+    {
+     "id": "PYSEC-2019-179",
+     "fix_versions": [
+      "1.0"
+     ],
+     "aliases": [
+      "CVE-2019-1010083",
+      "GHSA-5wv5-4vpf-pj6m"
+     ],
+     "description": "The Pallets Project Flask before 1.0 is affected by: unexpected memory usage. Th"
+    },
+    {
+     "id": "PYSEC-2018-66",
+     "fix_versions": [
+      "0.12.3"
+     ],
+     "aliases": [
+      "GHSA-562c-5r94-xh97",
+      "CVE-2018-1000656"
+     ],
+     "description": "The Pallets Project flask version Before 0.12.3 contains a CWE-20: Improper Inpu"
+    },
+    {
+     "id": "PYSEC-2019-179",
+     "fix_versions": [
+      "1.0"
+     ],
+     "aliases": [
+      "CVE-2019-1010083",
+      "GHSA-5wv5-4vpf-pj6m"
+     ],
+     "description": "The Pallets Project Flask before 1.0 is affected by unexpected memory usage. The"
+    }
+   ]
+  },
+  {
+   "name": "requests",
+   "version": "2.19.0",
+   "vulns": [
+    {
+     "id": "PYSEC-2018-28",
+     "fix_versions": [
+      "2.20.0"
+     ],
+     "aliases": [
+      "GHSA-x84v-xcm2-53pg",
+      "CVE-2018-18074"
+     ],
+     "description": "The Requests package before 2.20.0 for Python sends an HTTP Authorization header"
+    },
+    {
+     "id": "PYSEC-2018-28",
+     "fix_versions": [
+      "2.20.0"
+     ],
+     "aliases": [
+      "GHSA-x84v-xcm2-53pg",
+      "CVE-2018-18074"
+     ],
+     "description": "The Requests package through 2.19.1 before 2018-09-14 for Python sends an HTTP A"
+    },
+    {
+     "id": "PYSEC-2023-74",
+     "fix_versions": [
+      "2.31.0"
+     ],
+     "aliases": [
+      "CVE-2023-32681",
+      "GHSA-j8r2-6x86-q33q"
+     ],
+     "description": "### Impact  Since Requests v2.3.0, Requests has been vulnerable to potentially l"
+    }
+   ]
+  },
+  {
+   "name": "chardet",
+   "version": "3.0.4",
+   "vulns": []
+  },
+  {
+   "name": "idna",
+   "version": "2.7",
+   "vulns": [
+    {
+     "id": "PYSEC-2024-60",
+     "fix_versions": [
+      "3.7"
+     ],
+     "aliases": [
+      "CVE-2024-3651",
+      "GHSA-jjg7-2v4v-x38h"
+     ],
+     "description": "### Impact A specially crafted argument to the `idna.encode()` function could co"
+    },
+    {
+     "id": "PYSEC-2024-60",
+     "fix_versions": [
+      "3.7"
+     ],
+     "aliases": [
+      "CVE-2024-3651",
+      "GHSA-jjg7-2v4v-x38h"
+     ],
+     "description": "A vulnerability was identified in the kjd/idna library, specifically within the "
+    },
+    {
+     "id": "PYSEC-2026-215",
+     "fix_versions": [
+      "3.15"
+     ],
+     "aliases": [
+      "CVE-2026-45409",
+      "GHSA-65pc-fj4g-8rjx"
+     ],
+     "description": "This is the same issue as CVE-2024-3651, however the original remediation in 202"
+    }
+   ]
+  },
+  {
+   "name": "urllib3",
+   "version": "1.23",
+   "vulns": [
+    {
+     "id": "PYSEC-2019-133",
+     "fix_versions": [
+      "1.24.2"
+     ],
+     "aliases": [
+      "CVE-2019-11324",
+      "GHSA-mh33-7rrq-662w"
+     ],
+     "description": "The urllib3 library before 1.24.2 for Python mishandles certain cases where the "
+    },
+    {
+     "id": "PYSEC-2019-132",
+     "fix_versions": [
+      "1.24.3"
+     ],
+     "aliases": [
+      "CVE-2019-11236",
+      "GHSA-r64q-w8jr-g9qp"
+     ],
+     "description": "In the urllib3 library through 1.24.1 for Python, CRLF injection is possible if "
+    },
+    {
+     "id": "PYSEC-2020-148",
+     "fix_versions": [
+      "1.25.9"
+     ],
+     "aliases": [
+      "CVE-2020-26137",
+      "GHSA-wqvq-5m8c-6g24"
+     ],
+     "description": "urllib3 before 1.25.9 allows CRLF injection if the attacker controls the HTTP re"
+    }
+   ]
+  },
+  {
+   "name": "certifi",
+   "version": "2026.7.22",
+   "vulns": []
+  },
+  {
+   "name": "click",
+   "version": "8.5.0",
+   "vulns": []
+  },
+  {
+   "name": "itsdangerous",
+   "version": "2.2.0",
+   "vulns": []
+  },
+  {
+   "name": "jinja2",
+   "version": "3.1.6",
+   "vulns": []
+  },
+  {
+   "name": "markupsafe",
+   "version": "3.0.3",
+   "vulns": []
+  },
+  {
+   "name": "werkzeug",
+   "version": "3.1.9",
+   "vulns": []
+  }
+ ],
+ "fixes": []
+}

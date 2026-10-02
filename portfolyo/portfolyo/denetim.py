@@ -62,6 +62,12 @@ _IZINLI_FAVICON = re.compile(
     r'<link rel="icon" href="data:image/[a-z+.-]+[;,][^"\s<>]*">', re.IGNORECASE
 )
 
+# Besleme bağlantısı: yalnız sabit göreli yol (`feed.xml` ya da yazı sayfasından `../feed.xml`).
+_IZINLI_FEED = re.compile(
+    r'<link rel="alternate" type="application/atom\+xml" href="(?:\.\./)?feed\.xml" title="[^"<>]*">',
+    re.IGNORECASE,
+)
+
 _DESENLER = [
     (tur, re.compile(desen.pattern, re.IGNORECASE if ic else 0), ic)
     for tur, desen, ic in _HAM_DESENLER
@@ -75,12 +81,13 @@ def _maskele(deger: str) -> str:
     return deger[:4] + "…"
 
 
-def tara(metin: str, izinli_eposta: Collection[str] = ()) -> list[Bulgu]:
+def tara(metin: str, izinli_eposta: Collection[str] = (), *, link_denetimi: bool = True) -> list[Bulgu]:
     """Metni tarayıp sızıntı bulgularını döndürür.
 
     Args:
         metin: Taranacak metin.
         izinli_eposta: Büyük/küçük harf duyarsız olarak göz ardı edilecek e-postalar.
+        link_denetimi: False ise `<link` etiketi kuralı uygulanmaz (HTML olmayan Atom/XML metni için).
 
     Returns:
         Metindeki konum sırasına göre sıralanmış, tekilleştirilmiş Bulgu listesi.
@@ -108,8 +115,8 @@ def tara(metin: str, izinli_eposta: Collection[str] = ()) -> list[Bulgu]:
             gorulen.add(anahtar)
             bulunan.append((match.start(), Bulgu(tur=tur, ornek=ornek_maskeli)))
 
-    for match in _LINK_ETIKETI.finditer(metin):
-        if _IZINLI_FAVICON.fullmatch(match.group(0)):
+    for match in _LINK_ETIKETI.finditer(metin if link_denetimi else ""):
+        if _IZINLI_FAVICON.fullmatch(match.group(0)) or _IZINLI_FEED.fullmatch(match.group(0)):
             continue
         anahtar = ("dis-kaynak", _maskele(match.group(0)))
         if anahtar not in gorulen:

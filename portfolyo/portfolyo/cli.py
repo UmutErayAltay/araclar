@@ -16,7 +16,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-from . import denetim, git, githubapi, html, og, yazi
+from . import denetim, feed, git, githubapi, html, og, yazi
 from .ayar import Ayar, AyarHatasi, ayar_oku
 
 
@@ -127,17 +127,25 @@ def komut_uret(args: argparse.Namespace) -> int:
 
 
 def _sayfalar(ayar: Ayar, veriler, bugun: date, yazilar, og: dict[str, str]) -> dict[str, str]:
-    sayfalar = {"index.html": html.render(ayar, veriler, bugun, yazilar, og_gorsel=og.get("index.html"))}
-    for y in yazilar:
+    besleme = feed.atom_uret(ayar, yazilar)
+    sayfalar = {"index.html": html.render(ayar, veriler, bugun, yazilar, og_gorsel=og.get("index.html"), feed=bool(besleme))}
+    for i, y in enumerate(yazilar):  # yazilar tarih azalan: i-1 daha yeni, i+1 daha eski
         yol = f"yazilar/{y.slug}.html"
-        sayfalar[yol] = html.render_yazi(ayar, y, bugun, og_gorsel=og.get(yol))
+        sayfalar[yol] = html.render_yazi(
+            ayar, y, bugun, og_gorsel=og.get(yol),
+            onceki=yazilar[i + 1] if i + 1 < len(yazilar) else None,
+            sonraki=yazilar[i - 1] if i > 0 else None,
+            feed=bool(besleme),
+        )
+    if besleme:
+        sayfalar["feed.xml"] = besleme
     return sayfalar
 
 
 def _denetle(sayfalar: dict[str, str]) -> list:
     bulgular = []
     for yol, icerik in sayfalar.items():
-        bulgular += [(yol, b) for b in denetim.tara(icerik)]
+        bulgular += [(yol, b) for b in denetim.tara(icerik, link_denetimi=not yol.endswith(".xml"))]
     return bulgular
 
 

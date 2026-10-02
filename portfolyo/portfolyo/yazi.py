@@ -30,6 +30,7 @@ class Yazi:
     ozet: str
     etiketler: tuple[str, ...]
     govde_html: str
+    kelime: int = 0
 
 
 _SLUG_DESENI = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}\.md$")
@@ -226,6 +227,7 @@ def yazi_oku(yol: Path) -> Yazi | None:
         ozet=ozet,
         etiketler=etiketler,
         govde_html=markdown_html(govde),
+        kelime=len(govde.split()),
     )
 
 

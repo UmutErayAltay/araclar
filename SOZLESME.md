@@ -9,8 +9,8 @@ geçmeli.
 
 `pip install corclient` tarzı gerçek bağımlılık SEÇİLMEDİ. Nedenler:
 - Tüm repolar bilerek **yalnız stdlib** (`urllib`); ek kurulum adımı yok.
-- `danis` herkese açık repo ve GitHub Actions'ta Windows `.exe` derliyor; özel bir repoya
-  bağımlılık CI'ı kırar.
+- `danis` GitHub Actions'ta Windows `.exe` derliyor; CI'ın yalnız bu depodaki dosyalarla
+  çalışması gerekir, ayrı bir pakete bağımlılık CI'ı kırar.
 - Bulut oturumunda yeni özel repodan `pip install` yapılamıyor; her repo testi tek başına
   koşabilmeli.
 

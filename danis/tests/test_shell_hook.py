@@ -34,7 +34,7 @@ import pytest
 HOOK = Path(__file__).resolve().parent.parent / "shell" / "danis.sh"
 
 # bash, `source C:\...\danis.sh` yazısında ters eğik çizgileri KAÇIŞ karakteri
-# sayar: yol `C:UsersArtemis...` olur, dosya hiç açılmaz ve PROMPT_COMMAND hiç
+# sayar: yol `C:UsersKullanici...` olur, dosya hiç açılmaz ve PROMPT_COMMAND hiç
 # kurulmaz — kanca sessizce hiç çalışmaz. İleri eğik çizgi Git Bash'te de,
 # POSIX bash'ta da (orada zaten öyle) doğru yol biçimidir, bu yüzden script'e
 # yazılacak yol bu olmalı. `subprocess` argv'sindeki `str(HOOK)` ise dokunulmaz.

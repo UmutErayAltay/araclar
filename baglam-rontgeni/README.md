@@ -54,7 +54,7 @@ supabase:supabase                                         skill      200     298
 ... ve 49 kalem daha
 toplam acilis ~4877 token (TAHMIN), 2 olculemeyen kalem, 25 kapali
 
-rapor: C:\Users\Artemis\.baglam-rontgeni\son.json
+rapor: ~/.baglam-rontgeni/son.json
 ```
 
 Satırlar açılış maliyetine göre büyükten küçüğe sıralanır. `toplam acilis` yalnız **açık** kalemleri toplar (kapalı ve ölçülemeyenler dışarıda); `CLAUDE.md` ya da skill dosyaları değiştikçe değişir, sabit bir bütçe değildir. Sütunda `-` o değerin ölçülmediğini demektir.

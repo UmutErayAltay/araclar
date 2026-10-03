@@ -51,6 +51,16 @@ def test_kart_html_monogram_varsayilan_ve_punto():
     assert "font-size: 48px" in og.kart_html("x" * 80)
 
 
+def test_kart_html_cihaz_rafi_renkleri():
+    """Cihaz Rafı paleti: koyu panel, kehribar monogram kutusu. Yazı tipi sistem yığını."""
+    h = og.kart_html("Başlık", "Alt başlık", "U")
+    assert "background: #1b1c1e" in h and "color: #ece9e0" in h
+    assert "background: #e8a317; color: #1b1c1e" in h   # monogram kutusu
+    assert "color: #b4b0a4" in h                          # ikincil metin
+    assert "@font-face" not in h and "url(" not in h     # headless Chrome'da font dosyası yok
+    assert "system-ui" in h
+
+
 # --- tarayici_bul / png_uret (sahte süreç) ----------------------------------------------
 
 def test_tarayici_yoksa_none_ve_png_uretilmez(monkeypatch, tmp_path):

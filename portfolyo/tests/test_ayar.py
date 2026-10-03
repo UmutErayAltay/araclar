@@ -51,8 +51,10 @@ class TestSahipDogrulama:
             _sahip_dogrula({"ad": "U", "github": "u", "unvan": "x" * 81}, "sahip")
 
     def test_hakkinda_uzunluk(self):
-        with pytest.raises(AyarHatasi, match=r"sahip\.hakkinda: en fazla 600"):
-            _sahip_dogrula({"ad": "U", "github": "u", "hakkinda": "x" * 601}, "sahip")
+        # üst sınır 1200 karakter
+        assert _sahip_dogrula({"ad": "U", "github": "u", "hakkinda": "x" * 1200}, "sahip").hakkinda
+        with pytest.raises(AyarHatasi, match=r"sahip\.hakkinda: en fazla 1200"):
+            _sahip_dogrula({"ad": "U", "github": "u", "hakkinda": "x" * 1201}, "sahip")
 
     def test_hakkinda_yeni_satir_serbest(self):
         veri = {"ad": "U", "github": "u", "hakkinda": "Satır 1\nSatır 2\rSatır 3"}

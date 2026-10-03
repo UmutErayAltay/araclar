@@ -213,7 +213,7 @@ def test_cli_yazi_sayfalari_ve_ana_sayfa_bolumu(tmp_path):
     sayfa = (cikti / "yazilar" / "sabit.html").read_text(encoding="utf-8")
     assert '<meta property="og:type" content="article">' in sayfa
     assert '<meta property="og:url" content="https://testuser.github.io/yazilar/sabit.html">' in sayfa
-    assert 'href="../index.html"' in sayfa and "<article" in sayfa
+    assert 'href="../#icerik"' in sayfa and "<article" in sayfa
     assert "<h1>Sabit tarihli testler</h1>" in sayfa
     assert tara(sayfa) == [] and tara(ana) == []
 

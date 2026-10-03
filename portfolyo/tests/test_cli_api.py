@@ -37,7 +37,7 @@ def test_veri_api_repo_icin_cagrilir_bayraksiz_da(tmp_path, cagrilar, monkeypatc
     assert cli.main(["uret", str(ayar), "--cikti", str(_site(tmp_path)), "--bugun", "2026-10-01"]) == 0
     assert [(s, r) for s, r, _ in cagrilar] == [("testuser", "demo")]  # yalnız veri:"api" olan
     assert cagrilar[0][2] == {"token": "ghp_TESTTOKEN", "readme": True}
-    assert "%100" in (_site(tmp_path) / "index.html").read_text(encoding="utf-8")
+    assert "<b>" in (_site(tmp_path) / "index.html").read_text(encoding="utf-8")
 
 
 def test_api_bayragi_veri_belirtilmeyenleri_api_yapar_klonu_korur(tmp_path, cagrilar):

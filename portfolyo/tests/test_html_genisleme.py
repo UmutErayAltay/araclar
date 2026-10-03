@@ -1,8 +1,11 @@
-"""html: kategoriler, sıralama, meta etiketleri, favicon, API verisi, yazılar bölümü."""
+"""html: gerçek veri türleri (RepoVerisi), sıralama ve kaldırılan alanlar.
+
+`test_html.py` yapıyı (raf/şerit/hero) kapsar; burada gerçek `RepoVerisi`
+türleri ve veri kaybı davranışı ölçülür.
+"""
 
 from __future__ import annotations
 
-import re
 from datetime import date
 from types import SimpleNamespace
 
@@ -11,9 +14,7 @@ import pytest
 from portfolyo.denetim import tara
 from portfolyo.git import RepoVerisi
 from portfolyo.html import render
-from test_html import _sahte_ayar
-
-BUGUN = date(2026, 10, 1)
+from test_html import BUGUN, _sahte_ayar
 
 
 def _veri(**kw) -> RepoVerisi:
@@ -22,123 +23,63 @@ def _veri(**kw) -> RepoVerisi:
     return RepoVerisi(**{**d, **kw})
 
 
-def test_kategori_bolumleri_sirayla_ve_bos_olan_cizilmez():
-    ayar = _sahte_ayar(
-        kategoriler=["Web", "Veri", "Bos"],
-        repolar=[{"ad": "v1", "kategori": "Veri"}, {"ad": "w1", "kategori": "Web"}, {"ad": "d1"}],
-    )
+# --- gerçek RepoVerisi türleri ---------------------------------------------------------------
+
+def test_iso_metin_tarihlerle_siralama():
+    repolar = [{"ad": "a-eski"}, {"ad": "b-yeni"}]
+    veriler = {"a-eski": _veri(son_commit="2023-05-01"), "b-yeni": _veri(son_commit="2026-05-01")}
+    cikti = render(_sahte_ayar(repolar=repolar, siralama="aktivite"), veriler, BUGUN)
+    assert cikti.index("b-yeni") < cikti.index("a-eski")
+
+
+def test_veri_none_son_commite_gore_ente_sirada():
+    repolar = [{"ad": "eski-repo"}, {"ad": "yeni-repo"}, {"ad": "yok-repo"}]
+    veriler = {"eski-repo": _veri(son_commit="2024-01-01"),
+               "yeni-repo": _veri(son_commit="2024-12-01"), "yok-repo": None}
+    cikti = render(_sahte_ayar(repolar=repolar, siralama="aktivite"), veriler, BUGUN)
+    assert cikti.index("yeni-repo") < cikti.index("eski-repo") < cikti.index("yok-repo")
+
+
+def test_son_commit_date_nesnesi_iso_yazilir():
+    cikti = render(_sahte_ayar(repolar=[{"ad": "r"}]),
+                   {"r": _veri(son_commit=date(2026, 9, 28))}, BUGUN)
+    assert "2026-09-28" in cikti
+
+
+def test_haftalik_dolu_degerler_olcere_girilir():
+    cikti = render(_sahte_ayar(repolar=[{"ad": "r", "one_cikan": True}]),
+                   {"r": _veri(haftalik=(0, 0, 9, 0, 0, 0, 9, 2, 0, 3, 2, 3))}, BUGUN)
+    assert 'aria-label="Son 12 haftada commit sayısı: 0, 0, 9, 0, 0, 0, 9, 2, 0, 3, 2, 3"' in cikti
+    assert '<div class="olcer-rakam"><b>5</b>' in cikti
+    assert tara(cikti) == []
+
+
+def test_gun_sayisi_grafik_ekseni_ve_sayisi_birlikte():
+    cikti = render(_sahte_ayar(repolar=[{"ad": "r", "one_cikan": True}]),
+                   {"r": _veri(haftalik=(1,) * 12)}, BUGUN)
+    assert '<div class="olcer-pencere">' in cikti
+    assert '<span>12 hafta önce</span><span>bu hafta</span>' in cikti
+
+
+# --- kaldırılan alanlar --------------------------------------------------------------------
+
+def test_dil_ve_readme_ozeti_cikmaz():
+    """Cihaz Rafı kartında dil/readme bloğu yok; yalnız ölçer ve sayı var."""
+    cikti = render(_sahte_ayar(repolar=[{"ad": "r"}]),
+                   {"r": _veri(diller=(("Python", 7),), readme_ozeti="Bu bir README.")}, BUGUN)
+    assert "Python · 7" not in cikti and "Bu bir README." not in cikti
+    assert "<svg" in cikti and "<b>5</b>" in cikti
+
+
+# --- ek bağlantılar -------------------------------------------------------------------------
+
+def test_baglanti_yoksa_baglar_kapsayicisi_yok():
+    ayar = _sahte_ayar(repolar=[{"ad": "r", "one_cikan": True}])
+    ayar.repolar[0].url = ""
     cikti = render(ayar, {}, BUGUN)
-    basliklar = re.findall(r'<section class="kategori"><h2>([^<]+)</h2>', cikti)
-    assert basliklar == ["Web", "Veri", "Diğer"]  # "Bos" yok, "Diğer" en sonda
-    assert cikti.index("w1") < cikti.index("v1") < cikti.index("d1")
-    assert "<h3 class=\"kart-baslik\"" in cikti
+    assert '<div class="baglar">' not in cikti
 
 
-def test_kategorisiz_yapilandirmada_baslik_yok_ve_kart_h2():
-    cikti = render(_sahte_ayar(repolar=[{"ad": "a"}]), {}, BUGUN)
-    assert 'class="kategori"' not in cikti
-    assert '<h2 class="kart-baslik"' in cikti
-
-
-def test_manuel_siralama_yapilandirma_sirasidir_aktivite_son_commite_gore():
-    repolar = [{"ad": "eski"}, {"ad": "yeni"}]
-    veriler = {"eski": _veri(son_commit="2025-01-01"), "yeni": _veri(son_commit="2026-09-30")}
-    manuel = render(_sahte_ayar(repolar=repolar), veriler, BUGUN)
-    assert manuel.index(">eski<") < manuel.index(">yeni<")
-    aktivite = render(_sahte_ayar(repolar=repolar, siralama="aktivite"), veriler, BUGUN)
-    assert aktivite.index(">yeni<") < aktivite.index(">eski<")
-
-
-def test_meta_etiketleri_ve_og_url():
-    ayar = _sahte_ayar(sahip_ad="Ada Lovelace", sahip_hakkinda="Kısa tanıtım.", site_url="https://ada.github.io")
-    cikti = render(ayar, {}, BUGUN)
-    assert '<meta name="description" content="Kısa tanıtım.">' in cikti
-    assert '<meta property="og:title" content="Ada Lovelace">' in cikti
-    assert '<meta property="og:type" content="website">' in cikti
-    assert '<meta property="og:url" content="https://ada.github.io/">' in cikti
-    assert '<meta property="og:locale" content="tr_TR">' in cikti
-    assert '<meta name="twitter:card" content="summary">' in cikti
-    assert "og:image" not in cikti
-
-
-def test_og_url_yoksa_etiket_yok():
-    assert "og:url" not in render(_sahte_ayar(), {}, BUGUN)
-
-
-def test_meta_degerleri_kacislanir():
-    ayar = _sahte_ayar(sahip_ad='A"><script>x</script>', sahip_hakkinda='"><img src=x onerror=y>')
-    cikti = render(ayar, {}, BUGUN)
-    assert "<script>" not in cikti and "<img" not in cikti
-    assert tara(cikti) == []
-
-
-def test_favicon_data_svg_ve_denetimden_gecer():
-    cikti = render(_sahte_ayar(sahip_ad="umut"), {}, BUGUN)
-    m = re.search(r'<link rel="icon" href="(data:image/svg\+xml,[^"]+)">', cikti)
-    assert m and "%3EU%3C" in m.group(1)  # büyük harf monogram
-    assert cikti.count("<link") == 1
-    assert tara(cikti) == []
-
-
-def test_favicon_ad_harfi_kacislanir():
-    cikti = render(_sahte_ayar(sahip_ad="<b>"), {}, BUGUN)
-    assert tara(cikti) == []
-    assert "%3Cb%3E" not in re.search(r'rel="icon" href="([^"]+)"', cikti).group(1)
-
-
-def test_api_verisi_yuzde_gosterir_haftalik_none_grafik_cizmez():
-    ayar = _sahte_ayar(repolar=[{"ad": "r"}])
-    cikti = render(ayar, {"r": _veri(diller=(("Python", 72), ("CSS", 28)), dil_birimi="yuzde", haftalik=None)}, BUGUN)
-    assert "Python · %72" in cikti and "CSS · %28" in cikti
-    assert "<svg class=\"etkinlik-svg\"" not in cikti
-
-
-def test_klon_verisi_dosya_sayisi_ve_grafik():
-    ayar = _sahte_ayar(repolar=[{"ad": "r"}])
-    cikti = render(ayar, {"r": _veri(diller=(("Python", 7),), haftalik=(1,) * 12)}, BUGUN)
-    assert "Python · 7" in cikti and "%7" not in cikti
-    assert "<svg class=\"etkinlik-svg\"" in cikti
-
-
-def test_yazilar_bolumu_tarih_azalan_ve_kacisli():
-    y = lambda slug, baslik, tarih: SimpleNamespace(slug=slug, baslik=baslik, tarih=tarih, ozet="Özet <b>", etiketler=())
-    cikti = render(_sahte_ayar(), {}, BUGUN, [y("eski", "Eski", "2026-01-01"), y("yeni", "Yeni", "2026-09-01")])
-    assert '<section class="yazilar" id="yazilar"><h2>Yazılar</h2>' in cikti
-    assert cikti.index("yazilar/yeni.html") < cikti.index("yazilar/eski.html")
-    assert "Özet &lt;b&gt;" in cikti and "Özet <b>" not in cikti
-
-
-def test_yazi_yoksa_bolum_yok():
-    assert "Yazılar" not in render(_sahte_ayar(), {}, BUGUN)
-    assert "Yazılar" not in render(_sahte_ayar(), {}, BUGUN, [])
-
-
-# --- navigasyon ve kart bağlantıları -----------------------------------------------------
-
-def test_menu_projeler_yazilar_github():
-    y = SimpleNamespace(slug="a", baslik="A", tarih="2026-01-01", ozet="o", etiketler=())
-    cikti = render(_sahte_ayar(), {}, BUGUN, [y])
-    menu = re.search(r'<nav class="ust-menu"[^>]*>(.*?)</nav>', cikti).group(1)
-    assert '<a href="#projeler">Projeler</a>' in menu and '<a href="#yazilar">Yazılar</a>' in menu
-    assert 'href="https://github.com/testuser" rel="noopener noreferrer" target="_blank">GitHub</a>' in menu
-    assert 'id="projeler"' in cikti and 'id="yazilar"' in cikti
-    assert tara(cikti) == []
-
-
-def test_menu_yazi_yoksa_yazilar_baglantisi_yok():
-    cikti = render(_sahte_ayar(), {}, BUGUN)
-    assert 'href="#yazilar"' not in cikti and 'id="yazilar"' not in cikti
-    assert 'href="#projeler"' in cikti
-
-
-def test_kart_baglantilari_kacisli_ve_guvenli_ozelliklerle():
-    ayar = _sahte_ayar(repolar=[{"ad": "r"}])
-    ayar.repolar[0].baglantilar = (("Demo", "https://demo.example/a?b=1&c=2"), ("<b>Doc</b>", "https://doc.example"))
-    cikti = render(ayar, {}, BUGUN)
-    assert 'class="dugme" href="https://demo.example/a?b=1&amp;c=2" rel="noopener noreferrer" target="_blank">Demo</a>' in cikti
-    assert "&lt;b&gt;Doc&lt;/b&gt;" in cikti and "<b>Doc" not in cikti
-    assert tara(cikti) == []
-
-
-def test_baglanti_yoksa_kapsayici_yok():
-    assert 'class="baglantilar"' not in render(_sahte_ayar(), {}, BUGUN)
+def test_etiket_yoksa_yigin_kapsayicisi_yok():
+    cikti = render(_sahte_ayar(repolar=[{"ad": "r", "etiketler": []}]), {}, BUGUN)
+    assert '<ul class="yigin">' not in cikti

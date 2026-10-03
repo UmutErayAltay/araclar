@@ -59,7 +59,7 @@ def test_uret_dosya_yazar_klonla(tmp_path, capsys):
     assert cli.main(["uret", str(ayar), "--cikti", str(cikti), "--bugun", "2026-10-01"]) == 0
     assert sorted(p.name for p in cikti.iterdir()) == [".nojekyll", "index.html"]
     sayfa = (cikti / "index.html").read_text(encoding="utf-8")
-    assert "demo" in sayfa and "1 commit" in sayfa
+    assert "demo" in sayfa and "<b>1</b>" in sayfa
     assert "https://github.com/testuser/demo" in sayfa
     assert str(klon) not in sayfa and str(tmp_path) not in capsys.readouterr().out  # yol sızmaz
 

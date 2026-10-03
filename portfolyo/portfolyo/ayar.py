@@ -1,7 +1,8 @@
 """Portfolyo yapılandırma dosyasını okur ve doğrular.
 
 Bu modül, JSON biçimindeki yapılandırma dosyasını okur, tüm kuralları
-uygular ve güçlü tipli veri sınıflarına dönüştürür.
+uygular ve güçlü tipli veri sınıflarına dönüştürür. Yeni alanların hepsi
+opsiyoneldir; alan yoksa `ayar.py` içindeki varsayılan geçerlidir.
 """
 
 from __future__ import annotations
@@ -21,6 +22,16 @@ class AyarHatasi(Exception):
 VARSAYILAN_KATEGORI = "Diğer"
 VERI_KAYNAKLARI = ("yok", "klon", "api")
 SIRALAMALAR = ("manuel", "aktivite")
+DILLER = ("tr", "en")
+LED_TURLERI = ("eylem", "acik", "kapali")
+
+
+@dataclass(frozen=True)
+class Led:
+    """Aksiyon düğmesi (yazı tipi: eylem | açık | kapalı)."""
+
+    metin: str
+    tur: str = "acik"
 
 
 @dataclass(frozen=True)
@@ -32,6 +43,40 @@ class Sahip:
     github: str
     hakkinda: str
     site_url: str = ""
+    eposta: str = ""
+    linkedin: str = ""
+    konum: str = ""
+    cv_tr: str = ""
+    cv_en: str = ""
+    ledler: tuple[Led, ...] = ()
+
+
+@dataclass(frozen=True)
+class Deneyim:
+    """İş deneyimi girdisi."""
+
+    rol: str
+    kurum: str
+    tarih: str = ""
+    aciklama: str = ""
+
+
+@dataclass(frozen=True)
+class Egitim:
+    """Eğitim girdisi."""
+
+    derece: str
+    okul: str
+    tarih: str = ""
+    ek: str = ""
+
+
+@dataclass(frozen=True)
+class YetenekGrubu:
+    """Yetenek grubu: `grup` başlığı + en çok 12 `ogeler`."""
+
+    grup: str
+    ogeler: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -47,6 +92,8 @@ class Repo:
     kategori: str = VARSAYILAN_KATEGORI
     veri: str = "yok"  # "yok" | "klon" | "api"
     baglantilar: tuple[tuple[str, str], ...] = ()  # (ad, https url): demo/doküman düğmeleri
+    one_cikan: bool = False
+    led: Led | None = None  # kart düğmesi (sahip.ledler ile aynı kurallar)
 
 
 @dataclass(frozen=True)
@@ -57,6 +104,11 @@ class Ayar:
     repolar: tuple[Repo, ...]
     kategoriler: tuple[str, ...] = ()
     siralama: str = "manuel"  # "manuel" | "aktivite"
+    dil: str = "tr"
+    dil_baglantisi: str = ""
+    deneyim: tuple[Deneyim, ...] = ()
+    egitim: tuple[Egitim, ...] = ()
+    yetenekler: tuple[YetenekGrubu, ...] = ()
 
 
 # --- Sabitler ve yardımcı fonksiyonlar ---
@@ -73,11 +125,66 @@ _MAKS_BAGLANTI_AD = 20
 _MAKS_BAGLANTI_URL = 300
 _MAKS_KATEGORI_UZUNLUK = 40
 _SITE_URL_DESENI = re.compile(r"^https://[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?(?:/[A-Za-z0-9._~/-]{0,100})?$")
+_EPOSTA_DESENI = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_LINKEDIN_DESENI = re.compile(r"^https://(?:www\.)?linkedin\.com(?:/[^?#\s]*)?(?:\?[^\s#]*)?(?:#\S*)?$")
+# KÖK-göreli yollar: `..` ve `//` yasak (dizin dışına çıkış / protokol-göreli kaçış).
+_KOK_YOL_DESENI = re.compile(r"^/[A-Za-z0-9_/-]*$")
+_KOK_PDF_DESENI = re.compile(r"^/[A-Za-z0-9._/-]+\.pdf$")
+
+_MAKS_HAKKINDA = 1200
+_MAKS_EPOSTA = 100
+_MAKS_KONUM = 60
+_MAKS_DIL_BAGLANTISI = 100
+_MAKS_CV_YOL = 120
+_MAKS_DENEYIM_SAYISI = 8
+_MAKS_EGITIM_SAYISI = 4
+_MAKS_YETENEK_GRUBU = 8
+_MAKS_YETENEK_OGESI = 12
+_MAKS_YETENEK_UZUNLUK = 40
+_MAKS_GRUP_UZUNLUK = 40
+_MAKS_LED_SAYISI = 4
+_MAKS_LED_METIN = 30
 
 
 def _kontrol_karakteri_var_mi(metin: str) -> bool:
     """Metinde kontrol karakteri (yeni satır hariç) var mı?"""
     return bool(_KONTROL_KARAKTER_DESENI.search(metin))
+
+
+def _kok_yol_dogrula(deger: object, alan_yolu: str, desen: re.Pattern[str], maks: int, zorunlu: bool) -> str:
+    """KÖK-göreli yol: boş olabilir (zorunlu değilse), desen + uzunluk + `..`/`//` reddi."""
+    if not isinstance(deger, str):
+        raise AyarHatasi(f"{alan_yolu}: string bekleniyor")
+    if not deger:
+        if zorunlu:
+            raise AyarHatasi(f"{alan_yolu}: boş olamaz")
+        return ""
+    if len(deger) > maks:
+        raise AyarHatasi(f"{alan_yolu}: en fazla {maks} karakter ({len(deger)} verildi)")
+    if ".." in deger or "//" in deger or not desen.fullmatch(deger):
+        raise AyarHatasi(f"{alan_yolu}: kök-göreli yol olmalı (`..` ve `//` kullanılamaz)")
+    return deger
+
+
+def _metin_dogrula(deger: object, alan_yolu: str, maks: int, bos_olamaz: bool = False) -> str:
+    """Serbest metin: string, uzunluk, boşluğa bağlı kontrol karakteri yok."""
+    if not isinstance(deger, str):
+        raise AyarHatasi(f"{alan_yolu}: string bekleniyor")
+    if not deger:
+        if bos_olamaz:
+            raise AyarHatasi(f"{alan_yolu}: boş olamaz")
+        return ""
+    if len(deger) > maks:
+        raise AyarHatasi(f"{alan_yolu}: en fazla {maks} karakter ({len(deger)} verildi)")
+    if _kontrol_karakteri_var_mi(deger):
+        raise AyarHatasi(f"{alan_yolu}: kontrol karakteri içeremez")
+    return deger
+
+
+def _liste_dogrula(liste: object, alan_yolu: str) -> list:
+    if not isinstance(liste, list):
+        raise AyarHatasi(f"{alan_yolu}: liste bekleniyor")
+    return liste
 
 
 def _sahip_dogrula(obj: dict, alan_yolu: str) -> Sahip:
@@ -86,7 +193,8 @@ def _sahip_dogrula(obj: dict, alan_yolu: str) -> Sahip:
         raise AyarHatasi(f"{alan_yolu}: nesne bekleniyor")
 
     # Bilinmeyen alan kontrolü
-    taninan_alanlar = {"ad", "unvan", "github", "hakkinda", "site_url"}
+    taninan_alanlar = {"ad", "unvan", "github", "hakkinda", "site_url", "eposta", "linkedin",
+                       "konum", "cv_tr", "cv_en", "ledler"}
     for anahtar in obj:
         if anahtar not in taninan_alanlar:
             raise AyarHatasi(f"{alan_yolu}.{anahtar}: tanınmayan alan")
@@ -122,12 +230,12 @@ def _sahip_dogrula(obj: dict, alan_yolu: str) -> Sahip:
     if _kontrol_karakteri_var_mi(github):
         raise AyarHatasi(f"{alan_yolu}.github: kontrol karakteri içeremez")
 
-    # hakkinda: opsiyonel, ≤600, kontrol karakteri yok (yeni satır serbest)
+    # hakkinda: opsiyonel, ≤1200, kontrol karakteri yok (yeni satır serbest)
     hakkinda = obj.get("hakkinda", "")
     if not isinstance(hakkinda, str):
         raise AyarHatasi(f"{alan_yolu}.hakkinda: string bekleniyor")
-    if len(hakkinda) > 600:
-        raise AyarHatasi(f"{alan_yolu}.hakkinda: en fazla 600 karakter ({len(hakkinda)} verildi)")
+    if len(hakkinda) > _MAKS_HAKKINDA:
+        raise AyarHatasi(f"{alan_yolu}.hakkinda: en fazla {_MAKS_HAKKINDA} karakter ({len(hakkinda)} verildi)")
     # yeni satır hariç kontrol karakteri kontrolü
     for ch in hakkinda:
         if ch in ("\n", "\r"):
@@ -142,7 +250,62 @@ def _sahip_dogrula(obj: dict, alan_yolu: str) -> Sahip:
     if site_url and not _SITE_URL_DESENI.fullmatch(site_url):
         raise AyarHatasi(f"{alan_yolu}.site_url: yalnız https:// adresi olabilir")
 
-    return Sahip(ad=ad, unvan=unvan, github=github, hakkinda=hakkinda, site_url=site_url)
+    # eposta: opsiyonel, basit e-posta deseni
+    eposta = obj.get("eposta", "")
+    if not isinstance(eposta, str):
+        raise AyarHatasi(f"{alan_yolu}.eposta: string bekleniyor")
+    if len(eposta) > _MAKS_EPOSTA:
+        raise AyarHatasi(f"{alan_yolu}.eposta: en fazla {_MAKS_EPOSTA} karakter ({len(eposta)} verildi)")
+    if eposta and not _EPOSTA_DESENI.fullmatch(eposta):
+        raise AyarHatasi(f"{alan_yolu}.eposta: geçersiz e-posta adresi")
+
+    # linkedin: opsiyonel, https linkedin.com adresi
+    linkedin = obj.get("linkedin", "")
+    if not isinstance(linkedin, str):
+        raise AyarHatasi(f"{alan_yolu}.linkedin: string bekleniyor")
+    if linkedin and (
+        len(linkedin) > _MAKS_BAGLANTI_URL
+        or not HTTPS_URL.fullmatch(linkedin)
+        or not _LINKEDIN_DESENI.fullmatch(linkedin)
+    ):
+        raise AyarHatasi(f"{alan_yolu}.linkedin: yalnız https://www.linkedin.com adresi olabilir")
+
+    # konum: opsiyonel, ≤60, kontrol karakteri yok
+    konum = _metin_dogrula(obj.get("konum", ""), f"{alan_yolu}.konum", _MAKS_KONUM)
+
+    # cv_tr / cv_en: opsiyonel KÖK-göreli PDF yolları
+    cv_tr = _kok_yol_dogrula(obj.get("cv_tr", ""), f"{alan_yolu}.cv_tr", _KOK_PDF_DESENI, _MAKS_CV_YOL, False)
+    cv_en = _kok_yol_dogrula(obj.get("cv_en", ""), f"{alan_yolu}.cv_en", _KOK_PDF_DESENI, _MAKS_CV_YOL, False)
+
+    # ledler: opsiyonel liste, en fazla 4
+    ledler = _ledler_dogrula(obj.get("ledler", []), f"{alan_yolu}.ledler")
+
+    return Sahip(
+        ad=ad, unvan=unvan, github=github, hakkinda=hakkinda, site_url=site_url,
+        eposta=eposta, linkedin=linkedin, konum=konum, cv_tr=cv_tr, cv_en=cv_en, ledler=ledler,
+    )
+
+
+def _led_dogrula(obj: object, alan_yolu: str) -> Led:
+    """Tek aksiyon düğmesi: `metin` (1-30) + `tur` (eylem|acik|kapali)."""
+    if not isinstance(obj, dict):
+        raise AyarHatasi(f"{alan_yolu}: nesne bekleniyor")
+    for anahtar in obj:
+        if anahtar not in {"metin", "tur"}:
+            raise AyarHatasi(f"{alan_yolu}.{anahtar}: tanınmayan alan")
+    metin = _metin_dogrula(obj.get("metin"), f"{alan_yolu}.metin", _MAKS_LED_METIN, bos_olamaz=True)
+    tur = obj.get("tur", "acik")
+    if not isinstance(tur, str) or tur not in LED_TURLERI:
+        raise AyarHatasi(f"{alan_yolu}.tur: {', '.join(LED_TURLERI)} değerlerinden biri olmalı")
+    return Led(metin=metin, tur=tur)
+
+
+def _ledler_dogrula(liste: object, alan_yolu: str) -> tuple[Led, ...]:
+    """Aksiyon düğmeleri: en çok 4, `metin` (1-30) + `tur` (eylem|acik|kapali)."""
+    sonuc = [_led_dogrula(o, f"{alan_yolu}[{i}]") for i, o in enumerate(_liste_dogrula(liste, alan_yolu))]
+    if len(sonuc) > _MAKS_LED_SAYISI:
+        raise AyarHatasi(f"{alan_yolu}: en fazla {_MAKS_LED_SAYISI} led ({len(sonuc)} verildi)")
+    return tuple(sonuc)
 
 
 def _repo_dogrula(
@@ -157,7 +320,7 @@ def _repo_dogrula(
         raise AyarHatasi(f"{alan_yolu}: nesne bekleniyor")
 
     # Bilinmeyen alan kontrolü
-    taninan_alanlar = {"ad", "herkese_acik", "aciklama", "etiketler", "klon", "readme", "kategori", "veri", "baglantilar"}
+    taninan_alanlar = {"ad", "herkese_acik", "aciklama", "etiketler", "klon", "readme", "kategori", "veri", "baglantilar", "one_cikan", "led"}
     for anahtar in obj:
         if anahtar not in taninan_alanlar:
             raise AyarHatasi(f"{alan_yolu}.{anahtar}: tanınmayan alan")
@@ -233,6 +396,15 @@ def _repo_dogrula(
 
     baglantilar = _baglantilar_dogrula(obj.get("baglantilar", []), f"{alan_yolu}.baglantilar")
 
+    # one_cikan: opsiyonel bool, varsayılan False
+    one_cikan = obj.get("one_cikan", False)
+    if not isinstance(one_cikan, bool):
+        raise AyarHatasi(f"{alan_yolu}.one_cikan: boolean bekleniyor")
+
+    # led: opsiyonel tek düğme (null/yoksa None)
+    led_veri = obj.get("led")
+    led = None if led_veri is None else _led_dogrula(led_veri, f"{alan_yolu}.led")
+
     # url: KULLANICIDAN ALINMAZ, türetilir
     url = f"https://github.com/{github_kullanici}/{ad}"
 
@@ -246,6 +418,8 @@ def _repo_dogrula(
         kategori=kategori,
         veri=veri,
         baglantilar=baglantilar,
+        one_cikan=one_cikan,
+        led=led,
     )
 
 
@@ -292,6 +466,77 @@ def _kategoriler_dogrula(liste: object) -> tuple[str, ...]:
     return tuple(sonuc)
 
 
+def _nesne_listesi_dogrula(
+    liste: object, alan_yolu: str, taninan: tuple[str, ...], zorunlu: tuple[str, ...]
+) -> list[dict]:
+    """Kök seviyesindeki nesne listesi: liste + tanınmayan anahtar + zorunlu string alan (uzunluk alan bazında)."""
+    sonuc: list[dict] = []
+    for i, o in enumerate(_liste_dogrula(liste, alan_yolu)):
+        yol = f"{alan_yolu}[{i}]"
+        if not isinstance(o, dict):
+            raise AyarHatasi(f"{yol}: nesne bekleniyor")
+        for anahtar in o:
+            if anahtar not in taninan:
+                raise AyarHatasi(f"{yol}.{anahtar}: tanınmayan alan")
+        for ad in zorunlu:
+            if not isinstance(o.get(ad), str) or not o[ad]:
+                raise AyarHatasi(f"{yol}.{ad}: boş string bekleniyor")
+        sonuc.append(o)
+    return sonuc
+
+
+def _deneyim_dogrula(liste: object) -> tuple[Deneyim, ...]:
+    """İş deneyimi: en fazla 8; rol/kurum zorunlu (≤80), tarih (≤80) ve açıklama (≤600) opsiyonel."""
+    objs = _nesne_listesi_dogrula(liste, "deneyim", ("rol", "kurum", "tarih", "aciklama"), ("rol", "kurum"))
+    if len(objs) > _MAKS_DENEYIM_SAYISI:
+        raise AyarHatasi(f"deneyim: en fazla {_MAKS_DENEYIM_SAYISI} deneyim ({len(objs)} verildi)")
+    sonuc = []
+    for i, o in enumerate(objs):
+        yol = f"deneyim[{i}]"
+        rol = _metin_dogrula(o["rol"], f"{yol}.rol", 80)
+        kurum = _metin_dogrula(o["kurum"], f"{yol}.kurum", 80)
+        tarih = _metin_dogrula(o.get("tarih", ""), f"{yol}.tarih", 80)
+        aciklama = _metin_dogrula(o.get("aciklama", ""), f"{yol}.aciklama", 600)
+        sonuc.append(Deneyim(rol=rol, kurum=kurum, tarih=tarih, aciklama=aciklama))
+    return tuple(sonuc)
+
+
+def _egitim_dogrula(liste: object) -> tuple[Egitim, ...]:
+    """Eğitim: en fazla 4; derece/okul zorunlu (≤100), tarih/ek opsiyonel (≤80)."""
+    objs = _nesne_listesi_dogrula(liste, "egitim", ("derece", "okul", "tarih", "ek"), ("derece", "okul"))
+    if len(objs) > _MAKS_EGITIM_SAYISI:
+        raise AyarHatasi(f"egitim: en fazla {_MAKS_EGITIM_SAYISI} eğitim ({len(objs)} verildi)")
+    sonuc = []
+    for i, o in enumerate(objs):
+        yol = f"egitim[{i}]"
+        derece = _metin_dogrula(o["derece"], f"{yol}.derece", 100)
+        okul = _metin_dogrula(o["okul"], f"{yol}.okul", 100)
+        tarih = _metin_dogrula(o.get("tarih", ""), f"{yol}.tarih", 80)
+        ek = _metin_dogrula(o.get("ek", ""), f"{yol}.ek", 80)
+        sonuc.append(Egitim(derece=derece, okul=okul, tarih=tarih, ek=ek))
+    return tuple(sonuc)
+
+
+def _yetenekler_dogrula(liste: object) -> tuple[YetenekGrubu, ...]:
+    """Yetenekler: en fazla 8 grup; `grup` ≤40, `ogeler` 1-12 öğe (her biri ≤40)."""
+    objs = _nesne_listesi_dogrula(liste, "yetenekler", ("grup", "ogeler"), ("grup",))
+    if len(objs) > _MAKS_YETENEK_GRUBU:
+        raise AyarHatasi(f"yetenekler: en fazla {_MAKS_YETENEK_GRUBU} grup ({len(objs)} verildi)")
+    sonuc = []
+    for i, o in enumerate(objs):
+        yol = f"yetenekler[{i}]"
+        grup = _metin_dogrula(o["grup"], f"{yol}.grup", _MAKS_GRUP_UZUNLUK)
+        ogeler_list = _liste_dogrula(o.get("ogeler", []), f"{yol}.ogeler")
+        if not 1 <= len(ogeler_list) <= _MAKS_YETENEK_OGESI:
+            raise AyarHatasi(f"{yol}.ogeler: 1-{_MAKS_YETENEK_OGESI} öğe aralığında olmalı")
+        ogeler = [
+            _metin_dogrula(oge, f"{yol}.ogeler[{j}]", _MAKS_YETENEK_UZUNLUK, bos_olamaz=True)
+            for j, oge in enumerate(ogeler_list)
+        ]
+        sonuc.append(YetenekGrubu(grup=grup, ogeler=tuple(ogeler)))
+    return tuple(sonuc)
+
+
 def ayar_oku(yol: Path) -> Ayar:
     """Yapılandırma dosyasını okur, doğrular ve Ayar nesnesi döndürür."""
     # Dosya var mı ve okunabilir mi
@@ -314,7 +559,8 @@ def ayar_oku(yol: Path) -> Ayar:
         raise AyarHatasi("Kök nesne bir obje olmalı")
 
     # Bilinmeyen kök alan kontrolü
-    taninan_kok_alanlar = {"sahip", "repolar", "kategoriler", "siralama"}
+    taninan_kok_alanlar = {"sahip", "repolar", "kategoriler", "siralama", "dil", "dil_baglantisi",
+                           "deneyim", "egitim", "yetenekler"}
     for anahtar in veri:
         if anahtar not in taninan_kok_alanlar:
             raise AyarHatasi(f"{anahtar}: tanınmayan kök alan")
@@ -339,10 +585,27 @@ def ayar_oku(yol: Path) -> Ayar:
     if not isinstance(siralama, str) or siralama not in SIRALAMALAR:
         raise AyarHatasi(f"siralama: {', '.join(SIRALAMALAR)} değerlerinden biri olmalı")
 
+    dil = veri.get("dil", "tr")
+    if not isinstance(dil, str) or dil not in DILLER:
+        raise AyarHatasi(f"dil: {', '.join(DILLER)} değerlerinden biri olmalı")
+
+    dil_baglantisi = _kok_yol_dogrula(veri.get("dil_baglantisi", ""), "dil_baglantisi",
+                                     _KOK_YOL_DESENI, _MAKS_DIL_BAGLANTISI, False)
+
     gorusulen_adlar: set[str] = set()
     repolar: list[Repo] = []
     for i, repo_obj in enumerate(repolar_veri):
         repo = _repo_dogrula(repo_obj, f"repolar[{i}]", sahip.github, gorusulen_adlar, kategoriler)
         repolar.append(repo)
 
-    return Ayar(sahip=sahip, repolar=tuple(repolar), kategoriler=kategoriler, siralama=siralama)
+    return Ayar(
+        sahip=sahip,
+        repolar=tuple(repolar),
+        kategoriler=kategoriler,
+        siralama=siralama,
+        dil=dil,
+        dil_baglantisi=dil_baglantisi,
+        deneyim=_deneyim_dogrula(veri.get("deneyim", [])),
+        egitim=_egitim_dogrula(veri.get("egitim", [])),
+        yetenekler=_yetenekler_dogrula(veri.get("yetenekler", [])),
+    )

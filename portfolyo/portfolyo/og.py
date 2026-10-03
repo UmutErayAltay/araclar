@@ -28,13 +28,13 @@ def kart_html(baslik: str, alt_baslik: str = "", monogram: str = "") -> str:
     return f"""<!doctype html>
 <html lang="tr"><head><meta charset="utf-8"><style>
 html, body {{ margin: 0; width: {GENISLIK}px; height: {YUKSEKLIK}px; overflow: hidden; }}
-body {{ background: #0f0f0f; color: #f5f5f5; display: flex; flex-direction: column; justify-content: center;
+body {{ background: #1b1c1e; color: #ece9e0; display: flex; flex-direction: column; justify-content: center;
   padding: 0 88px; box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }}
-.harf {{ width: 96px; height: 96px; border-radius: 22px; background: #2563eb; color: #fff; font-size: 56px; font-weight: 700;
+.harf {{ width: 96px; height: 96px; border-radius: 22px; background: #e8a317; color: #1b1c1e; font-size: 56px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; margin-bottom: 40px; }}
 h1 {{ margin: 0; font-size: {puntolar}px; line-height: 1.12; font-weight: 700; display: -webkit-box;
   -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }}
-p {{ margin: 28px 0 0; font-size: 36px; color: #a3a3a3; }}
+p {{ margin: 28px 0 0; font-size: 36px; color: #b4b0a4; }}
 </style></head><body><div class="harf">{harf}</div><h1>{b}</h1><p>{a}</p></body></html>
 """
 

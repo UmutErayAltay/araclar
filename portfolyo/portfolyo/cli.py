@@ -98,7 +98,7 @@ def komut_uret(args: argparse.Namespace) -> int:
 
     # Yazılacak TÜM sayfalar (göreli yol -> içerik); denetim hepsinden geçmeden hiçbiri yazılmaz.
     sayfalar = _sayfalar(ayar, veriler, bugun, yazilar, {})
-    bulgular = _denetle(sayfalar)
+    bulgular = _denetle(sayfalar, ayar.sahip.eposta)
     if bulgular:
         _bulgu_yaz(bulgular)
         return 4
@@ -117,7 +117,7 @@ def komut_uret(args: argparse.Namespace) -> int:
         if pngler:
             og_url = {sayfa: html.sayfa_url(ayar, f"og/{png.name}") for sayfa, png in pngler.items()}
             sayfalar = _sayfalar(ayar, veriler, bugun, yazilar, og_url)
-            bulgular = _denetle(sayfalar)  # son çıktı da kapıdan geçer
+            bulgular = _denetle(sayfalar, ayar.sahip.eposta)  # son çıktı da kapıdan geçer
             if bulgular:
                 _bulgu_yaz(bulgular)
                 return 4
@@ -154,10 +154,13 @@ def _sayfalar(ayar: Ayar, veriler, bugun: date, yazilar, og: dict[str, str]) -> 
     return sayfalar
 
 
-def _denetle(sayfalar: dict[str, str]) -> list:
+def _denetle(sayfalar: dict[str, str], izinli_eposta: str = "") -> list:
+    """Sızıntı denetimi. `izinli_eposta` (yapılandırmadaki kendi e-postası) bulgu sayılmaz."""
+    izinli = [izinli_eposta] if izinli_eposta else []
     bulgular = []
     for yol, icerik in sayfalar.items():
-        bulgular += [(yol, b) for b in denetim.tara(icerik, link_denetimi=not yol.endswith(".xml"))]
+        bulgular += [(yol, b) for b in
+                     denetim.tara(icerik, izinli, link_denetimi=not yol.endswith(".xml"))]
     return bulgular
 
 

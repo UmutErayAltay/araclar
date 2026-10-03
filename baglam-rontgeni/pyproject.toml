@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baglam-rontgeni"
+version = "0.1.0"
+description = "Claude Code baglamini (skill/CLAUDE.md/MCP) tarayip acilis token maliyetini cikaran CLI"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+rontgen = "baglam_rontgeni.cli:main"
+
+[tool.setuptools]
+packages = ["baglam_rontgeni"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

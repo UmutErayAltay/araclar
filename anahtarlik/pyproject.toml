@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anahtarlik"
+version = "0.1.0"
+description = "Projelerdeki gizli anahtarlari (API key/token/parola) tarayip yalniz AD + parmak izi gosteren CLI"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+anahtarlik = "anahtarlik.cli:main"
+
+[tool.setuptools]
+packages = ["anahtarlik"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

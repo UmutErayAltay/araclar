@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 
+from conftest import af_unix_skip, symlink_skip
 from kisayol import search as search_module
 from kisayol.search import SearchHit, search
 
@@ -577,6 +578,7 @@ def test_hidden_directories_are_skipped_by_both_engines(tmp_path):
         assert [Path(h.path).name for h in hits] == ["main.py"], engine
 
 
+@symlink_skip
 def test_symlinks_are_not_followed_by_both_engines(tmp_path):
     """`rg` sembolik bağı izlemez; Python motoru de izlememeli.
 
@@ -593,6 +595,7 @@ def test_symlinks_are_not_followed_by_both_engines(tmp_path):
         assert [Path(h.path).name for h in hits] == ["main.py"], engine
 
 
+@symlink_skip
 def test_symlinked_directory_is_not_traversed(tmp_path):
     root = tmp_path / "kule"
     _write(root / "app" / "main.py", "telegram\n")
@@ -686,6 +689,7 @@ def test_ripgrep_does_not_hang_on_a_named_pipe_either(tmp_path):
     assert [Path(h.path).name for h in without_rg] == ["okunur.py"]
 
 
+@af_unix_skip
 def test_socket_and_block_device_are_not_read(tmp_path):
     """Soket dosyaları da `S_ISREG` değildir; açılmadan atlanmalı."""
     import socket
@@ -704,6 +708,7 @@ def test_socket_and_block_device_are_not_read(tmp_path):
     assert [Path(h.path).name for h in hits] == ["okunur.py"]
 
 
+@symlink_skip
 def test_broken_symlink_does_not_raise(tmp_path):
     """Kırık bağ `stat` sırasında hata verir; taramayı düşürmemeli."""
     root = tmp_path / "kule"

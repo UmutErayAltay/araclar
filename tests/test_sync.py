@@ -17,6 +17,11 @@ _KOK = Path(__file__).resolve().parent.parent
 _ARAC = _KOK / "tools" / "sync.py"
 _KAYNAK = _KOK / "corclient.py"
 
+
+def _kaynak_lf() -> bytes:
+    """Windows autocrlf checkout kaynağı CRLF yapar; sync LF üzerinden çalışır."""
+    return _KAYNAK.read_bytes().replace(b"\r\n", b"\n")
+
 sys.path.insert(0, str(_KOK / "tools"))
 import sync  # noqa: E402
 
@@ -50,13 +55,13 @@ def test_yazma_baslik_bicimi_ve_kaynak_baytlari(hedef: Path) -> None:
     baslik = satirlar[0].decode("utf-8")
 
     surum = sync.kaynak_surum()
-    beklenen_sha = sync.govde_sha256(_KAYNAK.read_bytes())
+    beklenen_sha = sync.govde_sha256(_kaynak_lf())
     assert baslik == f"# SENKRON corclient surum={surum} sha256={beklenen_sha}"
     assert baslik.startswith("# SENKRON corclient surum=")
     assert baslik.count("\n") == 0  # başlık kendi satırında
 
     # Gövde kaynağın birebir baytları (baştaki/ sondaki boşluk dahil).
-    assert satirlar[1] == _KAYNAK.read_bytes()
+    assert satirlar[1] == _kaynak_lf()
 
 
 def test_yazma_ust_uzere_yazmak(hedef: Path) -> None:
@@ -105,7 +110,7 @@ def test_check_bosluk_kabul(hedef: Path) -> None:
 def test_check_baslik_yoksa_kirilir(tmp_path: Path) -> None:
     """(a) Başlık yok → 1."""
     yol = tmp_path / "_corclient.py"
-    yol.write_bytes(_KAYNAK.read_bytes())
+    yol.write_bytes(_kaynak_lf())
 
     sonuc = _calistir("--check", str(yol))
     assert sonuc.returncode == 1
@@ -139,8 +144,8 @@ def test_check_eski_surum_kirilir(tmp_path: Path) -> None:
     taşır (elle düzenleme YOK), ama o gövde bu repodaki güncel kaynaktan farklıdır
     (eski sürüm).
     """
-    eski_govde = _KAYNAK.read_bytes().replace(b"__surum__", b"_surum", 1)
-    assert eski_govde != _KAYNAK.read_bytes()
+    eski_govde = _kaynak_lf().replace(b"__surum__", b"_surum", 1)
+    assert eski_govde != _kaynak_lf()
     yol = tmp_path / "_corclient.py"
     yol.write_bytes(
         sync.baslik_uret("0.0.9", sync.govde_sha256(eski_govde)).encode("utf-8") + eski_govde
@@ -159,7 +164,7 @@ def test_check_yalnizca_surum_alani_bozulursa_gecer(tmp_path: Path) -> None:
     sapma sayılmaz. Kaynakta `__surum__` zaten gövde İÇİNDE olduğundan gerçek bir
     sürüm değişikliği sha256'ı da değiştirir ve (c) ile yakalanır.
     """
-    guncel = _KAYNAK.read_bytes()
+    guncel = _kaynak_lf()
     sha = sync.govde_sha256(guncel)
     yol = tmp_path / "_corclient.py"
     yol.write_bytes(f"# SENKRON corclient surum=0.0.9 sha256={sha}\n".encode() + guncel)
@@ -169,7 +174,7 @@ def test_check_yalnizca_surum_alani_bozulursa_gecer(tmp_path: Path) -> None:
 
 def test_kaynakta_surum_degisince_check_kirilir(hedef: Path) -> None:
     """Kaynakta `__surum__` değişirse gövde değişir → kopya 'eski sürüm' olur."""
-    guncel = _KAYNAK.read_bytes()
+    guncel = _kaynak_lf()
     yeni_kaynak = guncel.replace(b'__surum__ = "0.1.0"', b'__surum__ = "0.2.0"')
     assert yeni_kaynak != guncel
 
@@ -266,7 +271,7 @@ def test_kaynak_crlf_ise_bile_govde_lf_ve_hash_ayni(tmp_path: Path, monkeypatch:
     """Kaynak dosya Windows'ta CRLF checkout edilirse yazılan gövde/hash DEĞİŞMEZ."""
     orijinal = sync.kaynak_govde()
     crlf = tmp_path / "corclient.py"
-    crlf.write_bytes(_KAYNAK.read_bytes().replace(b"\n", b"\r\n"))
+    crlf.write_bytes(_kaynak_lf().replace(b"\n", b"\r\n"))
     monkeypatch.setattr(sync, "KAYNAK", crlf)
     assert b"\r\n" not in sync.kaynak_govde()
     assert sync.kaynak_govde() == orijinal

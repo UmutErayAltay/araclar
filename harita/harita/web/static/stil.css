@@ -1,14 +1,105 @@
-/* harita — koyu tema. CSP satır içi stil yasaklar; burada her şey sınıflarla. */
+/* harita — sade ve okunakli panel; koyu ve acik tema `prefers-color-scheme` ile.
+   liman ile ayni desen: `:root` ACIK varsayilan, koyu degerler
+   `@media (prefers-color-scheme: dark)` icinde.
+
+   Baglayici kurallar:
+     * CSP satir ici script/stil YASAKLAR: burada her sey siniflarla bicimlenir.
+     * 390 px'de sayfa yatay TASMAZ (`overflow-x: hidden` + `max-width: 100%`).
+     * Metin/zemin kontrasti her iki temada >= 4.5:1.
+     * Dugum paleti (--dugum-1..8, --dugum-diger) her iki zeminde >= 3:1. */
 
 :root {
-  --zemin: #0f1115;
-  --yazi: #e6e6e6;
-  --ikincil: #9aa3b2;
-  --kenar: #232833;
-  --vurgu: #56b4e9;
-  --panel-zemin: #151922;
-  --bos: #7a8496;
-  --uyari: #d55e00;
+  color-scheme: light dark;
+
+  --zemin: #f7f8fa;
+  --yazi: #1c2029;
+  --ikincil: #556070;
+  --kenar: #d3d9e2;
+  --vurgu: #0072b2;
+  --panel: #ffffff;
+  --bos: #667085;
+  --uyari: #a35b00;
+
+  /* Panel zemini: acik temada beyaz kart, graf zemini `--zemin` uzerine. */
+  --panel-zemin: #ffffff;
+  /* Yari saydam yuzeyler (lejant, dugme, arama dugmesi): ayni zemini
+     kucuk alfa ile kendi uzerine bindirir. */
+  --yuzey: rgba(255, 255, 255, 0.92);
+  --yuzey-soluk: rgba(15, 17, 21, 0.02);
+  --kenar-soluk: rgba(35, 40, 51, 0.20);
+
+  /* Vurgu haleleri (`:hover` / `:focus-visible` zemini).
+     Alfa temaya göre AYARLANIR: vurgu metni ile halenin üst üste binen
+     zemin arasındaki kontrast her iki temada ≥4.5 kalmalı. Açık temada
+     `--vurgu` zaten koyu olduğu için aynı renk seffaf halefi zemini
+     fazla koyulastirir; bu yüzden açıkta alfa küçüktür (0.05 → ≈4.8:1). */
+  --vurgu-hali: rgba(0, 114, 178, 0.05);
+  --vurgu-hali-kenar: rgba(0, 114, 178, 0.40);
+  --vurgu-hali-koyu: rgba(0, 114, 178, 0.06);
+
+  /* Arama eşleşme vurgusu (Okabe-Ito sarı): metin/zemin kontrastı
+     her iki temada da ≥4.5 (acik ≈12.3:1, koyu ≈14.3:1). */
+  --vurgu-sari: #f0e442;
+  --vurgu-sari-yazi: #1c2029;
+
+  /* Graf etiketi ve dugum diski: haleleri zemine uyacak sekilde koyulastirilir. */
+  --graf-etiket: #2b3440;
+  --graf-etiket-sec: #10151c;
+  --graf-dugum-kenar: #f7f8fa;
+  --graf-kenar-cizgi: #98a4b4;
+
+  /* Okabe-Ito'nun ACIK ZEMIN icin koyulastirilmis karsiliklari. Ton (a*, b*)
+     korunur, yalnizca parlaklik (L*) dusurulur; bu yuzden renk koru ayirt
+     ediciligi degismez. Koyu temada Okabe-Ito'nun kendisi kullanilir. */
+  --dugum-1: #bd7f00;   /* turuncu */
+  --dugum-2: #1e95c8;   /* gok   */
+  --dugum-3: #009e73;   /* yesil */
+  --dugum-4: #909100;   /* sari  */
+  --dugum-5: #0072b2;   /* mavi  */
+  --dugum-6: #d55e00;   /* kirmizi */
+  --dugum-7: #c3719f;   /* mor   */
+  --dugum-8: #8a8c8c;   /* gri   */
+  --dugum-diger: #8a8c8c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --zemin: #0f1115;
+    --yazi: #e6e6e6;
+    --ikincil: #9aa3b2;
+    --kenar: #232833;
+    --vurgu: #56b4e9;
+    --panel: #151922;
+    --bos: #7a8496;
+    --uyari: #d55e00;
+
+    --panel-zemin: #151922;
+    --yuzey: rgba(21, 25, 34, 0.92);
+    --yuzey-soluk: rgba(255, 255, 255, 0.02);
+    --kenar-soluk: rgba(35, 40, 51, 0.55);
+
+    --vurgu-hali: rgba(86, 180, 233, 0.12);
+    --vurgu-hali-kenar: rgba(86, 180, 233, 0.40);
+    --vurgu-hali-koyu: rgba(86, 180, 233, 0.16);
+
+    --vurgu-sari: #f0e442;
+    --vurgu-sari-yazi: #0f1115;
+
+    --graf-etiket: #c8d4e2;
+    --graf-etiket-sec: #ffffff;
+    --graf-dugum-kenar: #0f1115;
+    --graf-kenar-cizgi: #39414f;
+
+    --dugum-1: #E69F00;
+    --dugum-2: #56B4E9;
+    --dugum-3: #009E73;
+    --dugum-4: #F0E442;
+    --dugum-5: #0072B2;
+    --dugum-6: #D55E00;
+    --dugum-7: #CC79A7;
+    --dugum-8: #999999;
+    --dugum-diger: #999999;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -20,7 +111,7 @@ html, body {
   background: var(--zemin);
   color: var(--yazi);
   font: 14px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  /* Yatay taşma olmasın: 360 px mobil genişlikte de kırılmaz. */
+  /* Yatay taşma olmasın: 390 px mobil genişlikte de kırılmaz. */
   overflow-x: hidden;
 }
 
@@ -59,7 +150,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 .sayac b { color: var(--yazi); font-weight: 620; }
 .kirik-sayac b { color: var(--uyari); }
-.ayrac { color: var(--kenar); margin: 0 2px; }
+.ayrac { color: var(--bos); margin: 0 2px; }
 
 .ust-sag {
   margin-left: auto;
@@ -95,7 +186,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
      (yalnız `background: transparent` yetmez, `border` de yazılmalı). */
   border: 1px solid var(--kenar);
   border-radius: 7px;
-  background: rgba(21, 25, 34, 0.92);
+  background: var(--yuzey);
   color: var(--ikincil);
   font: inherit;
   font-size: 13px;
@@ -155,7 +246,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   padding: 9px 12px;
   border: 1px solid var(--kenar);
   border-radius: 8px;
-  background: rgba(21, 25, 34, 0.88);
+  background: var(--yuzey);
   font-size: 12px;
   color: var(--ikincil);
   max-width: min(220px, 46vw);
@@ -246,7 +337,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   margin: 14px 0 0;
   padding: 10px 12px;
   border-left: 2px solid var(--kenar);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--yuzey-soluk);
   color: var(--yazi);
   font-size: 13px;
   white-space: pre-wrap;
@@ -292,14 +383,14 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   appearance: none;
 }
 .panel-bag:hover {
-  background: rgba(86, 180, 233, 0.12);
-  border-color: rgba(86, 180, 233, 0.4);
+  background: var(--vurgu-hali);
+  border-color: var(--vurgu-hali-kenar);
   text-decoration: underline;
 }
 .panel-bag:focus-visible {
   outline: 2px solid var(--vurgu);
   outline-offset: 1px;
-  background: rgba(86, 180, 233, 0.16);
+  background: var(--vurgu-hali-koyu);
 }
 .panel-liste .bos { color: var(--bos); font-size: 12px; padding: 2px 6px; }
 .panel-kirik { color: var(--uyari); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
@@ -320,22 +411,22 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .dugum-secili .dugum-halka { opacity: 1; }
 
 .dugum-daire {
-  stroke: rgba(15, 17, 21, 0.85);
+  stroke: var(--graf-dugum-kenar);
   stroke-width: 1;
 }
 
 .dugum-etiket {
-  /* B.1: etiket rengi zemin üzerinde ≥4.5:1 (hatta 9.9:1) kontrast verir.
+  /* B.1: etiket rengi zemin üzerinde ≥4.5:1 kontrast verir.
      C.1: `font-size` BİLEREK burada YAZILMAZ. CSS bildirimi SVG
      sunum niteliğini (`font-size="7.57"`) GEÇERSİR kılıyor ve telafi
      çalışmıyordu: etiketler ölçekle birlikte 1.59 katına kadar büyüyor,
      yerleşim sırasındaki kutularıyla uyuşmuyor ve HİÇBİRİ sığmıyordu.
      Kök `font` kısayolundan gelen devralınan değer JS'in `font-size`
      niteliğini ezmez. */
-  fill: #c8d4e2;
+  fill: var(--graf-etiket);
   font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Arial, sans-serif;
   paint-order: stroke;
-  stroke: rgba(15, 17, 21, 0.85);
+  stroke: var(--graf-dugum-kenar);
   stroke-width: 3px;
   stroke-linejoin: round;
   pointer-events: none;
@@ -343,9 +434,9 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 }
 /* Görünürlük JS tarafından greedy çakışma önlemeyle YAZILIR (`opacity`).
    CSS yalnız `pointer-events`'i keser; çakışma kuralı JS'te. */
-.dugum-secili .dugum-etiket { fill: #ffffff; }
+.dugum-secili .dugum-etiket { fill: var(--graf-etiket-sec); }
 
-.kenar-katmani .kenar { stroke: #39414f; stroke-width: 1; fill: none; }
+.kenar-katmani .kenar { stroke: var(--graf-kenar-cizgi); stroke-width: 1; fill: none; }
 
 /* ---------------------------------------------------------------- liste sayfaları */
 
@@ -371,11 +462,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 }
 .tablo td {
   padding: 7px 10px 7px 0;
-  border-bottom: 1px solid rgba(35, 40, 51, 0.55);
+  border-bottom: 1px solid var(--kenar-soluk);
   vertical-align: top;
   overflow-wrap: anywhere;
 }
-.tablo tr:hover td { background: rgba(255, 255, 255, 0.02); }
+.tablo tr:hover td { background: var(--yuzey-soluk); }
 .yol {
   display: block;
   color: var(--ikincil);
@@ -393,7 +484,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .not-listesi { margin: 0; padding: 0; list-style: none; }
 .not-listesi li {
   padding: 7px 0;
-  border-bottom: 1px solid rgba(35, 40, 51, 0.55);
+  border-bottom: 1px solid var(--kenar-soluk);
 }
 .liste .bos-durum {
   position: static;
@@ -467,7 +558,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   padding: 9px 12px;
   border: 1px solid var(--kenar);
   border-radius: 8px;
-  background: var(--zemin);
+  background: var(--panel);
   color: var(--yazi);
   font: inherit;
   font-size: 14px;
@@ -484,7 +575,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   border: 1px solid var(--kenar);
   border-radius: 8px;
   /* `button` tarayıcı varsayılanı BEYAZ buton verir; sıfırlama şart. */
-  background: rgba(21, 25, 34, 0.92);
+  background: var(--yuzey);
   color: var(--yazi);
   font: inherit;
   font-size: 14px;
@@ -500,7 +591,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
 .ara-sonuc {
   padding: 14px 0;
-  border-bottom: 1px solid rgba(35, 40, 51, 0.55);
+  border-bottom: 1px solid var(--kenar-soluk);
 }
 
 .ara-baslik {
@@ -510,7 +601,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   overflow-wrap: anywhere;
 }
 
-/* Alıntı: koyu zemin üzerinde açık metin. `overflow-wrap: anywhere` uzun
+/* Alıntı: zemin üzerinde okunur metin. `overflow-wrap: anywhere` uzun
    sözcüklerde yatay taşmayı engeller (390 px mobilde ölçülecek). */
 .ara-alinti {
   margin: 6px 0 0;
@@ -520,11 +611,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
   overflow-wrap: anywhere;
 }
 
-/* Vurgu: metin `#0f1115` (koyu) üzerinde `#F0E442` (Okabe-Ito sarı) zemin.
-   Kontrast oranı ≈ 13.9:1 (≥4.5 eşiğinin çok üstü). */
+/* Vurgu: sarı zemin + koyu metin. Kontrast oranı her iki temada ≥4.5
+   (acik: ≈12.3:1, koyu: ≈14.3:1). Renk TEK BASINA ayirt etmez; eşleşen
+   metin zaten vurgulu satırın içindedir. */
 mark {
-  background: #f0e442;
-  color: #0f1115;
+  background: var(--vurgu-sari);
+  color: var(--vurgu-sari-yazi);
   border-radius: 3px;
   padding: 0 2px;
   font-weight: 600;

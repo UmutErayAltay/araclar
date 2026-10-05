@@ -1,0 +1,77 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<h2>Genel bakış</h2>
+
+<div class="kart-izgara">
+  <article class="kart">
+    <p class="kart-etiket">Dinleyen</p>
+    <p class="kart-sayi" id="ozet-toplam">{{ veri.ozet.toplam }}</p>
+    <p class="kart-alt">toplam port</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Yerel</p>
+    <p class="kart-sayi" id="ozet-yerel">{{ veri.ozet.yerel }}</p>
+    <p class="kart-alt">yalnızca 127.0.0.1</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Dışa açık</p>
+    <p class="kart-sayi" id="ozet-disa">{{ veri.ozet.disa_acik }}</p>
+    <p class="kart-alt">yerel ağdan bağlanabilir</p>
+  </article>
+</div>
+
+<section class="bolum">
+  <h2>Dolu portlar</h2>
+  <p class="aciklama">Her 5 saniyede tazelenir. <code>!</code> işareti dışa açık portu
+    gösterir; renk tek başına ayırt etme aracı değildir.</p>
+  <p class="baglanti-not" id="baglanti-not" role="status" hidden>bağlantı kesildi — yeniden deneniyor…</p>
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <caption class="gizli">Dinleyen TCP ve UDP portları</caption>
+      <thead>
+        <tr>
+          <th scope="col">PORT</th>
+          <th scope="col">PROTO</th>
+          <th scope="col">KAPSAM</th>
+          <th scope="col">ADRES</th>
+          <th scope="col">SÜREÇ</th>
+          <th scope="col">PID</th>
+          <th scope="col" class="sayi">BAĞLI</th>
+          <th scope="col">ETİKET</th>
+        </tr>
+      </thead>
+      <tbody id="tablo-govde">
+        {% for s in veri.dinleyenler %}
+        <tr {% if s.kapsam == 'disa_acik' %}class="disa-acik"{% endif %}>
+          <td class="port">{% if s.kapsam == 'disa_acik' %}! {% endif %}{{ s.port }}</td>
+          <td>{{ s.proto }}</td>
+          <td>{{ 'dışa açık' if s.kapsam == 'disa_acik' else 'yerel' }}</td>
+          <td class="adres mono">{{ s.ip }}</td>
+          <td>{{ s.surec or '-' }}{% if s.uyari %} <span class="uyari-not">({{ s.uyari }})</span>{% endif %}</td>
+          <td class="sayi">{{ s.pid if s.pid is not none else '-' }}</td>
+          <td class="sayi">{{ s.bagli }}</td>
+          <td>{{ s.etiket or '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="bos-durum" id="tablo-bos" {% if veri.dinleyenler %}hidden{% endif %}>
+    <h3>Dinleyen port yok</h3>
+    <p>Hiçbir yerel servis dinlemiyor.</p>
+  </div>
+</section>
+
+<section class="bolum">
+  <h2>Boş portlar</h2>
+  <p class="aciklama">{{ web_bos_aralik[0] }}–{{ web_bos_aralik[1] }} aralığında,
+    gerçek <code>bind</code> denemesiyle bulunan ilk {{ web_bos_adet }} port.</p>
+  <ul class="bos-liste" id="bos-liste">
+    {% for port in veri.bos %}
+    <li class="mono">{{ port }}</li>
+    {% endfor %}
+  </ul>
+</section>
+
+{% endblock %}

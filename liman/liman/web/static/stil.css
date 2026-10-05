@@ -1,0 +1,245 @@
+/* liman paneli — sade, okunakli; koyu ve acik tema `prefers-color-scheme` ile.
+   Baglayici kurallar:
+     * CSP satir ici script/stil YASAKLAR: burada her sey siniflarla bicimlenir.
+     * Disa acik satirlar yalnizca renge dayanmaz: satir basinda "!" METNI ve
+       "dışa açık" yazisi da vardir (renk korlugunde de ayirt edilir).
+     * 390 px'de tablo kendi icinde yatay KAYDIRILIR; sayfa yatay tasmaz.
+     * Kontrast >= 4.5:1 (koyu: #e6e6e6 / #0f1115; acik: #1c2029 / #f7f8fa). */
+
+:root {
+  color-scheme: light dark;
+
+  --zemin: #f7f8fa;
+  --yazi: #1c2029;
+  --ikincil: #556070;
+  --kenar: #d3d9e2;
+  --vurgu: #0072b2;
+  --panel: #ffffff;
+  --panel-acik: #eef1f6;
+  --bos-not: #667085;
+  --uyari: #a35b00;
+  --hata: #b03000;
+  --basari: #00704a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --zemin: #0f1115;
+    --yazi: #e6e6e6;
+    --ikincil: #9aa3b2;
+    --kenar: #232833;
+    --vurgu: #56b4e9;
+    --panel: #151922;
+    --panel-acik: #1c2130;
+    --bos-not: #7a8496;
+    --uyari: #E69F00;
+    --hata: #D55E00;
+    --basari: #009E73;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--zemin);
+  color: var(--yazi);
+  font: 14px/1.55 ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;  /* yatay tasma olmasin */
+}
+
+a { color: var(--vurgu); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--vurgu); outline-offset: 2px; border-radius: 3px; }
+
+code, .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+code { background: var(--panel-acik); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+
+/* ------------------------------------------------------------- ust serit */
+
+.ust {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 12px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--kenar);
+}
+
+.ust-sol { min-width: 0; }
+.ust h1 { margin: 0; font-size: 17px; font-weight: 660; letter-spacing: 0.01em; }
+.ozet { margin: 2px 0 0; color: var(--ikincil); font-size: 12.5px; }
+
+/* ------------------------------------------------------------------ icerik */
+
+main { padding: 18px 20px 34px; max-width: 1180px; }
+
+h2 { margin: 26px 0 10px; font-size: 15px; font-weight: 620; }
+h2:first-child { margin-top: 0; }
+h3 { margin: 0 0 6px; font-size: 14px; }
+
+.aciklama { color: var(--ikincil); font-size: 13px; margin: 0 0 14px; max-width: 84ch; }
+
+/* Baglanti kopukken gosterilen not (JS acmaz/kapar). */
+.baglanti-not {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--uyari);
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.gizli {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------- kartlar */
+
+.kart-izgara {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(184px, 1fr));
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.kart {
+  border: 1px solid var(--kenar);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 13px 14px;
+  min-width: 0;
+}
+.kart-etiket {
+  margin: 0;
+  color: var(--ikincil);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.kart-sayi {
+  margin: 4px 0 2px;
+  font-size: 26px;
+  font-weight: 660;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.kart-alt { margin: 0; color: var(--ikincil); font-size: 12px; }
+
+/* ---------------------------------------------------------------- bolumler */
+
+.bolum {
+  border: 1px solid var(--kenar);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+.bolum h2 { margin-top: 0; }
+
+/* -------------------------------------------------------------------- tablo */
+
+/* Dar ekranda tablo KENDI ICINDE kaydirilir; sayfa tasmaz. */
+.tablo-sarayici { overflow-x: auto; max-width: 100%; }
+
+table.tablo { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+table.tablo th, table.tablo td {
+  padding: 9px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--kenar);
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+table.tablo th {
+  color: var(--ikincil);
+  font-weight: 600;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.tablo tbody tr:hover { background: var(--panel-acik); }
+
+td.sayi, th.sayi { text-align: right; font-variant-numeric: tabular-nums; }
+td.port { font-variant-numeric: tabular-nums; font-weight: 620; }
+td.adres { font-size: 12px; color: var(--ikincil); }
+
+/* Disa acik satirlar: renk + sol kenar. Renk TEK BASINA ayirt etmez; satir
+   basindaki "!" metni ve "dışa açık" yazisi da vardir. */
+tr.disa-acik td { color: var(--hata); }
+tr.disa-acik td:first-child { box-shadow: inset 3px 0 0 var(--hata); }
+
+/* Yetki nedeniyle surec bilgisi okunamadi (satir ATILMAZ). */
+.uyari-not { color: var(--uyari); font-size: 11.5px; }
+
+/* ------------------------------------------------------------- bos portlar */
+
+.bos-liste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.bos-liste li {
+  border: 1px solid var(--kenar);
+  background: var(--panel-acik);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- bos durum */
+
+.bos-durum {
+  border: 1px dashed var(--kenar);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 28px 22px;
+  text-align: center;
+  color: var(--ikincil);
+}
+.bos-durum h3 { margin: 0 0 6px; color: var(--yazi); font-size: 14.5px; }
+.bos-durum p { margin: 0 auto; max-width: 56ch; font-size: 13px; }
+
+/* -------------------------------------------------------------------- dipnot */
+
+.alt {
+  padding: 16px 20px 28px;
+  border-top: 1px solid var(--kenar);
+  color: var(--bos-not);
+  font-size: 12px;
+  max-width: 1180px;
+}
+.alt p { margin: 0; max-width: 86ch; }
+
+/* ----------------------------------------------------------------- mobil 390 */
+
+@media (max-width: 700px) {
+  main { padding: 14px 12px 28px; }
+  .ust { padding: 10px 12px; }
+  .kart-izgara { grid-template-columns: repeat(3, 1fr); gap: 9px; }
+  .kart { padding: 11px 10px; }
+  .kart-sayi { font-size: 21px; }
+  .bolum { padding: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

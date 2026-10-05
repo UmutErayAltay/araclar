@@ -41,6 +41,8 @@ jobs:
             kur: pip install -r requirements.txt
           - proje: portfolyo
             kur: pip install -r requirements.txt
+          - proje: liman
+            kur: pip install -r requirements.txt
     defaults:
       run:
         working-directory: ${{ matrix.proje }}

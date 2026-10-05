@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liman"
+version = "0.1.0"
+description = "Liman: hangi TCP/UDP portlarinin dolu, hangilerinin bos oldugunu gosteren salt-okunur arac"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["psutil>=5.9", "Flask>=3.0"]
+
+[project.scripts]
+liman = "liman.cli:main"
+
+[tool.setuptools]
+packages = ["liman", "liman.web"]
+
+[tool.setuptools.package-data]
+"liman.web" = ["sablonlar/*.html", "static/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

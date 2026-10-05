@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "iddia"
+version = "0.1.0"
+description = "Repo README'lerindeki somut iddialari (test sayisi, dosya yolu, CLI bayragi) kodla karsilastiran salt-okunur CLI"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+iddia = "iddia.cli:main"
+
+[tool.setuptools]
+packages = ["iddia"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

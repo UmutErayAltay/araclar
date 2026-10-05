@@ -1,13 +1,61 @@
-/* orkestra paneli — koyu tema.
+/* orkestra paneli — açık tema varsayılan, koyu tema `prefers-color-scheme`.
    Bağlayıcı kurallar:
      * CSP satır içi script/stil YASAKLAR: burada her şey sınıflarla biçimlenir.
      * Tarayıcı varsayılanı BEYAZ buton/kontrol görünmemeli: `button`, `input`,
-       `select`, `a` hepsi koyu temaya uyumlu renklenir.
+       `select`, `a` hepsi temaya uyumlu renklenir; açık temada bu yüzeyler
+       `--panel` DEĞİL, `--filtre-zemin` gibi biraz koyu bir tondur.
      * 390 px'de tablolar kart olur; yatay kaydırma çubuğu ÇIKMAZ.
      * Renk körü-güvenli Okabe-Ito paleti durum/model renklerinde kullanılır.
-     * Durum rozeti yalnızca renge dayanmaz: metin de yazar. */
+       AÇIK zeminde Okabe-Ito'nun kendisi okunmaz (#F0E442 neredeyse beyaz), bu
+       yüzden `--oi*` açık temada aynı hue'yi koruyup koyulaştırır.
+     * Durum rozeti yalnızca renge dayanmaz: metin de yazar.
+     * Metin/zemin kontrastı >= 4.5:1 (açık 15.3:1, ikincil 6.0:1; koyu 15.1:1,
+       ikincil 7.4:1).
+     * Değişken tanımları dışında sabit hex/rgba KALMAZ. */
 
 :root {
+  color-scheme: light dark;
+
+  --zemin: #f7f8fa;
+  --yazi: #1c2029;
+  --ikincil: #556070;
+  --kenar: #d3d9e2;
+  --vurgu: #0072b2;
+  --panel: #ffffff;
+  --panel-acik: #eef1f6;
+  --bos: #667085;
+  --uyari: #a35b00;
+  --hata: #b03000;
+  --basari: #00704a;
+
+  /* Okabe-Ito'nun ACIK zemin icin koyulastirilmis hali. Ayni hue sirasi
+     korunur (rozet, lejant ve graf hep ayni renge gider); yalnizca ton
+     koyulastirilir, boylece `--panel-acik` uzerindeki rozet metni >= 4.5:1
+     kalir: oi1 5.24 - oi2 4.92 - oi3 5.43 - oi4 5.08 - oi5 4.58 - oi6 5.67
+     - oi7 6.97 - oi8 5.20. */
+  --oi1: #8a5a00;
+  --oi2: #1f6f96;
+  --oi3: #00704a;
+  --oi4: #7a6400;
+  --oi5: #0072b2;
+  --oi6: #b03000;
+  --oi7: #8f2a5e;
+  --oi8: #5c6573;
+
+  /* Log kutusu: metni `var(--yazi)` oldugu icin zemin temayla UYUMLU olmali
+     (koyu metin koyu zeminde okunmaz). Koyu temada koyu kutu, acik temada
+     `--panel-acik` ile ayni acik ton. */
+  --log-zemin: #eef1f6;
+  /* Tablo satiri ustu vurgusu: acik zeminde koyu alfa, koyu zeminde acik alfa. */
+  --satir-ustu: rgba(15, 17, 21, 0.04);
+  /* Filtre cipleri `--panel` (beyaz) KULLANMAZ: beyaz yuzeyli kontrol tarayici
+     varsayilani gibi gorunur. Etkin cip ayri bir yuzey alir. */
+  --filtre-zemin: var(--panel-acik);
+  --filtre-etkin-zemin: var(--kenar);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
   --zemin: #0f1115;
   --yazi: #e6e6e6;
   --ikincil: #9aa3b2;
@@ -35,6 +83,12 @@
   --oi6: #E85D1C;
   --oi7: #CC79A7;
   --oi8: #999999;
+
+  --log-zemin: #0b0d12;
+  --satir-ustu: rgba(255, 255, 255, 0.02);
+  --filtre-zemin: var(--panel);
+  --filtre-etkin-zemin: var(--panel-acik);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -188,7 +242,7 @@ h2:first-child { margin-top: 0; }
   padding: 5px 11px;
   border: 1px solid var(--kenar);
   border-radius: 999px;
-  background: var(--panel);
+  background: var(--filtre-zemin);
   color: var(--ikincil);
   font-size: 12.5px;
 }
@@ -198,7 +252,7 @@ h2:first-child { margin-top: 0; }
 .filtre a.etkin {
   color: var(--yazi);
   border-color: var(--vurgu);
-  background: var(--panel-acik);
+  background: var(--filtre-etkin-zemin);
 }
 
 /* -------------------------------------------------------------------- tablo */
@@ -228,7 +282,7 @@ table.tablo th {
   white-space: nowrap;
 }
 
-table.tablo tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
+table.tablo tbody tr:hover { background: var(--satir-ustu); }
 
 td.sayi, th.sayi { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -334,7 +388,7 @@ td.mono { max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
 .log {
   margin: 0;
   padding: 12px;
-  background: #0b0d12;
+  background: var(--log-zemin);
   border: 1px solid var(--kenar);
   border-radius: 6px;
   max-height: 460px;

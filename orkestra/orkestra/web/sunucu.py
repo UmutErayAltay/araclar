@@ -477,7 +477,13 @@ def grafigi_hazirla(
 
 
 def _model_renkleri(modeller: list[str]) -> dict[str, str]:
-    """Model adı → Okabe-Ito rengi. Sıra bağımsız: adın hash'i seçer."""
+    """Model adı → palet DEĞİŞKENİ. Sıra bağımsız: adın hash'i seçer.
+
+    Sabit hex DEĞİL, `var(--oiN)` döner: renk `stil.css` üzerinden gelir, böylece
+    graf çubukları açık/koyu temada o temaya ait (okunur) tonda çizilir. Sabit
+    hex verilseydi açık zeminde `#F0E442` beyaz üzerinde 1.3:1 ile görünmezdi.
+    Dizi sırası `OKABE_ITO` ile aynıdır; hue eşleşmesi korunur.
+    """
     import hashlib
 
     renkler: dict[str, str] = {}
@@ -485,7 +491,8 @@ def _model_renkleri(modeller: list[str]) -> dict[str, str]:
         # crc32 yerine sha256'ın ilk 4 baytı: kararlı ve Python'a bağlı değil
         # (Python'un `hash()`'i her çalıştırmada değişir).
         ozet = hashlib.sha256(model.encode("utf-8")).digest()
-        renkler[model] = OKABE_ITO[ozet[0] % len(OKABE_ITO)]
+        sira = ozet[0] % len(OKABE_ITO)
+        renkler[model] = f"var(--oi{sira + 1})"
     return renkler
 
 

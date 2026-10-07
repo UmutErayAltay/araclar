@@ -416,20 +416,45 @@ def test_mark_kontrast_oku(tarayici, arama_web) -> None:
     sayfa.close()
 
 
-def test_beyaz_varsayilan_kontrol_yok(tarayici, arama_web) -> None:
-    """Arama düğmesi/INPUT'u tarayıcı beyazı DEĞİL (koyu tema)."""
-    sayfa, _, _ = sayfa_ac(tarayici, arama_web, "/ara?q=x")
-    sayfa.wait_for_timeout(100)
-    renkler = sayfa.evaluate(
-        """() => ({
-            dugme: getComputedStyle(document.querySelector('.ara-form button')).backgroundColor,
-            kutu: getComputedStyle(document.getElementById('ara-kutu')).backgroundColor
-        })"""
-    )
-    # Beyaz (rgb(255,255,255)) arka plan OLMAZ.
-    for ad, renk in renkler.items():
-        assert renk not in ("rgb(255, 255, 255)", "rgba(255, 255, 255, 1)"), (ad, renk)
-    sayfa.close()
+@pytest.mark.parametrize("tema", ["dark", "light"])
+def test_beyaz_varsayilan_kontrol_yok(tarayici, arama_web, tema: str) -> None:
+    """Arama düğmesi/INPUT'u tarayıcı varsayılanı DEĞİL, kendi rengini taşır.
+
+    Panel artık İKİ temayı destekler. Düğme, `<button>` tarayıcı varsayılanı
+    (`rgb(239,239,239)`) yerine `--yuzey` rengini kullanmalıdır — her iki
+    temada da. INPUT ise metin alanıdır ve temaya uygun bir zemin
+    (`--panel`) taşır: koyu temada koyu, açık temada açık.
+    """
+    baglam = tarayici.new_context(color_scheme=tema, viewport={"width": 1280, "height": 800})
+    sayfa = baglam.new_page()
+    try:
+        sayfa.goto(arama_web.taban + "/ara?q=x", wait_until="load")
+        sayfa.wait_for_selector(".ara-form button", timeout=10000)
+        sayfa.wait_for_timeout(120)
+        renkler = sayfa.evaluate(
+            """() => ({
+                dugme: getComputedStyle(document.querySelector('.ara-form button')).backgroundColor,
+                kutu: getComputedStyle(document.getElementById('ara-kutu')).backgroundColor,
+                sayfaZemin: getComputedStyle(document.body).backgroundColor
+            })"""
+        )
+    finally:
+        sayfa.close()
+        baglam.close()
+
+    def rgb(renk: str) -> tuple[int, int, int]:
+        import re
+
+        sayi = [int(float(x)) for x in re.findall(r"[\d.]+", renk)[:3]]
+        return (sayi[0], sayi[1], sayi[2])
+
+    # Düğme, tarayıcının gri varsayılanını ASLA göstermez.
+    assert rgb(renkler["dugme"]) != (239, 239, 239), renkler
+    # INPUT zemini düz beyaz DEĞİLDİR: her iki temada da sayfa zemininden
+    # AYRI bir kart rengidir (`--panel`), böylece alan görünür kalır.
+    assert rgb(renkler["kutu"]) != rgb(renkler["sayfaZemin"]), renkler
+    if tema == "dark":
+        assert rgb(renkler["kutu"]) != (255, 255, 255), renkler
 
 
 # ---------------------------------------------------------------------------

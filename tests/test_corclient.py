@@ -63,14 +63,14 @@ def test_modul_duzeyinde_import_edilen_adlar() -> None:
 def test_varsayilanlar() -> None:
     client = CorLLMClient()
     assert client.base_url == "http://127.0.0.1:8787"
-    assert client.model == "stealth/space-bunny-alpha"
+    assert client.model == "nvidia/nemotron-3-ultra-550b-a55b:free"
     assert client.timeout == 120.0
     assert client.max_retries == 3
     assert client.retry_backoff == 3.0
     assert client.max_tokens == 4000
     assert client.baslat_ipucu == "cor start"
     assert DEFAULT_BASE_URL == "http://127.0.0.1:8787"
-    assert DEFAULT_MODEL == "stealth/space-bunny-alpha"
+    assert DEFAULT_MODEL == "nvidia/nemotron-3-ultra-550b-a55b:free"
     assert IZINLI_KONAKLAR == frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
 
 

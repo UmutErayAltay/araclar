@@ -20,6 +20,15 @@ araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 | `anlat/` | Git deposunun geçmişinden Türkçe teknik anlatı üretir; NotebookLM ile sesli özet hazırlar |
 | `tekrar/` | Vault bilgi notlarından aralıklı tekrar kartları üretir, her gün Telegram'a gönderir (Leitner aralıkları) |
 | `portfolyo/` | Allowlist'li statik portfolyo sitesi üretir: kategorili kartlar, GitHub API istatistikleri, markdown yazıları, paylaşım meta etiketleri; sızıntı denetimi var |
+| `liman/` | Çalışan ve boştaki portları gösterir (CLI + yerel panel); cor/LLM kullanmaz |
+| `iddia/` | Repo README'lerindeki somut iddiaları kodun gerçekliğiyle karşılaştırır; tamamen salt okunur |
+| `maske/` | Dosyalardaki gizli anahtarları bulup yerinde maskeler; varsayılan kuru çalıştırma |
+| `ortam/` | Ortam değişkeni denetçisi: kodun okuduğu değişkenleri `.env.example`/README ile karşılaştırır |
+| `olubag/` | Projelerde bildirilip hiç kullanılmayan bağımlılıkları (Python/JS) tarayan salt okunur CLI |
+| `filo/` | Bir görev metnini N repoya paralel dağıtıp her repoda yerel `cor claude` alt süreci çalıştırır |
+| `haftalik/` | Birden çok repodaki son N günün commit'lerini toplayıp yerel cor LLM'i ile Türkçe haftalık özete çevirir |
+| `mezar/` | Boşaltılmış ("mezar taşı") repoları silmeden önce denetler ve `KAPATILABILIR`/`DIKKAT` kararı verir |
+| `servis/` | Yerel servis yığınını (`cor`, `kule`, `liman`, `readbunny-postgres`) tek komutla başlatır, durdurur, durumunu gösterir |
 
 Bu depoda olmayan ama aynı istemciyi kullanan projeler: `ne-izlesem` (film/kitap takip ürünü, ayrı repoda; kopyası
 `python3 tools/sync.py ../ne-izlesem/app/_corclient.py` ile güncellenir) ve `readbunny` (kendi istemcisi var).
@@ -55,11 +64,12 @@ farkı hash'i bozmaz.
 
 | Proje | `DEFAULT_MODEL` | `MAX_TOKENS` | timeout | konak denetimi | başlat ipucu |
 |---|---|---|---|---|---|
-| atlas | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor start` |
-| harita | `stealth/space-bunny-alpha` | 2000 | 60 | loopback + `0.0.0.0` | `cor start` |
+| atlas | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback | `cor start` |
+| harita | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback + `0.0.0.0` | `cor start` |
 | orkestra | `nvidia/nemotron-3-ultra-550b-a55b:free` | 4000 | 120 | loopback | `cor start` |
-| danis | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor` |
-| anlat | `stealth/space-bunny-alpha` | 8000 | 300 | loopback | `cor claude` |
+| danis | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback | `cor` |
+| anlat | `nvidia/nemotron-3-ultra-550b-a55b:free` | 8000 | 300 | loopback | `cor claude` |
+| haftalik | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback | `cor start` |
 
 Loopback denetimi, kullanıcı verisi yanlışlıkla başka bir makineye gitmesin diye cor adresi
 `127.0.0.1`/`localhost`/`::1` dışındaysa istemciyi kurarken hata verir. `COR_BASE_URL` ve

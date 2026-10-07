@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filo"
+version = "0.1.0"
+description = "Bir gorev metnini N repoya paralel dagitip her repoda yerel `cor claude` alt sureci calistiran, raporlari tek klasorde toplayan tek seferlik toplu CLI"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+filo = "filo.cli:main"
+
+[tool.setuptools]
+packages = ["filo"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

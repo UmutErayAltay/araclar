@@ -41,6 +41,24 @@ jobs:
             kur: pip install -r requirements.txt
           - proje: portfolyo
             kur: pip install -r requirements.txt
+          - proje: liman
+            kur: pip install -r requirements.txt
+          - proje: iddia
+            kur: pip install pytest
+          - proje: maske
+            kur: pip install pytest
+          - proje: ortam
+            kur: pip install pytest
+          - proje: olubag
+            kur: pip install pytest
+          - proje: filo
+            kur: pip install pytest
+          - proje: haftalik
+            kur: pip install pytest
+          - proje: mezar
+            kur: pip install pytest
+          - proje: servis
+            kur: pip install pytest
     defaults:
       run:
         working-directory: ${{ matrix.proje }}

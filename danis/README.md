@@ -31,7 +31,7 @@ değişkenini okur:
 | Değişken | Varsayılan |
 |---|---|
 | `COR_BASE_URL` | `http://127.0.0.1:8787` |
-| `COR_MODEL` | `stealth/space-bunny-alpha` |
+| `COR_MODEL` | `nvidia/nemotron-3-ultra-550b-a55b:free` |
 
 ## Shell entegrasyonu (bash / zsh)
 

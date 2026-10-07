@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "haftalik"
+version = "0.1.0"
+description = "Birden fazla repodaki son N gunun commit'lerini toplayip yerel cor LLM'i ile Turkce haftalik ozete ceviren CLI"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+haftalik = "haftalik.cli:main"
+
+[tool.setuptools]
+packages = ["haftalik"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

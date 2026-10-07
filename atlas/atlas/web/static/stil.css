@@ -1,35 +1,78 @@
-/* atlas paneli — koyu tema.
+/* atlas paneli — acik tema varsayilan, koyu tema `prefers-color-scheme` ile.
    Baglayici kurallar:
      * CSP satir ici script/stil YASAKLAR: burada her sey siniflarla bicimlenir.
      * Tarayici varsayilani BEYAZ buton/kontrol/select GORUNMEZ: `button`,
-       `input`, `select`, `a` hepsi koyu temaya uyumlu renklenir.
+       `input`, `select`, `a` hepsi tema degiskenlerine uyumlu renklenir.
      * 390 px'de tablolar kart olur; yatay kaydirma cubugu CIKMAZ.
-     * Renk kor-guvenli Okabe-Ito paleti onem/durum renklerinde kullanilir.
+     * Renk kor-guvenli Okabe-Ito paleti onem/durum renklerinde kullanilir;
+       acik zeminde ayni palet KOYULASTIRILIR (asagida gerekce).
      * Rozetler yalnizca renge dayanmaz: metin de yazar.
-     * Ana metin/zemin kontrasti >= 4.5:1 (#e6e6e6 / #0f1115). */
+     * Metin/zemin kontrasti >= 4.5:1 (acik: #1c2029 / #f7f8fa;
+       koyu: #e6e6e6 / #0f1115).
+     * SABIT renk (hex/rgba) YOKTUR: her renk bir `degisken`dir. */
 
 :root {
-  --zemin: #0f1115;
-  --yazi: #e6e6e6;
-  --ikincil: #9aa3b2;
-  --kenar: #232833;
-  --vurgu: #56b4e9;
-  --panel: #151922;
-  --panel-acik: #1c2130;
-  --bos: #7a8496;
-  --uyari: #E69F00;
-  --hata: #D55E00;
-  --basari: #009E73;
+  color-scheme: light dark;
 
-  /* Okabe-Ito */
-  --oi1: #E69F00;
-  --oi2: #56B4E9;
-  --oi3: #009E73;
-  --oi4: #F0E442;
-  --oi5: #0072B2;
-  --oi6: #D55E00;
-  --oi7: #CC79A7;
-  --oi8: #999999;
+  --zemin: #f7f8fa;
+  --yazi: #1c2029;
+  --ikincil: #556070;
+  --kenar: #d3d9e2;
+  --vurgu: #0072b2;
+  --panel: #ffffff;
+  --panel-acik: #eef1f6;
+  --bos: #667085;
+  --uyari: #a35b00;
+  --hata: #b03000;
+  --basari: #00704a;
+
+  /* Kaynak (snippet) kutusu: panel-acik yuzey, her iki temada okunur. */
+  --kaynak-zemin: #eef1f6;
+
+  /* Tablo satirinin uzerine gelme dolgusu (acik zeminde hafif koyulastirma). */
+  --satir-hover: rgba(28, 32, 41, 0.03);
+
+  /* Okabe-Ito — ACIK zemin icin KOYULASTIRILMIS. Orijinal paletin acik
+     zemindeki sarisi (#F0E442) 1.24:1, turuncusu 2.12:1 okunur; bu yuzden
+     degerler koyu tarafa cekildi. Siralama ve anlam degismedi. */
+  --oi1: #8a5a00;
+  --oi2: #1a6fa3;
+  --oi3: #00704a;
+  --oi4: #6f6300;
+  --oi5: #00527d;
+  --oi6: #a83a00;
+  --oi7: #a34e7e;
+  --oi8: #5b6472;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --zemin: #0f1115;
+    --yazi: #e6e6e6;
+    --ikincil: #9aa3b2;
+    --kenar: #232833;
+    --vurgu: #56b4e9;
+    --panel: #151922;
+    --panel-acik: #1c2130;
+    --bos: #7a8496;
+    --uyari: #E69F00;
+    --hata: #D55E00;
+    --basari: #009E73;
+
+    /* Kaynak kutusu ve satir dolgusu: koyu tema icin ayri degerler. */
+    --kaynak-zemin: #0b0d12;
+    --satir-hover: rgba(255, 255, 255, 0.02);
+
+    /* Okabe-Ito — koyu temada ORIJINAL degerler (degistirilmedi). */
+    --oi1: #E69F00;
+    --oi2: #56B4E9;
+    --oi3: #009E73;
+    --oi4: #F0E442;
+    --oi5: #0072B2;
+    --oi6: #D55E00;
+    --oi7: #CC79A7;
+    --oi8: #999999;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -318,7 +361,7 @@ table.tablo th {
   white-space: nowrap;
 }
 
-table.tablo tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
+table.tablo tbody tr:hover { background: var(--satir-hover); }
 
 td.sayi, th.sayi { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -344,7 +387,7 @@ td.sayi, th.sayi { text-align: right; font-variant-numeric: tabular-nums; }
 .snippet {
   margin: 6px 0 0;
   padding: 7px 9px;
-  background: #0b0d12;
+  background: var(--kaynak-zemin);
   border: 1px solid var(--kenar);
   border-radius: 5px;
   font-size: 11.5px;
@@ -372,6 +415,14 @@ td.sayi, th.sayi { text-align: right; font-variant-numeric: tabular-nums; }
 svg.graf { display: block; width: 100%; max-width: 460px; height: auto; overflow: visible; }
 .graf-etiket { fill: var(--ikincil); font-size: 12px; font-family: inherit; }
 .graf-etiket.sayi { fill: var(--yazi); font-weight: 600; }
+
+/* Onem cubugu dolgusu: sabit hex YOK, tema degiskenine baglanir (koyu temada
+   degerler ORIJINAL Okabe-Ito hex'leridir). */
+.cubuk-dolgu { fill: currentColor; }
+.cubuk-dolgu.yuksek { color: var(--hata); }
+.cubuk-dolgu.orta   { color: var(--oi1); }
+.cubuk-dolgu.dusuk  { color: var(--oi2); }
+.cubuk-dolgu.bilgi  { color: var(--oi8); }
 
 .cubuk-liste { display: flex; flex-direction: column; gap: 9px; }
 

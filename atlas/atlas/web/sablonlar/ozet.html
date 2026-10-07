@@ -53,7 +53,7 @@
       {% set y = 18 + loop.index0 * 32 %}
       {% set genislik = (adet / en_cok * 250) if en_cok else 0 %}
       <rect x="86" y="{{ y }}" width="{{ genislik if genislik > 0 else 0 }}"
-            height="18" rx="2" fill="{{ onem_renkleri[onem] }}"></rect>
+            height="18" rx="2" class="cubuk-dolgu {{ onem }}" fill="currentColor"></rect>
       <text class="graf-etiket" x="78" y="{{ y + 13 }}" text-anchor="end">{{ onem_etiketleri[onem] }}</text>
       <text class="graf-etiket sayi" x="{{ 92 + genislik if genislik > 0 else 92 }}" y="{{ y + 13 }}">{{ adet }}</text>
     {% endfor %}

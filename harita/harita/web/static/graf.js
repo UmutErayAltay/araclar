@@ -22,9 +22,42 @@
 
   var SVG_NS = "http://www.w3.org/2000/svg";
 
-  // Renk körü-güvenli palet (Okabe-Ito). Sıra sabittir.
-  var PALET = ["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#999999"];
-  var DIGER_RENK = "#999999";
+  /* TEMA (renk körü-güvenli palet dahil) CSS'TEN okunur.
+   *
+   * Renkler JS'te SABİT DEĞİLDİR: her renk `stil.css` içinde bir tema
+   * değişkenidir ve `getComputedStyle` ile okunur. Böylece açık temada
+   * Okabe-Ito'nun koyulaştırılmış karşılıkları, koyu temada renklerin
+   * kendisi kullanılır — JS'te tema dalı yoktur.
+   *
+   * `--dugum-N` sırası `sunucu.py` içindeki `OKABE_ITO` ile AYNI sıradadır
+   * (lejant ve düğüm rengi eşleşmesi buna dayanır).
+   *
+   * BULGU BELİRTECİ: bu palet tek başına değil, `--dugum-*` değişkenlerinin
+   * sırası ve düğüm başına eklenen "Klasör" adıyla birlikte ayırt edilir. */
+  var DUGUM_DEGISKENLERI = [
+    "--dugum-1", "--dugum-2", "--dugum-3", "--dugum-4",
+    "--dugum-5", "--dugum-6", "--dugum-7", "--dugum-8"
+  ];
+  var DIGER_DEGISKEN = "--dugum-diger";
+
+  /* Tema değişkenlerini okur; okunamayan değişken `yedek` ile döner.
+     `getComputedStyle` değeri ` #bd7f00` (baştaki boşluk) döndürebilir. */
+  function tema_rengi(ad, yedek) {
+    var ham = window.getComputedStyle(document.documentElement).getPropertyValue(ad);
+    var kirp = (ham || "").trim();
+    return kirp || yedek;
+  }
+
+  function palet_oku() {
+    var palet = [];
+    for (var i = 0; i < DUGUM_DEGISKENLERI.length; i++) {
+      palet.push(tema_rengi(DUGUM_DEGISKENLERI[i], "#999999"));
+    }
+    return palet;
+  }
+
+  var PALET = palet_oku();
+  var DIGER_RENK = tema_rengi(DIGER_DEGISKEN, PALET[PALET.length - 1]);
 
   var BOY_MIN = 4;
   var BOY_MAKS = 20;          // YERLEŞİM uzayında ideal yarıçap
@@ -275,6 +308,34 @@
       satir.appendChild(el("span", "lejant-ad", lejantSatirlari[i].ad));
       ic.appendChild(satir);
     }
+  }
+
+  /* Tema değişti (kullanıcı işletim sistemi ayarını değiştirdi): paleti ve
+     "diğer" rengini yeniden oku, düğüm disklerinin `fill` niteliğini ve
+     lejantı YENİDEN yaz. Yerleşim ve yarıçaplar DEĞİŞMEZ — yalnız renk. */
+  function temayi_uygula() {
+    PALET = palet_oku();
+    DIGER_RENK = tema_rengi(DIGER_DEGISKEN, PALET[PALET.length - 1]);
+    if (!dugumler.length) return;
+    var renkler = renkleri_hazirla();
+    for (var i = 0; i < dugumler.length && i < svgDugum.length; i++) {
+      var daire = svgDugum[i].querySelector("circle.dugum-daire");
+      if (daire) daire.setAttribute("fill", renkler.renk.get(dugumler[i].klasor) || DIGER_RENK);
+    }
+    lejantSatirlari = renkler.lejant;
+    lejantGoster();
+    // Lejant gizli/görünür olabileceği için etiket yerleşimi tazelenir.
+    etiketleri_istek();
+  }
+
+  /* İşletim sistemi teması değiştiğinde yeniden çiz. `addEventListener`
+     desteklenmeyen tarayıcılarda eski `addListener` yoluna düşeriz. */
+  function tema_degisimini_izle() {
+    if (typeof window.matchMedia !== "function") return;
+    var sorgu = window.matchMedia("(prefers-color-scheme: dark)");
+    var geriCagiran = function () { temayi_uygula(); };
+    if (typeof sorgu.addEventListener === "function") sorgu.addEventListener("change", geriCagiran);
+    else if (typeof sorgu.addListener === "function") sorgu.addListener(geriCagiran);
   }
 
   /* Lejant şu an EKRANDA ENGEL mi? Kapalı `<details>` engel değildir. */
@@ -1296,6 +1357,7 @@
     }
     sigdirDugme.hidden = false;
     var renkler = renkleri_hazirla();
+    tema_degisimini_izle();
     lejanti_kur();
     lejant_ciz(renkler.lejant);
     dugumleri_ciz(renkler.renk);

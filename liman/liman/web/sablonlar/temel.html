@@ -1,0 +1,30 @@
+{# Ortak iskelet: CSP satir ici stil/script yasaklar, bu yuzden her sey
+   stil.css'ten gelir; sablonda satir ici stil/script YOKTUR. #}
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ baslik|default('Panel') }} — liman</title>
+{# favicon: harici istek yapmamak icin veri URI. `img-src 'self' data:` izin verir. #}
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2356B4E9'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='stil.css') }}">
+<script src="{{ url_for('static', filename='panel.js') }}" defer></script>
+</head>
+<body>
+<header class="ust">
+  <div class="ust-sol">
+    <h1>liman</h1>
+    <p class="ozet">Port durumu — salt-okunur panel</p>
+  </div>
+</header>
+<main>
+{% block icerik %}{% endblock %}
+</main>
+<footer class="alt">
+  <p>Panel yalnızca dinleyen portları görüntüler ve süreçleri OKUR. Hiçbir şeyi
+     kapatmaz, değiştirmez veya başlatmaz; <code>liman</code> CLI ile aynı veriyi
+     üretir. <code>!</code> işareti dışa açık (yerel ağa bağlanabilir) portu gösterir.</p>
+</footer>
+</body>
+</html>

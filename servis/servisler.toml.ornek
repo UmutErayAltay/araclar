@@ -1,0 +1,40 @@
+# servis tanim dosyasi ornegi.
+# Kopyalayin:  cp servisler.toml.ornek ~/.servis/servisler.toml
+# Diger bir yol: SERVIS_TANIM=/yol/servisler.toml  ya da  servis ... --tanim DOSYA.toml
+#
+# Alanlar (hepsi zorunlu: port, baslat / istege bagli: cwd, durdur, bekle_sn, saglik_url):
+#   port       : 1-65535, servisin dinledigi yerel port (127.0.0.1 uzerinden yoklanir)
+#   baslat     : argv LISTESI. Kabuk YOK -- "/bin/sh -c" hicbir zaman calistirilmaz
+#   cwd        : calisma dizini; verilmezse servis'in bulundugu dizin, "~" acilir
+#   durdur     : verilirse durdurmada pid sinyali yerine BU komut calisir (orn. ["cor","stop"])
+#   bekle_sn   : baslatmada port acilana kadar beklenecek saniye (varsayilan 20)
+#   saglik_url : varsa baslatmada GET ile yoklanir; 200-399 saglikli sayilir.
+#                YALNIZ 127.0.0.1/localhost adreslerine gider.
+
+[servis.cor]
+port = 8787
+baslat = ["cor", "start"]
+cwd = "~/projeler/cor"
+durdur = ["cor", "stop"]
+bekle_sn = 20
+saglik_url = "http://127.0.0.1:8787/health"
+
+[servis.kule]
+port = 8790
+baslat = ["kule", "serve"]
+cwd = "~/projeler/kule"
+saglik_url = "http://127.0.0.1:8790/api/health"
+
+[servis.liman]
+port = 8795
+baslat = ["python3", "-m", "liman", "web", "--port", "8795"]
+cwd = "~/projeler/liman"
+bekle_sn = 25
+saglik_url = "http://127.0.0.1:8795/healthz"
+
+[servis.readbunny-postgres]
+port = 5433
+baslat = ["docker", "compose", "up", "-d"]
+cwd = "~/projeler/readbunny"
+durdur = ["docker", "compose", "down"]
+bekle_sn = 40

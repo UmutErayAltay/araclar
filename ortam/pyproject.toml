@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ortam"
+version = "0.1.0"
+description = "Ortam degiskeni denetleyicisi: kod kullanimlarini .env.example/README/docker-compose ile karsilastirir (salt okunur)"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+ortam = "ortam.cli:main"
+
+[tool.setuptools]
+packages = ["ortam"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -777,37 +777,50 @@ def _kontrast_oranı(renk1: str, renk2: str) -> float:
 
 
 @pytest.mark.parametrize("durum", ["normal", "odak"])
-def test_panel_baglanti_butonlari_koyu_tema_uyumlu(demo_web, tarayici, durum) -> None:
-    """K2: butonların zemin rengi BEYAZ DEĞİL ve kontrastı ≥4.5:1.
+@pytest.mark.parametrize("tema", ["dark", "light"])
+def test_panel_baglanti_butonlari_tema_uyumlu(demo_web, tarayici, durum, tema) -> None:
+    """K2: butonlar tarayıcı varsayılanını DEĞİL kendi rengini taşır ve
+    kontrastı ≥4.5:1 (HER İKİ temada).
 
     B.1 kusur #2: `border: 0` geçersiz kısaltma olduğu için tarayıcı
-    varsayılanı (`background-color: rgb(239,239,239)`) koyu temada
-    beyaz butonlar üretiyordu.
+    varsayılanı (`background-color: rgb(239,239,239)`) butonu boyuyordu.
+
+    Panel artık açık VE koyu tema desteklediği için denetim her ikisinde de
+    yapılır: buton zemini panelin zeminiyle harmanlandığında metin/zemin
+    kontrastı 4.5:1'in üstünde kalmalıdır (`:hover` ve `:focus-visible`
+    haleleri dahil).
     """
     veri = api_json(demo_web, "/api/graf")
     hedef = max(veri["dugumler"], key=lambda d: d["derece"])
-    sayfa, _, _ = sayfa_ac(tarayici, demo_web)
-    dugum_tikla(sayfa, hedef["id"])
-    sayfa.wait_for_selector("#panel:not([hidden])")
-    sayfa.wait_for_timeout(200)
+    baglam = tarayici.new_context(color_scheme=tema, viewport={"width": 1280, "height": 800})
+    sayfa = baglam.new_page()
+    try:
+        sayfa.goto(demo_web.taban, wait_until="load")
+        sayfa.wait_for_selector("body[data-hazir]", timeout=30000)
+        dugum_tikla(sayfa, hedef["id"])
+        sayfa.wait_for_selector("#panel:not([hidden])")
+        sayfa.wait_for_timeout(200)
 
-    buton = sayfa.locator("#panel .panel-bag").first
-    assert buton.count() > 0, "panelde bağlantı butonu yok"
-    if durum == "odak":
-        # Programatik `.focus()` `:focus-visible` ÜRETMEZ (klavye etkileşimi
-        # şart); bu yüzden GERÇEK Tab tuşuyla odaklanılır.
-        sayfa.keyboard.press("Tab")
-        sayfa.wait_for_selector("#panel .panel-bag:focus-visible", timeout=5000)
+        buton = sayfa.locator("#panel .panel-bag").first
+        assert buton.count() > 0, "panelde bağlantı butonu yok"
+        if durum == "odak":
+            # Programatik `.focus()` `:focus-visible` ÜRETMEZ (klavye etkileşimi
+            # şart); bu yüzden GERÇEK Tab tuşuyla odaklanılır.
+            sayfa.keyboard.press("Tab")
+            sayfa.wait_for_selector("#panel .panel-bag:focus-visible", timeout=5000)
 
-    stil = buton.evaluate(
-        """el => {
-            const s = getComputedStyle(el);
-            const p = getComputedStyle(document.getElementById('panel'));
-            return {bg: s.backgroundColor, fg: s.color, panelBg: p.backgroundColor,
-                    kenarlik: s.borderTopWidth + ' ' + s.borderTopStyle + ' ' + s.borderTopColor,
-                    odakHalkasi: s.outlineWidth + ' ' + s.outlineStyle};
-        }"""
-    )
+        stil = buton.evaluate(
+            """el => {
+                const s = getComputedStyle(el);
+                const p = getComputedStyle(document.getElementById('panel'));
+                return {bg: s.backgroundColor, fg: s.color, panelBg: p.backgroundColor,
+                        kenarlik: s.borderTopWidth + ' ' + s.borderTopStyle + ' ' + s.borderTopColor,
+                        odakHalkasi: s.outlineWidth + ' ' + s.outlineStyle};
+            }"""
+        )
+    finally:
+        sayfa.close()
+        baglam.close()
 
     def rgb(renk: str) -> tuple[int, int, int]:
         import re
@@ -834,17 +847,20 @@ def test_panel_baglanti_butonlari_koyu_tema_uyumlu(demo_web, tarayici, durum) ->
                      int(u[1] * a + v[1] * (1 - a)),
                      int(u[2] * a + v[2] * (1 - a))))
 
-    assert rgb(stil["bg"]) != (255, 255, 255), stil
-    assert "255, 255, 255" not in stil["bg"], f"beyaz zemin: {stil}"
+    # Tarayıcı varsayılanı hiçbir temada sızmamalı: düz beyaz `button`
+    # (light) veya gri `rgb(239,239,239)` (dark) görünmemeli.
+    assert "239, 239, 239" not in stil["bg"], f"tarayıcı varsayılanı düğmesi: {stil}"
+    if tema == "dark":
+        assert rgb(stil["bg"]) != (255, 255, 255), stil
+        assert "255, 255, 255" not in stil["bg"], f"beyaz zemin: {stil}"
     # Zemin saydam/yarı saydam → panelin zemini üzerinde birleştirilir.
     zemin = birlestir(stil["bg"], stil["panelBg"])
     oran = _kontrast_oranı(hex_(rgb(stil["fg"])), zemin)
-    assert oran >= 4.5, f"kontrast {oran:.2f}:1 < 4.5:1 → {stil}"
+    assert oran >= 4.5, f"{tema}/{durum} kontrast {oran:.2f}:1 < 4.5:1 → {stil}"
     # İnce kenar + odak halkası tanımlı (tıklanabilir görünen bağlantı).
     assert stil["kenarlik"].split()[1] != "none", stil
     if durum == "odak":
         assert stil["odakHalkasi"].split()[1] != "none", f"odak halkası yok: {stil}"
-    sayfa.close()
 
 
 # --- K3: sığdırma (fit-to-view) -------------------------------------------

@@ -24,7 +24,7 @@ orkestra iptal 2                                            # görevi iptal et
 orkestra tekrar 2                                           # hatalı görevi yeniden dene
 
 # Dalga B: gerçek çalıştırma
-orkestra calistir-bir --model stealth/space-bunny-alpha --cwd /tmp/orkestra_e2e
+orkestra calistir-bir --model nvidia/nemotron-3-ultra-550b-a55b:free --cwd /tmp/orkestra_e2e
 orkestra calistir --limit 10                                # bekleyenleri sırayla çalıştır
 orkestra kurtar                                             # yarım kalan görevleri düzelt
 orkestra rapor 1                                            # son koşunun raporu
@@ -101,7 +101,7 @@ Kaynak: cor'un **`proxy.log`** dosyası (varsayılan `/root/.claude-openrouter/p
 Gerçek log biçimi şudur (istem/anahtar **içermez**):
 
 ```
-[2026-09-30T06:15:25.675Z] openrouter -> stealth/space-bunny-alpha (stream)
+[2026-09-30T06:15:25.675Z] openrouter -> nvidia/nemotron-3-ultra-550b-a55b:free (stream)
 [2026-09-26T09:02:11.400Z] openrouter -> nvidia/nemotron-3-ultra-550b-a55b:free
 ```
 
@@ -247,7 +247,7 @@ başına hata **değildir** (eski istemler bu biçimi bilmez).
   (`COR_MODEL` ortam değişkeniyle değiştirilebilir).
 - **Kota PAYLAŞIMLIDIR.** Ücretsiz modelin kotası cor üzerinden paylaşılır; limit
   dolduğunda `orkestra planla` HTTP hatası verir ve **kısmi plan üretmez**.
-- **`stealth/space-bunny-alpha` planlamada BOŞ dönüyor.** Gözlem: planlama
+- **`nvidia/nemotron-3-ultra-550b-a55b:free` planlamada BOŞ dönüyor.** Gözlem: planlama
   isteminde `max_tokens`'ın tamamını düşünme tokena harcayıp
   `stop_reason=max_tokens` ve boş metin döndürüyor. Bu yüzden varsayılan model
   değiştirildi; bu model **çalıştırma** (`--model`) tarafında hâlâ kullanılabilir.

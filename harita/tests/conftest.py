@@ -22,8 +22,13 @@ if str(KOK) not in sys.path:
 def yaz(vault: Path, goreli: str, icerik: str) -> Path:
     """Kurusal bir not yazar (klasörleri gerekirse oluşturur)."""
     yol = vault / goreli
-    yol.parent.mkdir(parents=True, exist_ok=True)
-    yol.write_text(icerik, encoding="utf-8")
+    try:
+        yol.parent.mkdir(parents=True, exist_ok=True)
+        yol.write_text(icerik, encoding="utf-8")
+    except OSError:
+        if sys.platform == "win32" and any(c in goreli for c in '<>:"|?*'):
+            pytest.skip(f"Windows dosya adinda bu karakterler olamaz: {goreli!r}")
+        raise
     return yol
 
 

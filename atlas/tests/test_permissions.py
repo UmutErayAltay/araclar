@@ -27,7 +27,7 @@ except Exception:  # pragma: no cover
     KULLANICI_ADI = None
 
 pytestmark = pytest.mark.skipif(
-    os.geteuid() != 0, reason="bu test root oldugunda sozlulugu calistirilir"
+    getattr(os, "geteuid", lambda: 1)() != 0, reason="bu test root oldugunda sozlulugu calistirilir"
 )
 
 

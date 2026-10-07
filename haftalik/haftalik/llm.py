@@ -12,7 +12,7 @@ from . import _corclient
 from ._corclient import LLMClient, LLMError, konak_kontrol  # noqa: F401
 
 DEFAULT_BASE_URL = os.environ.get("COR_BASE_URL", "http://127.0.0.1:8787")
-DEFAULT_MODEL = os.environ.get("COR_MODEL", "stealth/space-bunny-alpha")
+DEFAULT_MODEL = os.environ.get("COR_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
 
 MAX_TOKENS = 2000
 

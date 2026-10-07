@@ -64,12 +64,12 @@ farkı hash'i bozmaz.
 
 | Proje | `DEFAULT_MODEL` | `MAX_TOKENS` | timeout | konak denetimi | başlat ipucu |
 |---|---|---|---|---|---|
-| atlas | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor start` |
-| harita | `stealth/space-bunny-alpha` | 2000 | 60 | loopback + `0.0.0.0` | `cor start` |
+| atlas | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback | `cor start` |
+| harita | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback + `0.0.0.0` | `cor start` |
 | orkestra | `nvidia/nemotron-3-ultra-550b-a55b:free` | 4000 | 120 | loopback | `cor start` |
-| danis | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor` |
-| anlat | `stealth/space-bunny-alpha` | 8000 | 300 | loopback | `cor claude` |
-| haftalik | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor start` |
+| danis | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback | `cor` |
+| anlat | `nvidia/nemotron-3-ultra-550b-a55b:free` | 8000 | 300 | loopback | `cor claude` |
+| haftalik | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback | `cor start` |
 
 Loopback denetimi, kullanıcı verisi yanlışlıkla başka bir makineye gitmesin diye cor adresi
 `127.0.0.1`/`localhost`/`::1` dışındaysa istemciyi kurarken hata verir. `COR_BASE_URL` ve

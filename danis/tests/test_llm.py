@@ -30,9 +30,9 @@ from danis.llm import (
 def test_defaults_match_contract() -> None:
     client = CorLLMClient()
     assert client.base_url == "http://127.0.0.1:8787"
-    assert client.model == "stealth/space-bunny-alpha"
+    assert client.model == "nvidia/nemotron-3-ultra-550b-a55b:free"
     assert DEFAULT_BASE_URL == "http://127.0.0.1:8787"
-    assert DEFAULT_MODEL == "stealth/space-bunny-alpha"
+    assert DEFAULT_MODEL == "nvidia/nemotron-3-ultra-550b-a55b:free"
 
 
 def test_trailing_slash_is_stripped() -> None:

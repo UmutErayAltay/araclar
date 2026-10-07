@@ -1,4 +1,4 @@
-# SENKRON corclient surum=0.1.0 sha256=0477990db647929cf353a2103f0cc56ead5c5eb464f9fe94fce28475e1f77ba9
+# SENKRON corclient surum=0.1.0 sha256=52534887c6c2e78feb5e31c9e3edafc7ca0028276518bd86fb2cc1fede3c74f2
 """Yerel cor proxy'sine konuşan LLM istemcisinin TEK kaynağı.
 
 Bu modül, daha önce `atlas`, `harita`, `orkestra`, `danis` ve `ne-izlesem`
@@ -52,7 +52,7 @@ __all__ = [
 DEFAULT_BASE_URL = os.environ.get("COR_BASE_URL", "http://127.0.0.1:8787")
 
 #: Varsayılan model. Tüketici repolar kendi varsayılanlarını kurucuya geçirir.
-DEFAULT_MODEL = os.environ.get("COR_MODEL", "stealth/space-bunny-alpha")
+DEFAULT_MODEL = os.environ.get("COR_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
 
 #: Bağlanılabilecek konak adları. cor YERELDİR: dışarıya çıkmak bu modülün işi
 #: değildir, bu yüzden loopback dışı adresler reddedilir.

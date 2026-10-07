@@ -28,7 +28,7 @@ Seçenekler:
 | `--kok DIZIN` | Altındaki repoları keşfet (çoklu verilebilir; derinlik 1-2) |
 | `--paralel N` | Paralel alt süreç sayısı, **1..8** (varsayılan 4) |
 | `--cikti DIZIN` | Rapor dizini (varsayılan `./filo-ciktilari/<zaman-damgasi>/`) |
-| `--model M` | Model (varsayılan `$COR_MODEL`, yoksa `stealth/space-bunny-alpha`) |
+| `--model M` | Model (varsayılan `$COR_MODEL`, yoksa `nvidia/nemotron-3-ultra-550b-a55b:free`) |
 | `--duzenle` | Yazma/araç çalıştırma yetkisi ver (varsayılan **salt okunur**) |
 | `--zaman-asimi SN` | Repo başına zaman aşımı (varsayılan 900) |
 | `--cor AD` | `cor` komutu (varsayılan `cor`) |

@@ -56,7 +56,7 @@ oku, aynı yapıyı kopyala/uyarla): stdlib `urllib`, `POST {base_url}/v1/messag
 Anthropic uyumlu istek, yalnız HTTP 5xx'te retry, `LLMClient` Protocol'ü ile
 test'te sahte istemci enjeksiyonu, boş yanıt `LLMError`. Ortam değişkenleri:
 `COR_BASE_URL` (varsayılan `http://127.0.0.1:8787`), `COR_MODEL` (varsayılan
-`stealth/space-bunny-alpha`).
+`nvidia/nemotron-3-ultra-550b-a55b:free`).
 
 ## `danis/hata_analiz.py`
 

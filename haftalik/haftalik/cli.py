@@ -123,7 +123,7 @@ def _parser() -> argparse.ArgumentParser:
     u.add_argument("--cikti", default=None, metavar="DOSYA.md",
                    help="ozeti bu dosyaya yaz (dosya varsa UZERINE yazilmaz)")
     u.add_argument("--model", default=None,
-                   help="cor modeli (varsayilan: COR_MODEL ya da stealth/space-bunny-alpha)")
+                   help="cor modeli (varsayilan: COR_MODEL ya da nvidia/nemotron-3-ultra-550b-a55b:free)")
     u.add_argument("--cor-url", default=None,
                    help="cor adresi (varsayilan: COR_BASE_URL ya da http://127.0.0.1:8787)")
     u.add_argument("--sadece-topla", action="store_true",

@@ -23,7 +23,7 @@ from generator._corclient import LLMClient  # noqa: F401
 from generator.scanner import RepoScan
 
 DEFAULT_BASE_URL = "http://127.0.0.1:8787"
-DEFAULT_MODEL = "stealth/space-bunny-alpha"
+DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
 MAX_TOKENS = 8000
 

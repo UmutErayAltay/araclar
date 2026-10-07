@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 #: Varsayilan model; COR_MODEL ortam degiskeni varsa o gecerlidir.
-VARSAYILAN_MODEL = os.environ.get("COR_MODEL", "stealth/space-bunny-alpha")
+VARSAYILAN_MODEL = os.environ.get("COR_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
 
 #: Varsayilan cor komutu.
 VARSAYILAN_COR = "cor"

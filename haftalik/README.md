@@ -42,7 +42,7 @@ cor start                   # http://127.0.0.1:8787
 ```bash
 # Tüm repoları tara ve haftalık özet üret (stdout'a yazar)
 haftalik uret --kok ~/Documents/projeler
-haftalik uret --kok ~/projeler --kok ~/is --gun 14 --model stealth/space-bunny-alpha
+haftalik uret --kok ~/projeler --kok ~/is --gun 14 --model nvidia/nemotron-3-ultra-550b-a55b:free
 
 # LLM'e hiç gitmeden toplanan veriyi Markdown olarak bas (çevrimdışı)
 haftalik uret --kok ~/projeler --sadece-topla

@@ -31,7 +31,7 @@ Dışa açık adlar (hepsi `__all__`'da):
 ```python
 __surum__ = "0.1.0"
 DEFAULT_BASE_URL   # os.environ.get("COR_BASE_URL", "http://127.0.0.1:8787")
-DEFAULT_MODEL      # os.environ.get("COR_MODEL", "stealth/space-bunny-alpha")
+DEFAULT_MODEL      # os.environ.get("COR_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
 IZINLI_KONAKLAR = frozenset({"127.0.0.1", "localhost", "::1", "[::1]"})
 
 class LLMError(RuntimeError):
@@ -112,11 +112,11 @@ sınıfıdır ve eski varsayılanları verir:
 
 | Repo | DEFAULT_MODEL | MAX_TOKENS | timeout | konak denetimi | başlat ipucu |
 |---|---|---|---|---|---|
-| atlas | `stealth/space-bunny-alpha` | 2000 | 60 | loopback | `cor start` |
-| harita | `stealth/space-bunny-alpha` | 2000 | 60 | loopback **+ `0.0.0.0`** | `cor start` |
+| atlas | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback | `cor start` |
+| harita | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback **+ `0.0.0.0`** | `cor start` |
 | orkestra | `nvidia/nemotron-3-ultra-550b-a55b:free` | 4000 | 120 | loopback | `cor start` |
-| danis | `stealth/space-bunny-alpha` | 2000 | 60 | loopback (8. bölümde sıkılaştırıldı) | `cor` |
-| ne-izlesem | `stealth/space-bunny-alpha` | 2000 | 60 | loopback (8. bölümde sıkılaştırıldı) | `cor claude` |
+| danis | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback (8. bölümde sıkılaştırıldı) | `cor` |
+| ne-izlesem | `nvidia/nemotron-3-ultra-550b-a55b:free` | 2000 | 60 | loopback (8. bölümde sıkılaştırıldı) | `cor claude` |
 
 `DEFAULT_MODEL` her repoda `os.environ.get("COR_MODEL", <yukarıdaki>)`; `DEFAULT_BASE_URL`
 `os.environ.get("COR_BASE_URL", "http://127.0.0.1:8787")`.

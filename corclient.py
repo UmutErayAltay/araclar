@@ -51,7 +51,7 @@ __all__ = [
 DEFAULT_BASE_URL = os.environ.get("COR_BASE_URL", "http://127.0.0.1:8787")
 
 #: Varsayılan model. Tüketici repolar kendi varsayılanlarını kurucuya geçirir.
-DEFAULT_MODEL = os.environ.get("COR_MODEL", "stealth/space-bunny-alpha")
+DEFAULT_MODEL = os.environ.get("COR_MODEL", "nvidia/nemotron-3-ultra-550b-a55b:free")
 
 #: Bağlanılabilecek konak adları. cor YERELDİR: dışarıya çıkmak bu modülün işi
 #: değildir, bu yüzden loopback dışı adresler reddedilir.

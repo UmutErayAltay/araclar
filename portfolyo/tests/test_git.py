@@ -57,7 +57,7 @@ def _git_commit(repo: Path, mesaj: str, tarih: str | None = None) -> None:
 
 def _git_commit_dosya(repo: Path, dosya: str, icerik: str, mesaj: str, tarih: str | None = None) -> None:
     """Dosya ekleyip commit et."""
-    (repo / dosya).write_text(icerik)
+    (repo / dosya).write_text(icerik, encoding="utf-8")
     subprocess.run(
         ["git", "add", dosya], cwd=repo, check=True, capture_output=True
     )
@@ -191,7 +191,7 @@ class TestRepoVerisi:
         _git_init(tmp_path)
         # README'ye benzersiz işaret koy
         readme_yol = tmp_path / "README.md"
-        readme_yol.write_text("BENZERSIZ_ISMET_12345_OKUNMAMALI")
+        readme_yol.write_text("BENZERSIZ_ISMET_12345_OKUNMAMALI", encoding="utf-8")
         _git_commit(tmp_path, "c1")
         bugun = date.today()
         sonuc = repo_verisi(tmp_path, bugun, readme=False)
@@ -201,7 +201,7 @@ class TestRepoVerisi:
     def test_readme_true_kok_readme_md(self, tmp_path: Path):
         """readme=True: yalnız kök README.md okunur."""
         _git_init(tmp_path)
-        (tmp_path / "README.md").write_text("# Başlık\n\nBu proje, anlamlı bir ilk paragrafın nasıl çıkarıldığını gösterir.")
+        (tmp_path / "README.md").write_text("# Başlık\n\nBu proje, anlamlı bir ilk paragrafın nasıl çıkarıldığını gösterir.", encoding="utf-8")
         _git_commit(tmp_path, "c1")
         bugun = date.today()
         sonuc = repo_verisi(tmp_path, bugun, readme=True)
@@ -212,8 +212,11 @@ class TestRepoVerisi:
         """README.md symlink ise atlanır."""
         _git_init(tmp_path)
         hedef = tmp_path / "HEDEF.md"
-        hedef.write_text("Hedef içerik")
-        (tmp_path / "README.md").symlink_to(hedef)
+        hedef.write_text("Hedef içerik", encoding="utf-8")
+        try:
+            (tmp_path / "README.md").symlink_to(hedef)
+        except OSError:
+            pytest.skip("symlink yetkisi yok (Windows)")
         _git_commit(tmp_path, "c1")
         bugun = date.today()
         sonuc = repo_verisi(tmp_path, bugun, readme=True)
@@ -223,7 +226,7 @@ class TestRepoVerisi:
         """README.md ≥200KB ise atlanır."""
         _git_init(tmp_path)
         buyuk = "x" * (200 * 1024)
-        (tmp_path / "README.md").write_text(buyuk)
+        (tmp_path / "README.md").write_text(buyuk, encoding="utf-8")
         _git_commit(tmp_path, "c1")
         bugun = date.today()
         sonuc = repo_verisi(tmp_path, bugun, readme=True)
@@ -245,7 +248,7 @@ kod = "blok atlanmalı"
 Anlamlı [paragraf](https://ornek.com) burada ve yeterince uzun bir cümle.
 
 Diğer satır."""
-        (tmp_path / "README.md").write_text(icerik)
+        (tmp_path / "README.md").write_text(icerik, encoding="utf-8")
         _git_commit(tmp_path, "c1")
         bugun = date.today()
         sonuc = repo_verisi(tmp_path, bugun, readme=True)
@@ -262,7 +265,7 @@ Diğer satır."""
         """240 karakterde '…' ile kes."""
         _git_init(tmp_path)
         uzun = "a " * 200  # ~400 karakter
-        (tmp_path / "README.md").write_text(uzun)
+        (tmp_path / "README.md").write_text(uzun, encoding="utf-8")
         _git_commit(tmp_path, "c1")
         bugun = date.today()
         sonuc = repo_verisi(tmp_path, bugun, readme=True)
@@ -279,7 +282,7 @@ Diğer satır."""
 
 ```kod```
 """
-        (tmp_path / "README.md").write_text(icerik)
+        (tmp_path / "README.md").write_text(icerik, encoding="utf-8")
         _git_commit(tmp_path, "c1")
         bugun = date.today()
         sonuc = repo_verisi(tmp_path, bugun, readme=True)
@@ -290,7 +293,7 @@ Diğer satır."""
         _git_init(tmp_path)
         # .git'i boz: HEAD geçersizse git "geçerli bir depo değil" der (config bozukluğu
         # git için ölümcül değildir, boş repo gibi davranır)
-        (tmp_path / ".git" / "HEAD").write_text("bozuk")
+        (tmp_path / ".git" / "HEAD").write_text("bozuk", encoding="utf-8")
         bugun = date.today()
         sonuc = repo_verisi(tmp_path, bugun)
         assert sonuc is None
@@ -314,7 +317,7 @@ class TestReadmeOzetKalite:
         (tmp_path / "README.md").write_text(
             "# Proje\n\n[English](README.en.md) · *Türkçe*\n\n"
             "> **Bu araç**, `yerel` bir proxy olarak çalışır ve verileri makineden çıkarmaz.\n"
-        )
+        , encoding="utf-8")
         _git_commit(tmp_path, "c1")
         sonuc = repo_verisi(tmp_path, date.today(), readme=True)
         assert sonuc is not None

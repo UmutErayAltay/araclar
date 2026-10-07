@@ -98,7 +98,8 @@ def http_server_tanimi(ad: str, port: int, *, bekle_sn: float = 3.0, dizin: Path
     """
     ayarlar: dict = {
         "port": port,
-        "baslat": [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"],
+        # -u: log dosyasina yonlendirilince stdout tamponlanir; acilis satiri hemen yazilsin.
+        "baslat": [sys.executable, "-u", "-m", "http.server", str(port), "--bind", "127.0.0.1"],
         "bekle_sn": bekle_sn,
     }
     if dizin is not None:

@@ -119,8 +119,13 @@ def test_baslat_pid_ve_log_dosyasi(tmp_path, temiz_surecler):
         assert sonuc["sonuc"] == surec_modul.CALISTI, sonuc
         assert (tmp_path / "durum" / "pid" / "web.pid").is_file()
         assert (tmp_path / "durum" / "log" / "web.log").is_file()
-        # http.server istege bagli bilgi yazar; log dosyasi BOS olmamali.
-        assert (tmp_path / "durum" / "log" / "web.log").stat().st_size > 0
+        # http.server acilis satirini yazar; port acilir acilmaz baslat() doner,
+        # satir birkac ms sonra dusebilir -- log dosyasi kisa sure icinde BOS olmamali.
+        log = tmp_path / "durum" / "log" / "web.log"
+        bitis = time.monotonic() + 3.0
+        while log.stat().st_size == 0 and time.monotonic() < bitis:
+            time.sleep(0.05)
+        assert log.stat().st_size > 0
     finally:
         temiz_surecler(sonuc.get("pid"))
         surec_modul.durdur(servis)

@@ -211,15 +211,16 @@ def _onizleme_denetle(kaynak: Kaynak, liste: list[Degisiklik]) -> None:
     yazilamaz = [k for k in kapsamlar if not kaynak.yazilabilir(k)]
     if yazilamaz:
         raise _Hata(403, "yazılamayan kapsam: " + ", ".join(yazilamaz))
-    mevcut = {k: kaynak.oku(k) for k in kapsamlar}
-    cakisan = [f"{d.kapsam}/{d.ad}" for d in liste if mevcut[d.kapsam].get(d.ad) != d.eski]
-    if cakisan:
-        raise _Hata(409, "değişken siz düzenlerken başka yerden değişti: " + ", ".join(cakisan))
+    goruntu = {k: kaynak.oku(k) for k in kapsamlar}
+    try:
+        cakisma_denetle(kaynak, liste, goruntu)
+    except CakismaHatasi as exc:
+        raise _Hata(409, str(exc)) from exc
 
 
 def _uygula_yaniti(kaynak: Kaynak, liste: list[Degisiklik]) -> Response:
     try:
-        yedek = uygula(kaynak, liste)
+        sonuc = uygula_ayrintili(kaynak, liste)
     except CakismaHatasi as exc:
         return _hata_yaniti(409, str(exc))
     except YetkiHatasi as exc:
@@ -227,10 +228,11 @@ def _uygula_yaniti(kaynak: Kaynak, liste: list[Degisiklik]) -> Response:
     except UygulamaHatasi as exc:
         return _hata_yaniti(500, str(exc), geri_yuklendi=exc.geri_yuklendi)
     except YedekHatasi as exc:
+        # Yalniz yedek alinamadiysa (yazmadan once) buraya gelir: hicbir sey yazilmadi.
         return _hata_yaniti(500, f"yedek alınamadı, hiçbir şey yazılmadı: {exc}")
     except ValueError as exc:
         return _hata_yaniti(400, str(exc))
-    return jsonify({"yedek": yedek, "uygulanan": len(liste)})
+    return jsonify({"yedek": sonuc.yedek_id, "uygulanan": len(liste), "yayinlandi": sonuc.yayinlandi})
 
 
 def _durum_verisi(kaynak: Kaynak, dizin_var: Callable[[str], bool],
@@ -269,6 +271,7 @@ def uygulama_olustur(kaynak: Kaynak, *,
         static_folder=os.path.join(kok, "static"),
     )
     uygulama.json.ensure_ascii = False  # Turkce karakterler JSON'da kacissiz
+    uygulama.config["MAX_CONTENT_LENGTH"] = MAKS_ISTEK
 
     dizin_denetle = dizin_var or os.path.isdir
     dosya_denetle = dosya_var or os.path.isfile
@@ -299,6 +302,10 @@ def uygulama_olustur(kaynak: Kaynak, *,
     @uygulama.errorhandler(KaynakHatasi)
     def _kaynak_hatasi(hata: KaynakHatasi) -> Response:
         return _hata_yaniti(500, f"ortam kaynağı okunamadı veya yazılamadı: {hata}")
+
+    @uygulama.errorhandler(413)
+    def _istek_cok_buyuk(_hata: Exception) -> Response:
+        return _metin_yaniti("istek çok büyük", 413)
 
     @uygulama.errorhandler(405)
     def _yalniz_belirli_yontem(_hata: Exception) -> Response:
@@ -351,13 +358,13 @@ def uygulama_olustur(kaynak: Kaynak, *,
 
     @uygulama.post("/api/onizle")
     def api_onizle() -> Response:
-        liste = _degisiklikleri_coz(request.get_json(silent=True))
+        liste = _degisiklikleri_coz(request.get_json(silent=True), kaynak)
         _onizleme_denetle(kaynak, liste)
         return jsonify({"fark": _fark_satirlari(liste, kaynak.ayirici)})
 
     @uygulama.post("/api/uygula")
     def api_uygula() -> Response:
-        liste = _degisiklikleri_coz(request.get_json(silent=True))
+        liste = _degisiklikleri_coz(request.get_json(silent=True), kaynak)
         return _uygula_yaniti(kaynak, liste)
 
     @uygulama.post("/api/geri-al/<yedek_id>")

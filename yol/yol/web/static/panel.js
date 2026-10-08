@@ -19,7 +19,9 @@
     "bos": { metin: "boş", sinif: "rozet-hata" },
     "tekrar": { metin: "tekrar", sinif: "rozet-hata" },
     "sistemde-var": { metin: "sistemde var", sinif: "rozet-hata" },
-    "goreli": { metin: "göreli", sinif: "rozet-uyari" }
+    "goreli": { metin: "göreli", sinif: "rozet-uyari" },
+    "cozumlenemedi": { metin: "çözümlenemedi (nötr)", sinif: "rozet-notr" },
+    "kontrol-edilemedi": { metin: "kontrol edilemedi (nötr)", sinif: "rozet-notr" }
   };
   var EYLEM = {
     "ekle": { metin: "yeni", sinif: "rozet-basari" },
@@ -706,7 +708,10 @@
       hata.textContent = "Seçilen kapsam yazılabilir değil.";
       return;
     }
-    if (S.degiskenler.some(function (d) { return d.kapsam === kapsam && d.ad === ad; })) {
+    var adKarsilastir = windowsMu() ? ad.toLowerCase() : ad;
+    if (S.degiskenler.some(function (d) {
+      return d.kapsam === kapsam && (windowsMu() ? d.ad.toLowerCase() : d.ad) === adKarsilastir;
+    })) {
       hata.textContent = "Bu ad zaten var. Değiştirmek için listedeki düzenle düğmesini kullanın.";
       return;
     }
@@ -854,8 +859,10 @@
     var govde = S.onizleme;
     if (!govde) { return; }
     istek("/api/uygula", govde).then(function (veri) {
-      bildir(veri.uygulanan + " değişiklik uygulandı. Yedek: " + veri.yedek +
-             ". Yeni açılan terminaller değişikliği görür; açık olanları yeniden başlatın.");
+      var not = veri.yayinlandi === false
+        ? " Değişiklik yazıldı ama açık programlara duyurulamadı; yeni açılan terminallerde geçerli olur."
+        : " Yeni açılan terminaller değişikliği görür; açık olanları yeniden başlatın.";
+      bildir(veri.uygulanan + " değişiklik uygulandı. Yedek: " + veri.yedek + "." + not, veri.yayinlandi === false);
       yukle();
     }).catch(function (err) {
       if (err.kod === 409) {

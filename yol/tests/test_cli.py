@@ -141,6 +141,14 @@ def test_ekle_kaldir_ve_tekrar_reddi(capsys, bin_dizinleri, posix_kaynak):
     assert kod == 1 and "bulunamadi" in err
 
 
+def test_cozumlenemeyen_degisken_sorunlu_sayilmaz(capsys, posix_kaynak):
+    # Regresyon: acilamayan degisken "yok" diye sorunlu sayiliyordu (denetle cikis kodu 1).
+    kaynak = posix_kaynak(sistem=None, kullanici="/${COZULMEYEN_X}/bin")
+    kod, out, _ = _calistir(capsys, "--kaynak", kaynak, "denetle")
+    assert kod == 0
+    assert "cozumlenemedi (notr)" in out
+
+
 def test_yedekler_ve_geri_al_roundtrip(capsys, bin_dizinleri, posix_kaynak):
     bin1, bin2, _ = bin_dizinleri
     kaynak = posix_kaynak(sistem=None, kullanici=str(bin1))

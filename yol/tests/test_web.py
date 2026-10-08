@@ -7,9 +7,9 @@ import re
 
 import pytest
 
-from yol.kaynak import DosyaKaynak, SurecKaynak
+from yol.kaynak import DosyaKaynak, KaynakHatasi, SurecKaynak
 from yol.web import uygulama_olustur
-from yol.yedek import yedekler
+from yol.yedek import YedekHatasi, yedekler
 
 GIZLI = "gizli-deger-7f3a9c-ASLA-GORUNMEMELI"
 YENI_GIZLI = "yeni-gizli-deger-42"
@@ -390,3 +390,92 @@ def test_dizin_var_yalnizca_bool(tmp_path, web_kaynak):
 
     assert _post_yetkili(istemci, csrf, "/api/dizin-var", {"yol": ""}).get_data(as_text=True).strip() == "false"
     assert _post_yetkili(istemci, csrf, "/api/dizin-var", {}).status_code == 400
+
+
+# ----------------------------------------------------- regresyonlar (degerlendirme bulgulari)
+
+class _YayinsizDosya(DosyaKaynak):
+    def yayinla(self):
+        raise KaynakHatasi("sahte yayin hatasi")
+
+
+def test_genisler_metin_olamaz_400(istemci, csrf, web_kaynak):
+    # Regresyon: "false" metni genisler=True sayiliyordu.
+    eski = web_kaynak.oku("kullanici")["Path"].sozluk()
+    kayit = {"kapsam": "kullanici", "ad": "Path", "eski": eski,
+             "yeni": {"metin": "C:\\X", "genisler": "true"}}
+    assert _post_yetkili(istemci, csrf, "/api/onizle", {"degisiklikler": [kayit]}).status_code == 400
+    assert _post_yetkili(istemci, csrf, "/api/uygula", {"degisiklikler": [kayit]}).status_code == 400
+
+
+def test_onizle_buyuk_kucuk_harf_yeni_ad_409(istemci, csrf, web_kaynak):
+    # Regresyon: "PATH" yeni ad, Windows'ta mevcut "Path" ile ayni degisken.
+    kayit = {"kapsam": "kullanici", "ad": "PATH", "eski": None,
+             "yeni": {"metin": "C:\\X", "genisler": False}}
+    yanit = _post_yetkili(istemci, csrf, "/api/onizle", {"degisiklikler": [kayit]})
+    assert yanit.status_code == 409
+    assert "PATH" not in web_kaynak.oku("kullanici")
+
+
+def test_onizle_url_kimligi_maskelenir(istemci, csrf):
+    kayit = {"kapsam": "kullanici", "ad": "CACHE_DIR", "eski": None,
+             "yeni": {"metin": "https://umut:cok-gizli-parola@sunucu/x", "genisler": False}}
+    yanit = _post_yetkili(istemci, csrf, "/api/onizle", {"degisiklikler": [kayit]})
+    assert yanit.status_code == 200
+    assert "cok-gizli-parola" not in yanit.get_data(as_text=True)
+    assert yanit.get_json()["fark"][0]["gizli"] is True
+
+
+def test_uygula_yayin_hatasi_yayinlandi_false(tmp_path, yol_dir):
+    yol = tmp_path / "ortam.json"
+    veri = {"ayirici": ";", "windows": True, "sistem": {},
+            "kullanici": {"EDITOR": {"metin": "code", "genisler": False}}}
+    yol.write_text(json.dumps(veri, ensure_ascii=False), encoding="utf-8")
+    app = uygulama_olustur(_YayinsizDosya(yol), dizin_var=lambda p: True, dosya_var=lambda p: False)
+    app.config["TESTING"] = True
+    istemci = app.test_client()
+    csrf_metin = istemci.get("/", base_url=HOST_URL).get_data(as_text=True)
+    csrf_jetonu = CSRF_RE.search(csrf_metin).group(1)
+    kayit = {"kapsam": "kullanici", "ad": "EDITOR", "eski": {"metin": "code", "genisler": False},
+             "yeni": {"metin": "vim", "genisler": False}}
+    with pytest.warns(UserWarning):
+        yanit = _post_yetkili(istemci, csrf_jetonu, "/api/uygula", {"degisiklikler": [kayit]})
+    assert yanit.status_code == 200
+    veri_yanit = yanit.get_json()
+    assert veri_yanit["yayinlandi"] is False
+    assert veri_yanit["uygulanan"] == 1
+
+
+def test_uygula_gunluk_hatasi_basarili_yanit_verir(istemci, csrf, web_kaynak, monkeypatch):
+    # Regresyon: yazmadan sonraki gunluk hatasi 500 "hicbir sey yazilmadi" donuyordu.
+    from yol import degisiklik as _dg
+
+    def bozuk_gunluk(_kayit):
+        raise YedekHatasi("sahte gunluk hatasi")
+
+    monkeypatch.setattr(_dg, "gunluk_ekle", bozuk_gunluk)
+    yeni_metin = web_kaynak.oku("kullanici")["Path"].metin.split(";")[0]
+    kayit = _kullanici_path_eski_yeni(web_kaynak, yeni_metin)
+    with pytest.warns(UserWarning):
+        yanit = _post_yetkili(istemci, csrf, "/api/uygula", {"degisiklikler": [kayit]})
+    assert yanit.status_code == 200
+    assert yanit.get_json()["yayinlandi"] is True
+    assert web_kaynak.oku("kullanici")["Path"].metin == yeni_metin
+
+
+def test_istek_govdesi_ust_siniri(istemci, csrf, uygulama):
+    assert uygulama.config["MAX_CONTENT_LENGTH"] == 1_000_000
+    govde = b"{" + b" " * 1_100_000 + b"}"
+    yanit = istemci.post("/api/onizle", data=govde, content_type="application/json",
+                         headers={"Origin": ORIGIN, "X-CSRF": csrf}, base_url=HOST_URL)
+    assert yanit.status_code == 413
+
+
+def test_panel_js_notr_rozet_ve_yayin_notu():
+    # Istemci kodu tarayicida calistirilmadigi icin metin denetimi: notr rozetler, yayin notu,
+    # buyuk/kucuk harfe duyarsiz ad denetimi.
+    from pathlib import Path
+    js = (Path(__file__).resolve().parent.parent / "yol" / "web" / "static" / "panel.js").read_text(encoding="utf-8")
+    assert "cozumlenemedi" in js and "kontrol-edilemedi" in js
+    assert "yayinlandi" in js and "açık programlara duyurulamadı" in js
+    assert "d.ad === ad" not in js

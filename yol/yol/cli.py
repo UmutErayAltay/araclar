@@ -21,13 +21,20 @@ from .degisiklik import (
     eylem_adi,
     geri_al_plani,
     path_farki,
-    uygula,
+    uygula_ayrintili,
 )
 from .kaynak import KULLANICI, Deger, Kaynak, KaynakHatasi, kaynak_sec
 from .yedek import YedekHatasi, yedekler
 
 WEB_HATA_MESAJI = "web paneli icin: pip install -e .[web]"
 _PYTHON_ADLARI = ("python", "python3", "py")
+# Girdi bulgu etiketleri (ASCII; notr olanlar sorunlu sayilmaz)
+_BULGU_ETIKETI = {
+    "cozumlenemedi": "cozumlenemedi (notr)",
+    "kontrol-edilemedi": "kontrol edilemedi (notr)",
+}
+_YAYIN_NOTU = ("uyari: degisiklik yazildi ama acik programlara duyurulamadi; "
+               "yeni acilan terminallerde gecerli olur")
 
 
 class _Reddedildi(RuntimeError):
@@ -79,8 +86,10 @@ def _uygula_ya_da_goster(degisiklikler: list[Degisiklik], kaynak: Kaynak, uygula
     if not uygula_mi:
         _yazdir("kuru calistirma: hicbir sey degismedi (uygulamak icin --uygula)")
         return 0
-    yedek = uygula(kaynak, degisiklikler)
-    _yazdir(f"uygulandi. yedek: {yedek}")
+    sonuc = uygula_ayrintili(kaynak, degisiklikler)
+    _yazdir(f"uygulandi. yedek: {sonuc.yedek_id}")
+    if not sonuc.yayinlandi:
+        print(_YAYIN_NOTU, file=sys.stderr)
     return 0
 
 
@@ -93,7 +102,8 @@ def _denetle(args: argparse.Namespace) -> int:
         _tablo(
             ["kapsam", "#", "girdi", "bulgu"],
             [[g["kapsam"], g["sira"] + 1, g["ham"] if g["ham"].strip() else "(bos)",
-              ", ".join(g["bulgular"]) or "-"] for g in rapor["girdiler"]],
+              ", ".join(_BULGU_ETIKETI.get(b, b) for b in g["bulgular"]) or "-"]
+             for g in rapor["girdiler"]],
         )
         _yazdir()
         _tablo(
@@ -215,8 +225,10 @@ def _geri_al(args: argparse.Namespace) -> int:
         _fark_yazdir(plan, kaynak.ayirici)
         _yazdir("kuru calistirma: hicbir sey degismedi (uygulamak icin --uygula)")
         return 0
-    yedek = uygula(kaynak, plan)
-    _yazdir(f"geri alindi. yeni yedek: {yedek}")
+    sonuc = uygula_ayrintili(kaynak, plan)
+    _yazdir(f"geri alindi. yeni yedek: {sonuc.yedek_id}")
+    if not sonuc.yayinlandi:
+        print(_YAYIN_NOTU, file=sys.stderr)
     return 0
 
 

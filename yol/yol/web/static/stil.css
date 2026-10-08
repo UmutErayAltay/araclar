@@ -282,6 +282,7 @@ h3 { margin: 0 0 6px; font-size: 14px; font-weight: 620; }
 .rozet-uyari { border-color: var(--uyari); color: var(--uyari); }
 .rozet-basari { border-color: var(--basari); color: var(--basari); }
 .rozet-vurgu { border-color: var(--vurgu); color: var(--vurgu); }
+.rozet-notr { border-style: dashed; border-color: var(--ikincil); color: var(--ikincil); }
 .rozet-kapsam { font-size: 12.5px; color: var(--ikincil); }
 
 /* ------------------------------------------------------------ dugmeler */

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
+import stat
 
 import pytest
 
@@ -97,3 +99,19 @@ def test_gunluk_zaman_ekler(yol_dir):
     kayit = json.loads(satirlar[-1])
     assert kayit["eylem"] == "ekle"
     assert "zaman" in kayit
+
+
+def test_kimlik_yalniz_ascii_rakam():
+    # Regresyon: \d Unicode rakamlarini da kabul ediyordu (ornek: Arapca-Hint rakami 2).
+    ornek = "20260101T000000000000Z"
+    assert ID_RE.fullmatch(ornek)
+    assert ID_RE.fullmatch("٢" + ornek[1:]) is None
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX dosya izinleri")
+def test_veri_klasoru_ve_gunluk_izinleri(yol_dir, dosya_kaynak):
+    yedek_al(dosya_kaynak, ["kullanici"])
+    gunluk_ekle({"eylem": "ekle", "ad": "Path"})
+    assert stat.S_IMODE(yol_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE((yol_dir / "yedek").stat().st_mode) == 0o700
+    assert stat.S_IMODE((yol_dir / "gunluk.jsonl").stat().st_mode) == 0o600

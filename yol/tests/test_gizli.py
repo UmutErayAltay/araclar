@@ -18,6 +18,23 @@ def test_gizli_olmayan_adlar(ad: str):
     assert not gizli_mi(ad)
 
 
+@pytest.mark.parametrize("ad", ["DATABASE_URL", "DB_DSN", "SQL_CONNECTION", "SESSION_ID", "AUTH_COOKIE",
+                                "APP_SIGNATURE", "BEARER_HEADER", "GITHUB_PAT", "OAUTH_SESSION"])
+def test_yeni_gizli_desenler(ad: str):
+    assert gizli_mi(ad)
+
+
+def test_url_kimligi_degerden_gizli_sayilir():
+    assert gizli_mi("CACHE_DIR", "https://umut:parola@sunucu/yol")
+    assert not gizli_mi("CACHE_DIR", "https://sunucu/yol")
+    assert not gizli_mi("CACHE_DIR", "C:\\Users\\umut")
+
+
+def test_pwd_degerden_de_muaf():
+    assert not gizli_mi("PWD", "https://umut:parola@sunucu")
+    assert not gizli_mi("OLDPWD", "https://umut:parola@sunucu")
+
+
 def test_maskele_bos_ve_uzunluk_sizdirmaz():
     assert maskele("") == ""
     assert maskele("x") == maskele("uzun-bir-deger-metni")

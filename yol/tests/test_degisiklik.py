@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from yol import degisiklik as _dg
 from yol.degisiklik import (
     CakismaHatasi,
     Degisiklik,
@@ -16,7 +17,7 @@ from yol.degisiklik import (
     uygula,
 )
 from yol.kaynak import Deger, DosyaKaynak, KaynakHatasi
-from yol.yedek import yedek_oku, yedekler
+from yol.yedek import YedekHatasi, yedek_oku, yedekler
 
 ESKI_PATH = Deger("C:\\Users\\umut\\bin;C:\\Tools", True)
 
@@ -202,3 +203,115 @@ def test_degisiklik_sozluk_roundtrip():
     assert Degisiklik.sozlukten(d.sozluk()) == d
     with pytest.raises(ValueError):
         Degisiklik.sozlukten({"kapsam": "kullanici"})
+
+
+class SayanKaynak(DosyaKaynak):
+    """Her kapsam okumasini sayar (anlik goruntunun tek okuma olmasini denetler)."""
+
+    def __init__(self, yol):
+        super().__init__(yol)
+        self.okumalar: list[str] = []
+
+    def oku(self, kapsam):
+        self.okumalar.append(kapsam)
+        return super().oku(kapsam)
+
+
+def test_windows_buyuk_kucuk_harf_yeni_ad_cakisir(yol_dir, dosya_kaynak):
+    # Regresyon (veri kaybi): "PATH" yeni ekleme, mevcut "Path"i sessizce ezip geri alinca sil("PATH") yapiyordu.
+    onceki = _kullanici(dosya_kaynak)
+    d = Degisiklik("kullanici", "PATH", None, Deger("C:\\X", False))
+    with pytest.raises(CakismaHatasi) as hata:
+        uygula(dosya_kaynak, [d])
+    assert "Path" in str(hata.value)
+    assert _kullanici(dosya_kaynak) == onceki
+    assert yedekler() == []
+
+
+def test_windows_buyuk_kucuk_harf_guncelleme_sakli_yazimi_kullanir(yol_dir, dosya_kaynak):
+    d = Degisiklik("kullanici", "path", ESKI_PATH, Deger("C:\\Yeni", True))
+    uygula(dosya_kaynak, [d])
+    kullanici = _kullanici(dosya_kaynak)
+    assert set(kullanici) == {"Path", "EDITOR"}
+    assert kullanici["Path"] == Deger("C:\\Yeni", True)
+
+
+def test_windows_ayni_partide_harf_farkli_ayni_ad_reddedilir(yol_dir, dosya_kaynak):
+    d1 = Degisiklik("kullanici", "Path", ESKI_PATH, Deger("C:\\A", True))
+    d2 = Degisiklik("kullanici", "PATH", ESKI_PATH, Deger("C:\\B", True))
+    with pytest.raises(ValueError):
+        uygula(dosya_kaynak, [d1, d2])
+    assert _kullanici(dosya_kaynak)["Path"] == ESKI_PATH
+
+
+def test_geri_alma_yedekteki_yazimi_ve_degeri_geri_yukler(yol_dir, dosya_kaynak):
+    kaynak = HataliKaynak(dosya_kaynak.yol, hata_cagrilari={2})
+    d1 = Degisiklik("kullanici", "path", ESKI_PATH, Deger("C:\\Yeni", True))
+    d2 = Degisiklik("kullanici", "EDITOR", Deger("code", False), Deger("vim", False))
+    with pytest.raises(UygulamaHatasi) as hata:
+        uygula(kaynak, [d1, d2])
+    assert hata.value.geri_yuklendi is True
+    kullanici = _kullanici(kaynak)
+    assert set(kullanici) == {"Path", "EDITOR"}
+    assert kullanici["Path"] == ESKI_PATH
+    assert kullanici["EDITOR"] == Deger("code", False)
+
+
+def test_geri_alma_yedekte_olmayan_adi_siler(yol_dir, dosya_kaynak):
+    kaynak = HataliKaynak(dosya_kaynak.yol, hata_cagrilari={2})
+    d1 = Degisiklik("kullanici", "YENI_AD", None, Deger("x", False))
+    d2 = Degisiklik("kullanici", "EDITOR", Deger("code", False), Deger("vim", False))
+    with pytest.raises(UygulamaHatasi) as hata:
+        uygula(kaynak, [d1, d2])
+    assert hata.value.geri_yuklendi is True
+    kullanici = _kullanici(kaynak)
+    assert "YENI_AD" not in kullanici
+    assert kullanici["Path"] == ESKI_PATH
+
+
+def test_kontrol_ve_yedek_ayni_goruntuyu_kullanir(yol_dir, dosya_kaynak):
+    # Regresyon: kontrol ve yedek ayri okuma yapiyordu; aradaki degisiklik kontrolu atlatabiliyordu.
+    kaynak = SayanKaynak(dosya_kaynak.yol)
+    d = Degisiklik("kullanici", "EDITOR", Deger("code", False), Deger("vim", False))
+    uygula(kaynak, [d])
+    assert kaynak.okumalar.count("kullanici") == 1
+
+
+def test_uygula_ayrintili_yayin_basarisiz_bayragi(yol_dir, dosya_kaynak):
+    # Regresyon: yayin hatasi sonucta gorunmuyordu.
+    kaynak = YayinsizKaynak(dosya_kaynak.yol)
+    d = Degisiklik("kullanici", "EDITOR", Deger("code", False), Deger("vim", False))
+    with pytest.warns(UserWarning):
+        sonuc = _dg.uygula_ayrintili(kaynak, [d])
+    assert sonuc.yayinlandi is False
+    assert sonuc.yedek_id
+    assert _kullanici(kaynak)["EDITOR"] == Deger("vim", False)
+
+
+def test_uygula_ayrintili_basarili_yayin(yol_dir, dosya_kaynak):
+    d = Degisiklik("kullanici", "EDITOR", Deger("code", False), Deger("vim", False))
+    sonuc = _dg.uygula_ayrintili(dosya_kaynak, [d])
+    assert sonuc.yayinlandi is True
+
+
+def test_gunluk_hatasi_yazmayi_geri_almaz_uyari_verir(yol_dir, dosya_kaynak, monkeypatch):
+    # Regresyon: yazmalar bittikten sonraki gunluk hatasi "hicbir sey yazilmadi" gibi raporlaniyordu.
+    def bozuk_gunluk(_kayit):
+        raise YedekHatasi("sahte gunluk hatasi")
+
+    monkeypatch.setattr(_dg, "gunluk_ekle", bozuk_gunluk)
+    d = Degisiklik("kullanici", "EDITOR", Deger("code", False), Deger("vim", False))
+    with pytest.warns(UserWarning):
+        yedek_id = uygula(dosya_kaynak, [d])
+    assert yedek_id
+    assert _kullanici(dosya_kaynak)["EDITOR"] == Deger("vim", False)
+
+
+def test_yedek_alinamazsa_hicbir_sey_yazilmaz(tmp_path, monkeypatch, dosya_kaynak):
+    engel = tmp_path / "engel"
+    engel.write_text("klasor degil", encoding="utf-8")
+    monkeypatch.setenv("YOL_DIR", str(engel))
+    d = Degisiklik("kullanici", "EDITOR", Deger("code", False), Deger("vim", False))
+    with pytest.raises(YedekHatasi):
+        uygula(dosya_kaynak, [d])
+    assert _kullanici(dosya_kaynak)["EDITOR"] == Deger("code", False)

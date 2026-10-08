@@ -65,7 +65,7 @@ def test_girdi_bulgulari_tum_turler():
         ["tekrar"],         # 2 c:\user\ (C:\User ile ayni)
         ["sistemde-var"],   # 3 C:\Sys sistemde zaten var
         ["sistemde-var", "yok"],  # 4 C:\Gone: sistemde var ama dizin degil
-        ["goreli", "yok"],  # 5 bin
+        ["goreli", "kontrol-edilemedi"],  # 5 bin (goreli: dogrulanamaz, yok sayilmaz)
         ["tekrar"],         # 6 C:\User
         [],                 # 7 %ROOT%\tools genisleyince var
     ]
@@ -152,8 +152,60 @@ def test_posix_ayirici_iki_nokta():
     girdiler = girdileri_analiz(
         {"kullanici": ham}, ":", {}, False, lambda p: anahtar(p, False) == "/a"
     )
-    assert _bulgu_kumeleri(girdiler) == [[], ["yok"], ["bos"], ["tekrar"], ["goreli", "yok"]]
-    assert temizlik_onerisi(ham, girdiler, ":") == "/a"  # rel: yok -> kaldirilir
+    assert _bulgu_kumeleri(girdiler) == [[], ["yok"], ["bos"], ["tekrar"], ["goreli", "kontrol-edilemedi"]]
+    # rel dogrulanamaz: "yok" degil, bu yuzden temizlik onerisine girmez
+    assert temizlik_onerisi(ham, girdiler, ":") == "/a:rel"
+
+
+def test_genislet_ic_ice_degiskenler_acilir():
+    # Regresyon: tek tur genisletme %ProgramFiles% kalintisi birakip girdiyi "yok" yapiyordu.
+    ortam = {"JAVA_HOME": "%ProgramFiles%\\Java\\jdk", "ProgramFiles": "C:\\Program Files"}
+    assert genislet("%JAVA_HOME%\\bin", ortam, True) == "C:\\Program Files\\Java\\jdk\\bin"
+
+
+def test_genislet_dongusel_degisken_sonlanir():
+    assert genislet("%A%", {"A": "%B%", "B": "%A%"}, True) in ("%A%", "%B%")
+
+
+def test_acilamayan_degisken_yok_degil_cozumlenemedi():
+    # Regresyon: genislemeyen %X% / $X girdisi "yok" sayilip temizlik onerisine giriyordu.
+    dirs = lambda p: False  # noqa: E731
+    ham = "C:\\%YOK_DEGISKEN%\\bin"
+    girdiler = girdileri_analiz({"kullanici": ham}, ";", WIN_ORTAM, True, dirs)
+    assert _bulgu_kumeleri(girdiler) == [["cozumlenemedi"]]
+    assert temizlik_onerisi(ham, girdiler, ";") is None
+    girdiler = girdileri_analiz({"kullanici": "/${YOK_X}/bin"}, ":", {}, False, dirs)
+    assert _bulgu_kumeleri(girdiler) == [["cozumlenemedi"]]
+
+
+def test_dogrulanamayan_yollar_yok_sayilmaz():
+    # Regresyon: UNC, kok surucusu olmayan ve goreli yollar "yok" bulgusu alip silinebiliyordu.
+    ham = "C:\\Var;D:\\Yok\\bin;\\\\srv\\pay\\bin;goreli\\bin"
+    girdiler = girdileri_analiz(
+        {"kullanici": ham}, ";", WIN_ORTAM, True, lambda p: False, lambda kok: kok != "D:\\"
+    )
+    assert _bulgu_kumeleri(girdiler) == [
+        ["yok"],
+        ["kontrol-edilemedi"],
+        ["kontrol-edilemedi"],
+        ["goreli", "kontrol-edilemedi"],
+    ]
+    assert temizlik_onerisi(ham, girdiler, ";") == "D:\\Yok\\bin;\\\\srv\\pay\\bin;goreli\\bin"
+
+
+def test_cift_tirnakli_girdi_tirnaksiz_denetlenir():
+    ham = '"C:\\Program Files\\Tool"'
+    girdiler = girdileri_analiz({"kullanici": ham}, ";", WIN_ORTAM, True,
+                                lambda p: p == "C:\\Program Files\\Tool")
+    assert _bulgu_kumeleri(girdiler) == [[]]
+    assert girdiler[0].genis == "C:\\Program Files\\Tool"
+
+
+def test_notr_bulgular_sorunlu_sayilmaz():
+    girdiler = girdileri_analiz(
+        {"kullanici": "C:\\%YOK%\\a;D:\\Yok\\b"}, ";", WIN_ORTAM, True, lambda p: False, lambda kok: kok != "D:\\"
+    )
+    assert ozet(girdiler, [], 10)["sorunlu"] == 0
 
 
 def test_ozet_sayilar_ve_uzunluk():

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from yol.kaynak import (
@@ -48,6 +50,20 @@ def test_dosya_yazma_hatasi_kaynak_hatasi(tmp_path):
     engel.write_text("x", encoding="utf-8")
     with pytest.raises(KaynakHatasi):
         DosyaKaynak(engel / "k.json").yaz(KULLANICI, "Path", Deger("a"))
+
+
+@pytest.mark.parametrize("genisler", ["true", "false", 1, 0, None])
+def test_deger_genisler_yalniz_gercek_bool(genisler):
+    # Regresyon: bool("false") True olup REG_EXPAND_SZ'e donusuyordu.
+    with pytest.raises(ValueError):
+        Deger.sozlukten({"metin": "x", "genisler": genisler})
+
+
+def test_dosya_genisler_metin_olarak_kaynak_hatasi(tmp_path):
+    yol = tmp_path / "ortam.json"
+    yol.write_text(json.dumps({"kullanici": {"A": {"metin": "x", "genisler": "true"}}}), encoding="utf-8")
+    with pytest.raises(KaynakHatasi):
+        DosyaKaynak(yol).oku("kullanici")
 
 
 def test_dosya_bilinmeyen_kapsam(tmp_path):

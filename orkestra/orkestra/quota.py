@@ -42,7 +42,7 @@ USTEL_KAYIT = 1000  # tek turda işlenecek en fazla satır (bellek sınırı)
 
 # Ekosistemin bilinen kuralı: paylaşımlı ücretsiz model, hesap geneli günlük kota.
 VARSAYILAN_LIMITLER: dict[str, int] = {
-    "nvidia/nemotron-3-ultra-550b-a55b:free": 50,
+    "nvidia/nemotron-3-ultra-550b-a55b:free": 1000,
 }
 
 KOTA_TOML = Path.home() / ".orkestra" / "kota.toml"

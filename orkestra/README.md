@@ -118,10 +118,10 @@ satırları atlar ve **sayar** (`N satır tanınmadı`) — asla uydurma değer 
 
 ```toml
 [limitler]
-"nvidia/nemotron-3-ultra-550b-a55b:free" = 50   # hesap-geneli günlük kota
+"nvidia/nemotron-3-ultra-550b-a55b:free" = 1000   # hesap-geneli günlük kota
 ```
 
-Dosya yoksa/bozuksa varsayılan kullanılır: `nvidia/nemotron-3-ultra-550b-a55b:free = 50`.
+Dosya yoksa/bozuksa varsayılan kullanılır: `nvidia/nemotron-3-ultra-550b-a55b:free = 1000`.
 Durum: yüzde = istek / limit; **≥ %80 `uyari`**, **≥ %100 `asildi`**, limiti olmayan model
 `limitsiz`. (Eşikler yüksekten düşüğe denenir; %100 `asildi` verir.)
 

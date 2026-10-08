@@ -123,7 +123,7 @@ def test_son_gunler_14_tane_bit_isikli():
 def test_varsayilan_limitler():
     limitler = quota.limitleri_yukle("/yok/olmayan/kota.toml")
     assert limitler.kaynak == "varsayilan"
-    assert limitler.limit("nvidia/nemotron-3-ultra-550b-a55b:free") == 50
+    assert limitler.limit("nvidia/nemotron-3-ultra-550b-a55b:free") == 1000
     assert limitler.limit("stealth/space-bunny-alpha") is None
 
 
@@ -145,7 +145,7 @@ def test_kota_toml_bozuk_varsayilana_duser(tmp_path):
     yol.write_text("bu = [gecersiz", encoding="utf-8")
     limitler = quota.limitleri_yukle(yol)
     assert limitler.kaynak == "varsayilan"
-    assert limitler.limit("nvidia/nemotron-3-ultra-550b-a55b:free") == 50
+    assert limitler.limit("nvidia/nemotron-3-ultra-550b-a55b:free") == 1000
 
 
 def test_kota_toml_limitler_bolumu_yok(tmp_path):

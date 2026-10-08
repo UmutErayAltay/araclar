@@ -1,0 +1,217 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<p class="bildirim" id="bildirim" role="status" aria-live="polite"></p>
+<p class="salt-okunur-serit" id="salt-okunur-serit" hidden></p>
+
+<div class="kart-izgara" aria-label="Özet">
+  <article class="kart">
+    <p class="kart-etiket">PATH girdisi</p>
+    <p class="kart-sayi" id="ozet-girdi">–</p>
+    <p class="kart-alt" id="ozet-girdi-alt">sistem ve kullanıcı</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Sorunlu girdi</p>
+    <p class="kart-sayi" id="ozet-sorunlu">–</p>
+    <p class="kart-alt">yok, boş, tekrar veya sistemde var</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Gölgelenen komut</p>
+    <p class="kart-sayi" id="ozet-golge">–</p>
+    <p class="kart-alt">aynı adla birden çok sürüm</p>
+  </article>
+  <article class="kart">
+    <p class="kart-etiket">Son yedek</p>
+    <p class="kart-sayi kart-sayi-kucuk" id="ozet-yedek">–</p>
+    <p class="kart-alt" id="ozet-yedek-alt">yedek yok</p>
+  </article>
+</div>
+
+<div class="sekmeler" role="tablist" aria-label="Bölümler">
+  <button type="button" role="tab" class="sekme" id="sekme-path" aria-controls="panel-path" aria-selected="true" tabindex="0" data-sekme="path">PATH</button>
+  <button type="button" role="tab" class="sekme" id="sekme-komut" aria-controls="panel-komut" aria-selected="false" tabindex="-1" data-sekme="komut">Komutlar</button>
+  <button type="button" role="tab" class="sekme" id="sekme-degisken" aria-controls="panel-degisken" aria-selected="false" tabindex="-1" data-sekme="degisken">Değişkenler</button>
+  <button type="button" role="tab" class="sekme" id="sekme-yedek" aria-controls="panel-yedek" aria-selected="false" tabindex="-1" data-sekme="yedek">Yedekler</button>
+</div>
+
+<!-- 1. PATH -->
+<section class="bolum sekme-icerik" role="tabpanel" id="panel-path" aria-labelledby="sekme-path">
+  <h2>PATH girdileri</h2>
+  <p class="aciklama">Etkin sıra Windows'taki gibidir: <strong>sistem önce</strong>, kullanıcı
+    sonra. Düzenlemeler yalnızca taslağa eklenir; <strong>Önizle</strong> ve uygulamadan önce
+    hiçbir şey değişmez.</p>
+  <p class="uyari-satir" id="path-kapsam-not" hidden></p>
+
+  <div class="liste-izgara">
+    <section class="liste-kutu" id="liste-sistem" aria-labelledby="baslik-sistem">
+      <h3 id="baslik-sistem">Sistem</h3>
+      <p class="liste-not" id="not-sistem"></p>
+      <ol class="yol-liste" id="yol-sistem"></ol>
+    </section>
+    <section class="liste-kutu" id="liste-kullanici" aria-labelledby="baslik-kullanici">
+      <h3 id="baslik-kullanici">Kullanıcı</h3>
+      <p class="liste-not" id="not-kullanici"></p>
+      <ol class="yol-liste" id="yol-kullanici"></ol>
+    </section>
+  </div>
+
+  <form class="ekle-formu" id="dizin-formu" novalidate>
+    <h3>Dizin ekle</h3>
+    <p class="aciklama">Kullanıcı PATH'ine eklenir. Dizin yoksa eklenmez.</p>
+    <div class="alan-satir">
+      <div class="alan">
+        <label for="dizin-girdi">Dizin yolu</label>
+        <input type="text" id="dizin-girdi" class="girdi" autocomplete="off" spellcheck="false"
+               placeholder="C:\Dev\bin" aria-describedby="dizin-hata">
+      </div>
+      <label class="onay-kutusu"><input type="checkbox" id="dizin-basa"> başa ekle</label>
+      <button type="submit" class="dugme dugme-birincil" id="dizin-ekle">Taslağa ekle</button>
+    </div>
+    <p class="alan-hata" id="dizin-hata" role="status"></p>
+  </form>
+
+  <div class="eylem-satir">
+    <button type="button" class="dugme" id="oneri-dugme" disabled>Önerilen temizliği taslağa ekle</button>
+    <p class="aciklama" id="oneri-not"></p>
+  </div>
+</section>
+
+<!-- 2. Komutlar -->
+<section class="bolum sekme-icerik" role="tabpanel" id="panel-komut" aria-labelledby="sekme-komut" hidden>
+  <h2>İzlenen komutlar</h2>
+  <p class="aciklama">Etkin PATH sırasında her komutun kazananı ve gölgedekiler. Gölgedekiler
+    aynı adla ikinci bir sürümün PATH'te daha sonra olduğunu gösterir.</p>
+  <div class="arama-satir">
+    <label for="komut-ara">Bir komut ara</label>
+    <input type="search" id="komut-ara" class="girdi" autocomplete="off" spellcheck="false" placeholder="python">
+  </div>
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <caption class="gizli">İzlenen komutlar, kazanan yol ve gölgedekiler</caption>
+      <thead>
+        <tr>
+          <th scope="col">Komut</th>
+          <th scope="col">Kazanan</th>
+          <th scope="col" class="sayi">Gölgede</th>
+          <th scope="col">Bulgu</th>
+        </tr>
+      </thead>
+      <tbody id="komut-govde"></tbody>
+    </table>
+  </div>
+  <div class="bos-durum" id="komut-bos" hidden>
+    <h3>Eşleşen komut yok</h3>
+    <p>Aramayla eşleşen izlenen komut bulunamadı.</p>
+  </div>
+</section>
+
+<!-- 3. Degiskenler -->
+<section class="bolum sekme-icerik" role="tabpanel" id="panel-degisken" aria-labelledby="sekme-degisken" hidden>
+  <h2>Ortam değişkenleri</h2>
+  <p class="aciklama">Gizli görünen değişkenlerin değeri maskelidir; <strong>göster</strong> ile tek
+    tek açılır. Düzenleme ve silme taslağa eklenir.</p>
+  <div class="filtre-satir">
+    <div class="alan">
+      <label for="degisken-kapsam">Kapsam</label>
+      <select id="degisken-kapsam" class="girdi">
+        <option value="">Tümü</option>
+        <option value="kullanici">Kullanıcı</option>
+        <option value="sistem">Sistem</option>
+        <option value="surec">Süreç</option>
+      </select>
+    </div>
+    <div class="alan">
+      <label for="degisken-ara">Ara</label>
+      <input type="search" id="degisken-ara" class="girdi" autocomplete="off" spellcheck="false" placeholder="ad veya değer">
+    </div>
+  </div>
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <caption class="gizli">Ortam değişkenleri</caption>
+      <thead>
+        <tr>
+          <th scope="col">Ad</th>
+          <th scope="col">Kapsam</th>
+          <th scope="col">Değer</th>
+          <th scope="col">Tip</th>
+          <th scope="col">İşlem</th>
+        </tr>
+      </thead>
+      <tbody id="degisken-govde"></tbody>
+    </table>
+  </div>
+  <div class="bos-durum" id="degisken-bos" hidden>
+    <h3>Değişken yok</h3>
+    <p>Bu filtrede gösterilecek ortam değişkeni bulunamadı.</p>
+  </div>
+
+  <form class="ekle-formu" id="degisken-formu" novalidate>
+    <h3>Yeni değişken</h3>
+    <div class="alan-satir">
+      <div class="alan">
+        <label for="yeni-kapsam">Kapsam</label>
+        <select id="yeni-kapsam" class="girdi"></select>
+      </div>
+      <div class="alan">
+        <label for="yeni-ad">Ad</label>
+        <input type="text" id="yeni-ad" class="girdi" autocomplete="off" spellcheck="false" placeholder="PROJE_DIZINI">
+      </div>
+    </div>
+    <div class="alan">
+      <label for="yeni-deger">Değer</label>
+      <textarea id="yeni-deger" class="girdi girdi-cok" spellcheck="false" rows="2"></textarea>
+    </div>
+    <label class="onay-kutusu"><input type="checkbox" id="yeni-genisler"> genişleyen metin (REG_EXPAND_SZ, %AD% kalır)</label>
+    <div class="alan-satir">
+      <button type="submit" class="dugme dugme-birincil" id="yeni-ekle">Taslağa ekle</button>
+    </div>
+    <p class="alan-hata" id="yeni-hata" role="status"></p>
+  </form>
+</section>
+
+<!-- 4. Yedekler -->
+<section class="bolum sekme-icerik" role="tabpanel" id="panel-yedek" aria-labelledby="sekme-yedek" hidden>
+  <h2>Yedekler</h2>
+  <p class="aciklama">Her uygulamadan önce ortamın tam görüntüsü alınır; en son 30 yedek tutulur.
+    Geri almadan önce farkı görebilirsiniz.</p>
+  <div class="tablo-sarayici">
+    <table class="tablo">
+      <caption class="gizli">Yedek listesi</caption>
+      <thead>
+        <tr>
+          <th scope="col">Zaman</th>
+          <th scope="col">Etkilenen kapsam</th>
+          <th scope="col">İşlem</th>
+        </tr>
+      </thead>
+      <tbody id="yedek-govde"></tbody>
+    </table>
+  </div>
+  <div class="bos-durum" id="yedek-bos" hidden>
+    <h3>Henüz yedek yok</h3>
+    <p>İlk uygulamada yedek otomatik alınır. Değişiklik yapmadan önce yedek oluşmaz.</p>
+  </div>
+  <section class="fark-paneli" id="yedek-fark" hidden aria-labelledby="yedek-fark-baslik">
+    <h3 id="yedek-fark-baslik" tabindex="-1"></h3>
+    <p class="aciklama" id="yedek-taslak-not" hidden>Taslakta bekleyen değişiklikler var. Geri almadan önce taslağı uygulayın ya da temizleyin.</p>
+    <div id="yedek-fark-govde"></div>
+    <div class="eylem-satir">
+      <button type="button" class="dugme dugme-tehlike" id="yedek-geri-al">Geri al</button>
+      <button type="button" class="dugme dugme-hayalet" id="yedek-vazgec">Vazgeç</button>
+    </div>
+  </section>
+</section>
+
+<!-- Onizleme (taslak cubugundan acilir) -->
+<section class="fark-paneli" id="onizleme" hidden aria-labelledby="onizleme-baslik">
+  <h2 id="onizleme-baslik" tabindex="-1">Önizleme</h2>
+  <p class="aciklama">Uygulanırsa önce yedek alınır. Yeni açılan terminaller değişikliği görür;
+    açık olanları yeniden başlatın.</p>
+  <div id="onizleme-govde"></div>
+  <div class="eylem-satir">
+    <button type="button" class="dugme dugme-tehlike" id="onizleme-uygula">Değişikliği uygula</button>
+    <button type="button" class="dugme dugme-hayalet" id="onizleme-kapat">Kapat</button>
+  </div>
+</section>
+
+{% endblock %}

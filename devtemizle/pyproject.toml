@@ -17,7 +17,10 @@ web = ["Flask>=3.0"]
 devtemizle = "devtemizle.cli:main"
 
 [tool.setuptools]
-packages = ["devtemizle"]
+packages = ["devtemizle", "devtemizle.web"]
+
+[tool.setuptools.package-data]
+"devtemizle.web" = ["sablonlar/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

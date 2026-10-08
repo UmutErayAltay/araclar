@@ -17,7 +17,10 @@ dev = ["pytest"]
 yol = "yol.cli:main"
 
 [tool.setuptools]
-packages = ["yol"]
+packages = ["yol", "yol.web"]
+
+[tool.setuptools.package-data]
+"yol.web" = ["sablonlar/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

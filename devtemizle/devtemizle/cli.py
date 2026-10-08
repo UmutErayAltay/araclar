@@ -12,9 +12,8 @@ import sys
 import time
 from pathlib import Path
 
-from . import rapor, tara as tara_modul
-from .kesif import KesifHatasi, repo_listesi, repo_meta_listesi
-from .onbellek import docker_boyutlari, onbellek_tara
+from . import is_akisi, rapor
+from .kesif import KesifHatasi, repo_listesi
 from .sil import sil, sil_idler
 from .turler import tur_adlari
 
@@ -22,40 +21,19 @@ KULLANIM_HATASI = 2
 
 
 def _tara(args: argparse.Namespace) -> int:
-    baslangic = time.time()
-    repolar = repo_listesi(
+    def ilerleme(adim: str, i: int, n: int) -> None:
+        if adim == "kesif":
+            print(f"{n} repo bulundu, taraniyor...", file=sys.stderr)
+
+    veri = is_akisi.tam_tarama(
         [Path(r) for r in args.root] or None,
-        Path(args.atlas_db) if args.atlas_db else None,
+        atlas_db=Path(args.atlas_db) if args.atlas_db else None,
         derinlik=args.derinlik,
         ev=args.ev,
+        onbellek=args.onbellek,
+        ilerleme=ilerleme,
     )
-    print(f"{len(repolar)} repo bulundu, taraniyor...", file=sys.stderr)
-
-    adaylar = tara_modul.tara(repolar)
-    meta_listesi = repo_meta_listesi(repolar)
-    onbellekler = onbellek_tara() if args.onbellek else []
-    docker = docker_boyutlari() if args.onbellek else {"var": False, "imaj": 0, "konteyner": 0, "volume": 0, "build_cache": 0}
-
-    # Repo meta -> dict
-    repolar_dict = [
-        {
-            "yol": str(m.yol),
-            "son_commit": m.son_commit,
-            "kirli": m.kirli,
-            "aday_boyut": sum(a.get("boyut", 0) for a in adaylar if a.get("repo") == str(m.yol)),
-        }
-        for m in meta_listesi
-    ]
-
-    veri = rapor.olustur(
-        adaylar=adaylar,
-        onbellekler=onbellekler,
-        docker=docker,
-        repolar=repolar_dict,
-        simdi=time.time(),
-        sure_sn=time.time() - baslangic,
-    )
-    yol = rapor.kaydet(veri)
+    yol = rapor._yol()  # tam_tarama raporu bu yola yazar (kaydet varsayilani)
     if args.json:
         print(json.dumps({**veri, "rapor": str(yol)}, ensure_ascii=False, indent=2))
     else:
@@ -140,16 +118,20 @@ def _sil(args: argparse.Namespace) -> int:
 
 
 def _web(args: argparse.Namespace) -> int:
-    """Web paneli baslatir (Dalga B icin placeholder)."""
+    """Yerel web panelini baslatir (Flask gerektirir: pip install -e .[web])."""
     try:
-        from .web import app  # type: ignore
+        from .web import calistir
     except ImportError as exc:
-        if "No module named" in str(exc) and "web" in str(exc):
+        if (exc.name or "").split(".")[0] in ("flask", "werkzeug", "jinja2"):
             print("Hata: Flask kurulu degil. Web paneli icin: pip install -e .[web]", file=sys.stderr)
             return KULLANIM_HATASI
         raise
-    print(f"Web paneli baslatiliyor: http://127.0.0.1:{args.port}")
-    app.run(host="127.0.0.1", port=args.port, debug=False)
+    calistir(
+        port=args.port,
+        ac=args.ac,
+        kokler=[Path(r) for r in args.root] or None,
+        ev=args.ev,
+    )
     return 0
 
 
@@ -205,7 +187,11 @@ def _parser() -> argparse.ArgumentParser:
     # web
     w = alt.add_parser("web", help="yerel web paneli baslat (Flask gerektirir)")
     w.add_argument("--port", type=int, default=8796, help="port (varsayilan: 8796)")
-    w.add_argument("--ac", action="store_true", help="tarayiciyi ac (henuz uygulanmadi)")
+    w.add_argument("--ac", action="store_true", help="tarayiciyi ac")
+    w.add_argument("--root", action="append", default=[], metavar="YOL",
+                   help="panelin tarayacagi kok (birden fazla verilebilir; verilmezse atlas DB)")
+    w.add_argument("--ev", action="store_true",
+                   help="ev dizininden tarama (derinlik 5, bazi dizinler hariç tutulur)")
     w.set_defaults(isle=_web)
 
     return p

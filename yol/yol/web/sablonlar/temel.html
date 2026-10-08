@@ -1,0 +1,39 @@
+{# Ortak iskelet. CSP satir ici stil/script yasakladigi icin sablonda <style>, style="" ve
+   satir ici <script> YOKTUR; her sey static/ altindaki dosyalardan gelir. #}
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="yol-csrf" content="{{ csrf_jetonu }}">
+<title>{% block baslik %}yol · PATH ve ortam değişkenleri{% endblock %}</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230072b2'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='stil.css') }}">
+<script src="{{ url_for('static', filename='panel.js') }}" defer></script>
+</head>
+<body>
+<a class="atla" href="#ana">İçeriğe geç</a>
+<header class="ust">
+  <div class="ust-sol">
+    <h1>yol</h1>
+    <p class="ozet">PATH ve ortam değişkenleri</p>
+  </div>
+  <p class="rozet rozet-kapsam" id="platform-rozet">Ortam bilgisi yükleniyor…</p>
+</header>
+<main id="ana">
+{% block icerik %}{% endblock %}
+</main>
+<div class="taslak-cubuk" id="taslak-cubuk" role="region" aria-label="Taslak değişiklikler">
+  <p class="taslak-sayi" id="taslak-sayi" role="status">Taslak boş</p>
+  <div class="taslak-eylem">
+    <button type="button" class="dugme dugme-hayalet" id="taslak-temizle" disabled>Taslağı temizle</button>
+    <button type="button" class="dugme dugme-birincil" id="taslak-onizle" disabled>Önizle</button>
+  </div>
+</div>
+<footer class="alt">
+  <p>Değişiklikler önce taslakta toplanır; <strong>Önizle</strong> ile görüp uygulamadan
+     önce yedek alınır. Değer içerikleri gizli değişkenlerde maskelidir. Panel yalnızca bu
+     bilgisayarda (127.0.0.1) çalışır.</p>
+</footer>
+</body>
+</html>

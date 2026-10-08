@@ -1,0 +1,149 @@
+{% extends "temel.html" %}
+{% block icerik %}
+
+<header class="ust">
+  <div class="ust-sol">
+    <h1>devtemizle</h1>
+    <p class="ozet">Geliştirici çöpünü bul, güvenle temizle</p>
+  </div>
+  <div class="ust-eylem">
+    <label class="onay-kutusu"><input type="checkbox" id="onbellek-tara"> Genel önbellekleri de tara</label>
+    <button type="button" class="dugme birincil" id="tara-dugme">Tara</button>
+  </div>
+</header>
+
+<main>
+
+<div class="ilerleme-satir" id="ilerleme-satir" hidden>
+  <progress id="ilerleme" max="1"></progress>
+  <span id="ilerleme-metin"></span>
+</div>
+
+<section class="kart-izgara" aria-label="Özet">
+  <article class="kart" id="kart-geri">
+    <p class="kart-etiket">Geri kazanılabilir</p>
+    <p class="kart-sayi">–</p>
+    <p class="kart-alt">güvenli adaylar</p>
+  </article>
+  <article class="kart" id="kart-dikkat">
+    <p class="kart-etiket">Dikkat gerektiren</p>
+    <p class="kart-sayi">–</p>
+    <p class="kart-alt">varsayılan olarak seçilmez</p>
+  </article>
+  <article class="kart" id="kart-repo">
+    <p class="kart-etiket">Taranan repo</p>
+    <p class="kart-sayi">–</p>
+    <p class="kart-alt">aday sayısı</p>
+  </article>
+  <article class="kart" id="kart-temizlenen">
+    <p class="kart-etiket">Şimdiye kadar temizlenen</p>
+    <p class="kart-sayi">–</p>
+    <p class="kart-alt">günlüğe göre</p>
+  </article>
+</section>
+
+<section class="bolum" id="dagilim-bolum" aria-labelledby="dagilim-baslik">
+  <h2 id="dagilim-baslik">Dağılım</h2>
+  <svg id="dagilim" class="dagilim" viewBox="0 0 1000 24" preserveAspectRatio="none" role="img" aria-labelledby="dagilim-baslik" focusable="false"></svg>
+  <ul class="lejant" id="lejant"></ul>
+</section>
+
+<section class="bolum" id="repolar" aria-labelledby="repolar-baslik">
+  <h2 id="repolar-baslik">Repolar</h2>
+  <p class="aciklama">Bir satır bir repo. Aday klasörleri görmek için repoya tıklayın.
+    Silinecek her öğeyi siz seçersiniz; panel hiçbir şeyi kendiliğinden seçmez.</p>
+
+  <div class="filtreler">
+    <div class="alan">
+      <label for="filtre-grup">Tür grubu</label>
+      <select id="filtre-grup">
+        <option value="">Tümü</option>
+        <option value="js">JavaScript</option>
+        <option value="python">Python</option>
+        <option value="rust">Rust</option>
+        <option value="jvm">JVM</option>
+        <option value="genel">Genel</option>
+      </select>
+    </div>
+    <div class="alan">
+      <label for="filtre-yas">En az yaş (gün)</label>
+      <input id="filtre-yas" type="number" min="0" step="1" value="0" inputmode="numeric">
+    </div>
+    <div class="alan">
+      <label for="filtre-ara">Repo ara</label>
+      <input id="filtre-ara" type="search" placeholder="repo adı" autocomplete="off">
+    </div>
+    <label class="onay-kutusu"><input type="checkbox" id="filtre-guvenli"> Yalnız güvenli</label>
+    <button type="button" class="dugme" id="hizli-sec">30 günden eski güvenlileri seç</button>
+  </div>
+
+  <div id="repo-listesi" class="repo-listesi"></div>
+
+  <div class="bos-durum" id="bos-durum" hidden>
+    <p id="bos-metin">Henüz tarama yok. Başlamak için Tara'ya bas.</p>
+    <button type="button" class="dugme birincil" id="bos-tara">Tara</button>
+  </div>
+</section>
+
+<section class="bolum" id="onbellekler" aria-labelledby="onbellek-baslik">
+  <h2 id="onbellek-baslik">Genel önbellekler</h2>
+  <p class="aciklama">Repo dışındaki, kullanıcı başına bir kez bulunan önbellekler.
+    "Yöntem" sütunu silme sırasında ne yapılacağını söyler.</p>
+  <div class="tablo-sarayici" id="onbellek-sarayici">
+    <table class="tablo">
+      <caption class="gizli">Genel önbellekler</caption>
+      <thead>
+        <tr>
+          <th scope="col"><span class="gizli">Seç</span></th>
+          <th scope="col">Ad</th>
+          <th scope="col">Yol</th>
+          <th scope="col" class="sayi">Boyut</th>
+          <th scope="col">Risk</th>
+          <th scope="col">Yöntem</th>
+        </tr>
+      </thead>
+      <tbody id="onbellek-govde"></tbody>
+    </table>
+  </div>
+  <p class="bos-satir" id="onbellek-bos" hidden>Bu tarama sırasında önbellek bulunmadı.</p>
+</section>
+
+<section class="bolum" id="docker" aria-labelledby="docker-baslik">
+  <h2 id="docker-baslik">Docker</h2>
+  <p class="aciklama">Panel bu komutu çalıştırmaz. Volume kaybı riski olduğu için komutu kendiniz terminalde çalıştırın.</p>
+  <dl class="docker-liste" id="docker-liste"></dl>
+  <p class="bos-satir" id="docker-bos" hidden>Docker bulunamadı ya da çalışmıyor. Bu bir hata değildir.</p>
+  <div class="komut-satir">
+    <code id="docker-komut">docker system prune</code>
+    <button type="button" class="dugme" id="komut-kopyala">Komutu kopyala</button>
+    <span class="ikincil" id="kopya-not" role="status"></span>
+  </div>
+</section>
+
+</main>
+
+<div class="alt-yuzey">
+  <section class="onay" id="onay" aria-labelledby="onay-baslik" hidden>
+    <h2 id="onay-baslik" tabindex="-1">Silinecek öğeler</h2>
+    <p class="aciklama" id="onay-ozet"></p>
+    <ul class="onay-liste" id="onay-liste"></ul>
+    <p class="uyari-satir" id="onay-dikkat" hidden>Dikkat işaretli öğeler var. Bunlar yeniden kurulamayabilir;
+      emin değilseniz vazgeçin.</p>
+    <div class="onay-eylem">
+      <button type="button" class="dugme tehlike" id="sil-onay"></button>
+      <button type="button" class="dugme" id="vazgec">Vazgeç</button>
+    </div>
+  </section>
+  <p class="durum" id="durum" role="status"></p>
+  <div class="secim-cubugu" id="secim-cubugu" hidden>
+    <p class="secim-metin" id="secim-ozet"></p>
+    <button type="button" class="dugme birincil" id="onizle">Önizle</button>
+  </div>
+</div>
+
+<footer class="alt">
+  <p>Silme varsayılan olarak yapılmaz: her silme önce önizlenir ve onaylanır. Repo içinde yalnızca
+    yeniden üretilebilir klasörler (ör. node_modules) aday olur. Bağlantılar izlenmez ve silinmez.</p>
+</footer>
+
+{% endblock %}

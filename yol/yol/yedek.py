@@ -14,7 +14,7 @@ from typing import Any
 from .kaynak import Deger, Kaynak, KaynakHatasi
 
 YEDEK_SAYISI = 30
-ID_RE = re.compile(r"^\d{8}T\d{6}\d{6}Z$")
+ID_RE = re.compile(r"^[0-9]{8}T[0-9]{6}[0-9]{6}Z$")  # \d degil: Unicode rakamlari kabul etmesin
 
 
 class YedekHatasi(RuntimeError):
@@ -65,20 +65,30 @@ def _dosyadan_oku(yol: Path) -> dict[str, Any] | None:
     return veri
 
 
-def yedek_al(kaynak: Kaynak, kapsamlar: Iterable[str]) -> str:
-    """Verilen kapsamlarin tam goruntusunu atomik olarak yazar; yedek kimligini doner."""
-    kapsam_listesi = list(dict.fromkeys(kapsamlar))
-    goruntu: dict[str, dict[str, dict]] = {}
-    for kapsam in kapsam_listesi:
+def _guvenli_klasor(klasor: Path) -> None:
+    """Veri klasoru yalniz sahibine acik (POSIX 0o700). Windows'ta mod etkisizdir."""
+    klasor.parent.mkdir(parents=True, exist_ok=True)
+    klasor.mkdir(mode=0o700, exist_ok=True)
+
+
+def goruntu_al(kaynak: Kaynak, kapsamlar: Iterable[str]) -> dict[str, dict[str, Deger]]:
+    """Verilen kapsamlarin o anki degerleri (bellekte). Yazma yok; yedek icin ve karsilastirma icin kullanilir."""
+    goruntu: dict[str, dict[str, Deger]] = {}
+    for kapsam in dict.fromkeys(kapsamlar):
         try:
-            goruntu[kapsam] = {ad: deger.sozluk() for ad, deger in kaynak.oku(kapsam).items()}
+            goruntu[kapsam] = dict(kaynak.oku(kapsam))
         except KaynakHatasi as exc:
             raise YedekHatasi(f"{kapsam} okunamadi, yedek alinmadi: {exc}") from exc
+    return goruntu
 
+
+def yedek_yaz(goruntu: dict[str, dict[str, Deger]], kaynak_ad: str) -> str:
+    """Verilen goruntuyu atomik olarak yedek dosyasina yazar; yedek kimligini doner."""
     klasor = _yedek_klasoru()
     zaman = _simdi()
     try:
-        klasor.mkdir(parents=True, exist_ok=True)
+        _guvenli_klasor(dizin())
+        _guvenli_klasor(klasor)
         while True:
             kimlik = zaman.strftime("%Y%m%dT%H%M%S") + f"{zaman.microsecond:06d}Z"
             if not (klasor / f"{kimlik}.json").exists():
@@ -87,14 +97,19 @@ def yedek_al(kaynak: Kaynak, kapsamlar: Iterable[str]) -> str:
         veri = {
             "id": kimlik,
             "zaman": zaman.isoformat(),
-            "kaynak": kaynak.ad,
-            "kapsamlar": goruntu,
+            "kaynak": kaynak_ad,
+            "kapsamlar": {k: {ad: d.sozluk() for ad, d in degerler.items()} for k, degerler in goruntu.items()},
         }
         _atomik_yaz(klasor / f"{kimlik}.json", veri)
         _buda(klasor)
     except OSError as exc:
         raise YedekHatasi(f"yedek yazilamadi: {exc}") from exc
     return kimlik
+
+
+def yedek_al(kaynak: Kaynak, kapsamlar: Iterable[str]) -> str:
+    """Verilen kapsamlarin tam goruntusunu atomik olarak yazar; yedek kimligini doner."""
+    return yedek_yaz(goruntu_al(kaynak, kapsamlar), kaynak.ad)
 
 
 def yedekler() -> list[dict]:
@@ -143,8 +158,10 @@ def gunluk_ekle(kayit: dict) -> None:
     satir = dict(kayit)
     satir["zaman"] = _simdi().isoformat()
     try:
-        klasor.mkdir(parents=True, exist_ok=True)
-        with (klasor / "gunluk.jsonl").open("a", encoding="utf-8") as akim:
+        _guvenli_klasor(klasor)
+        # Gunluk yalniz sahibi tarafindan okunur/yazilir (POSIX 0o600).
+        fd = os.open(klasor / "gunluk.jsonl", os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as akim:
             akim.write(json.dumps(satir, ensure_ascii=False) + "\n")
     except OSError as exc:
         raise YedekHatasi(f"gunluk yazilamadi: {exc}") from exc

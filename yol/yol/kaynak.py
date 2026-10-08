@@ -36,7 +36,11 @@ class Deger:
 
     @classmethod
     def sozlukten(cls, veri: dict) -> "Deger":
-        return cls(str(veri["metin"]), bool(veri.get("genisler", False)))
+        genisler = veri.get("genisler", False)
+        if not isinstance(genisler, bool):
+            # "false" metni ya da 0 sessizce True/False olmasin: yalniz gercek JSON boolean.
+            raise ValueError("genisler alani true ya da false olmali")
+        return cls(str(veri["metin"]), genisler)
 
 
 class Kaynak(Protocol):
@@ -189,7 +193,10 @@ class DosyaKaynak:
 
     def oku(self, kapsam: str) -> dict[str, Deger]:
         _kapsam_denetle(self, kapsam)
-        return {ad: Deger.sozlukten(d) for ad, d in self._yukle().get(kapsam, {}).items()}
+        try:
+            return {ad: Deger.sozlukten(d) for ad, d in self._yukle().get(kapsam, {}).items()}
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise KaynakHatasi(f"{self.yol} bicimi bozuk ({kapsam}): {exc}") from exc
 
     def yaz(self, kapsam: str, ad: str, deger: Deger) -> None:
         _kapsam_denetle(self, kapsam)

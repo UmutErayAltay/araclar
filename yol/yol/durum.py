@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from typing import Any
 
-from .analiz import IZLENEN, etkin_dizinler, girdileri_analiz, komut_raporu, ozet, temizlik_onerisi
+from .analiz import IZLENEN, etkin_dizinler, genislet, girdileri_analiz, komut_raporu, ozet, temizlik_onerisi
 from .gizli import gizli_mi, maskele
 from .kaynak import KULLANICI, Deger, Kaynak
 
@@ -43,12 +43,25 @@ def path_kaydi(degerler: Mapping[str, Deger]) -> tuple[str | None, Deger | None]
 
 
 def ortam_olustur(kaynak: Kaynak) -> dict[str, str]:
-    """Surec ortami + tum kapsam degerleri (kapsam degerleri kazanir; sonraki kapsam onceki uzerine yazar)."""
-    ortam: dict[str, str] = dict(os.environ)
+    """Surec ortami + tum kapsam degerleri (kapsam degerleri kazanir; sonraki kapsam onceki uzerine yazar).
+
+    REG_EXPAND_SZ (genisler) degerler acilir. Acma sirasinda bir ad once surec ortamindan,
+    yoksa kayittaki degerden alinir; boylece %ProgramFiles% gibi ic ice degiskenler cozulur.
+    """
+    surec: dict[str, str] = dict(os.environ)
+    kayitlar: dict[str, Deger] = {}
     for kapsam in kaynak.kapsamlar():
-        for ad, deger in kaynak.oku(kapsam).items():
-            ortam[ad] = deger.metin
+        kayitlar.update(kaynak.oku(kapsam))
+    acma: dict[str, str] = {ad: deger.metin for ad, deger in kayitlar.items()}
+    acma.update(surec)  # surec ortami once: ayni ad icin kayittan onceliklidir
+    ortam: dict[str, str] = dict(surec)
+    for ad, deger in kayitlar.items():
+        ortam[ad] = genislet(deger.metin, acma, kaynak.windows) if deger.genisler else deger.metin
     return ortam
+
+
+def _surucu_koku_var(kok: str) -> bool:
+    return os.path.isdir(kok)
 
 
 def _pathext(kaynak: Kaynak, ortam: Mapping[str, str], pathext: list[str] | None) -> list[str]:
@@ -63,9 +76,16 @@ def _pathext(kaynak: Kaynak, ortam: Mapping[str, str], pathext: list[str] | None
 def yol_baglami(kaynak: Kaynak, ortam: Mapping[str, str] | None = None,
                 dizin_var: Callable[[str], bool] = os.path.isdir,
                 dosya_var: Callable[[str], bool] = os.path.isfile,
-                pathext: list[str] | None = None) -> dict[str, Any]:
-    """PATH'in analiz ve arama icin hazirlanmis hali. Diger islemler bunu paylasir."""
+                pathext: list[str] | None = None,
+                kok_var: Callable[[str], bool] | None = None) -> dict[str, Any]:
+    """PATH'in analiz ve arama icin hazirlanmis hali. Diger islemler bunu paylasir.
+
+    Surucu koku denetimi gercek dosya sistemine bakildiginda yapilir (dizin_var enjekte edilmemisse);
+    enjekte edilmis dizin_var sahte bir dunya tanimlar, bu durumda kok varsayilir.
+    """
     ortam_son: dict[str, str] = dict(ortam) if ortam is not None else ortam_olustur(kaynak)
+    if kok_var is None and dizin_var is os.path.isdir:
+        kok_var = _surucu_koku_var
     adlar: dict[str, str | None] = {}
     degerler: dict[str, Deger | None] = {}
     metinler: dict[str, str] = {}
@@ -75,7 +95,7 @@ def yol_baglami(kaynak: Kaynak, ortam: Mapping[str, str] | None = None,
         degerler[kapsam] = deger
         metinler[kapsam] = deger.metin if deger is not None else ""
 
-    girdiler = girdileri_analiz(metinler, kaynak.ayirici, ortam_son, kaynak.windows, dizin_var)
+    girdiler = girdileri_analiz(metinler, kaynak.ayirici, ortam_son, kaynak.windows, dizin_var, kok_var)
     dizinler = etkin_dizinler(girdiler)
     uzantilar = _pathext(kaynak, ortam_son, pathext)
     komutlar = komut_raporu(dizinler, kaynak.windows, uzantilar, dosya_var, IZLENEN)
@@ -96,8 +116,9 @@ def yol_baglami(kaynak: Kaynak, ortam: Mapping[str, str] | None = None,
 def path_durumu(kaynak: Kaynak, ortam: Mapping[str, str] | None = None,
                 dizin_var: Callable[[str], bool] = os.path.isdir,
                 dosya_var: Callable[[str], bool] = os.path.isfile,
-                pathext: list[str] | None = None) -> dict:
-    baglam = yol_baglami(kaynak, ortam, dizin_var, dosya_var, pathext)
+                pathext: list[str] | None = None,
+                kok_var: Callable[[str], bool] | None = None) -> dict:
+    baglam = yol_baglami(kaynak, ortam, dizin_var, dosya_var, pathext, kok_var)
     oneri: dict[str, str] = {}
     if KULLANICI in kaynak.kapsamlar() and kaynak.yazilabilir(KULLANICI):
         yeni = temizlik_onerisi(baglam["metinler"][KULLANICI], baglam["girdiler"], kaynak.ayirici, KULLANICI)
@@ -117,7 +138,7 @@ def degiskenler(kaynak: Kaynak, goster: bool = False) -> list[dict]:
     sonuc: list[dict] = []
     for kapsam in kaynak.kapsamlar():
         for ad, deger in kaynak.oku(kapsam).items():
-            gizli = gizli_mi(ad)
+            gizli = gizli_mi(ad, deger.metin)
             acik = goster or not gizli
             sonuc.append({
                 "kapsam": kapsam,

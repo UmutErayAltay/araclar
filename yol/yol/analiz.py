@@ -12,6 +12,9 @@ IZLENEN = ("python", "python3", "py", "pip", "node", "npm", "npx", "git", "java"
            "code", "claude", "cor", "docker", "uv", "cargo")
 
 SORUNLU_BULGULAR = frozenset({"yok", "bos", "tekrar", "sistemde-var"})
+# Kesin sorun degil, yalniz bilgi: temizlik onerisine girmez, sorunlu sayilmaz.
+NOTR_BULGULAR = frozenset({"cozumlenemedi", "kontrol-edilemedi"})
+GENISLETME_TURU = 8  # ic ice ortam degiskenleri icin ust sinir (%A% -> %B% -> ...)
 _PYTHON_ADLARI = ("python", "python3", "py")
 _WIN_DEGISKEN = re.compile(r"%([^%]+)%")
 _POSIX_DEGISKEN = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
@@ -24,12 +27,11 @@ class Girdi:
     kapsam: str        # "sistem" | "kullanici" | "surec"
     sira: int          # 0-tabanli, kendi kapsam listesi icinde
     ham: str           # saklanan ham metin (%VAR% icerebilir)
-    genis: str         # genisletilmis metin
-    bulgular: list[str]  # "yok", "bos", "tekrar", "sistemde-var", "goreli" altkumesi
+    genis: str         # genisletilmis metin (cift tirnaksiz)
+    bulgular: list[str]  # SORUNLU/NOTR altkumeleri ve "goreli"
 
 
-def genislet(metin: str, ortam: Mapping[str, str], windows: bool) -> str:
-    """Windows: %AD% (buyuk/kucuk harf duyarsiz). POSIX: $AD / ${AD}. Bilinmeyen degisken oldugu gibi kalir."""
+def _bir_tur(metin: str, ortam: Mapping[str, str], windows: bool) -> str:
     if windows:
         buyuk = {anahtar_ad.upper(): deger for anahtar_ad, deger in ortam.items()}
 
@@ -45,6 +47,36 @@ def genislet(metin: str, ortam: Mapping[str, str], windows: bool) -> str:
         return eslesme.group(0) if deger is None else deger
 
     return _POSIX_DEGISKEN.sub(_posix, metin)
+
+
+def genislet(metin: str, ortam: Mapping[str, str], windows: bool) -> str:
+    """Windows: %AD% (buyuk/kucuk harf duyarsiz). POSIX: $AD / ${AD}. Bilinmeyen degisken oldugu gibi kalir.
+
+    Degerin icindeki degiskenler de acilir (en fazla GENISLETME_TURU tur); metin degisince durur.
+    """
+    for _ in range(GENISLETME_TURU):
+        yeni = _bir_tur(metin, ortam, windows)
+        if yeni == metin:
+            break
+        metin = yeni
+    return metin
+
+
+def cozumlenmemis_mi(metin: str, windows: bool) -> bool:
+    """Genisletmeden sonra hala %AD% (windows) ya da $AD (posix) kalmis mi."""
+    desen = _WIN_DEGISKEN if windows else _POSIX_DEGISKEN
+    return desen.search(metin) is not None
+
+
+def _tirnaksiz(metin: str) -> str:
+    """Cift tirnakla sarili girdi (\"C:\\Program Files\\x\") icin dis tirnaklar atilir."""
+    if len(metin) >= 2 and metin[0] == '"' and metin[-1] == '"':
+        return metin[1:-1]
+    return metin
+
+
+def _coz(ham: str, ortam: Mapping[str, str], windows: bool) -> str:
+    return _tirnaksiz(genislet(ham, ortam, windows))
 
 
 def anahtar(yol: str, windows: bool) -> str:
@@ -76,11 +108,29 @@ def _windows_yolu_mu(yol: str) -> bool:
     return "\\" in yol or bool(_SURUCU.match(yol))
 
 
+def _dogrulanabilir(yol: str, windows: bool, kok_var: Callable[[str], bool]) -> bool:
+    """Yol bu makinede dogrulanabilir mi? Goreli, UNC ve kok surucusu olmayan yollar dogrulanamaz."""
+    if not _mutlak_mi(yol, windows):
+        return False  # goreli: hangi dizine gore oldugu bilinmiyor
+    if windows:
+        if yol.startswith("\\\\"):
+            return False  # UNC: ag paylasimi, yerelden kesin degil
+        if _SURUCU.match(yol) and not kok_var(yol[:2] + "\\"):
+            return False  # surucu yok (cikarilabilir/ag surucusu baglanmamis olabilir)
+    return True
+
+
 def girdileri_analiz(kapsamlar: dict[str, str], ayirici: str, ortam: Mapping[str, str], windows: bool,
-                     dizin_var: Callable[[str], bool] = os.path.isdir) -> list[Girdi]:
-    """Kapsam -> ham PATH metni (etkin sirada). Her girdi icin bulgu listesi uretir."""
+                     dizin_var: Callable[[str], bool] = os.path.isdir,
+                     kok_var: Callable[[str], bool] | None = None) -> list[Girdi]:
+    """Kapsam -> ham PATH metni (etkin sirada). Her girdi icin bulgu listesi uretir.
+
+    Yok bulgusu yalniz yol dogrulanabildiginde verilir; aksi halde "kontrol-edilemedi" ya da
+    (degiskeni acilamadiysa) "cozumlenemedi" verilir. `kok_var` verilmezse surucu var sayilir.
+    """
+    kok_denetle = kok_var if kok_var is not None else (lambda _kok: True)
     sistem_anahtarlari = {
-        anahtar(genislet(ham, ortam, windows), windows)
+        anahtar(_coz(ham, ortam, windows), windows)
         for ham in parcala(kapsamlar.get("sistem", ""), ayirici)
         if ham.strip()
     }
@@ -88,12 +138,16 @@ def girdileri_analiz(kapsamlar: dict[str, str], ayirici: str, ortam: Mapping[str
     for kapsam, metin in kapsamlar.items():
         gorulen: set[str] = set()
         for sira, ham in enumerate(parcala(metin, ayirici)):
-            genis = genislet(ham, ortam, windows)
+            genis = _coz(ham, ortam, windows)
             bulgular: list[str] = []
             if not ham.strip():
                 bulgular.append("bos")
             else:
-                if not dizin_var(genis):
+                if cozumlenmemis_mi(genis, windows):
+                    bulgular.append("cozumlenemedi")
+                elif not _dogrulanabilir(genis, windows, kok_denetle):
+                    bulgular.append("kontrol-edilemedi")
+                elif not dizin_var(genis):
                     bulgular.append("yok")
                 anahtar_deger = anahtar(genis, windows)
                 if anahtar_deger in gorulen:
@@ -186,7 +240,7 @@ def ozet(girdiler: list[Girdi], komutlar: list[dict], toplam_uzunluk: int) -> di
     sorunlu = 0
     for girdi in girdiler:
         sayim[girdi.kapsam] = sayim.get(girdi.kapsam, 0) + 1
-        if girdi.bulgular:
+        if set(girdi.bulgular) - NOTR_BULGULAR:
             sorunlu += 1
     return {
         "girdi": sayim,

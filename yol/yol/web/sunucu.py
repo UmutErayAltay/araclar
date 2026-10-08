@@ -21,6 +21,7 @@ import secrets
 import sys
 import webbrowser
 from collections.abc import Callable, Iterable
+from dataclasses import replace
 from typing import Any
 
 from flask import Flask, Response, jsonify, render_template, request
@@ -32,10 +33,12 @@ from ..degisiklik import (
     Degisiklik,
     UygulamaHatasi,
     YetkiHatasi,
+    ad_coz,
+    cakisma_denetle,
     eylem_adi,
     geri_al_plani,
     path_farki,
-    uygula,
+    uygula_ayrintili,
 )
 from ..gizli import gizli_mi, maskele
 from ..kaynak import KULLANICI, Kaynak, KaynakHatasi
@@ -65,6 +68,7 @@ MAKS_DEGISIKLIK = 200
 MAKS_AD = 256
 MAKS_DEGER = 32767   # Windows ortam degiskeni ust siniri
 MAKS_YOL = 4096
+MAKS_ISTEK = 1_000_000  # JSON govdesi ust siniri (bayt)
 
 
 class _Hata(Exception):
@@ -125,7 +129,9 @@ def _fark_satirlari(degisiklikler: Iterable[Degisiklik], ayirici: str) -> list[d
     """Degerleri gizli degiskenlerde maskeler; PATH icin eklenen/cikan girdi listesi verir."""
     satirlar: list[dict] = []
     for d in degisiklikler:
-        gizli = gizli_mi(d.ad)
+        # Ad ya da (URL kimligi ile) deger gizli sayilirsa satir maskelenir.
+        gizli = (gizli_mi(d.ad, d.eski.metin if d.eski is not None else None)
+                 or gizli_mi(d.ad, d.yeni.metin if d.yeni is not None else None))
         satir: dict[str, Any] = {
             "kapsam": d.kapsam,
             "ad": d.ad,
@@ -156,8 +162,12 @@ def _ad_denetle(ad: str) -> None:
         raise _Hata(400, f"geçersiz ortam değişkeni adı: {ad[:40]!r}")
 
 
-def _degisiklikleri_coz(veri: Any) -> list[Degisiklik]:
-    """Istek govdesini dogrular ve `Degisiklik` listesine cevirir. Hicbir sey yazmaz."""
+def _degisiklikleri_coz(veri: Any, kaynak: Kaynak) -> list[Degisiklik]:
+    """Istek govdesini dogrular ve `Degisiklik` listesine cevirir. Hicbir sey yazmaz.
+
+    Windows'ta var olan bir ad, saklanan yazimina cevrilir; yeni ad mevcut bir adin
+    yalniz harf farkiyla yazilmis hali olamaz (409).
+    """
     ham = veri.get("degisiklikler") if isinstance(veri, dict) else None
     if not isinstance(ham, list) or not ham:
         raise _Hata(400, "uygulanacak değişiklik yok")
@@ -165,6 +175,7 @@ def _degisiklikleri_coz(veri: Any) -> list[Degisiklik]:
         raise _Hata(400, f"en fazla {MAKS_DEGISIKLIK} değişiklik gönderilebilir")
     liste: list[Degisiklik] = []
     gorulen: set[tuple[str, str]] = set()
+    mevcut_onbellek: dict[str, dict] = {}
     for kayit in ham:
         if not isinstance(kayit, dict):
             raise _Hata(400, "geçersiz değişiklik kaydı")
@@ -178,9 +189,18 @@ def _degisiklikleri_coz(veri: Any) -> list[Degisiklik]:
         for deger in (d.eski, d.yeni):
             if deger is not None and (len(deger.metin) > MAKS_DEGER or "\x00" in deger.metin):
                 raise _Hata(400, f"geçersiz değer: {d.kapsam}/{d.ad}")
-        if (d.kapsam, d.ad) in gorulen:
+        if d.kapsam in kaynak.kapsamlar():
+            if d.kapsam not in mevcut_onbellek:
+                mevcut_onbellek[d.kapsam] = kaynak.oku(d.kapsam)
+            sakli = ad_coz(mevcut_onbellek[d.kapsam], d.ad, kaynak.windows)
+            if sakli is not None and sakli != d.ad:
+                if d.eski is None:
+                    raise _Hata(409, f"aynı adli değişken zaten var: {d.kapsam}/{sakli}")
+                d = replace(d, ad=sakli)
+        anahtar_ad = d.ad.casefold() if kaynak.windows else d.ad
+        if (d.kapsam, anahtar_ad) in gorulen:
             raise _Hata(400, f"aynı değişken bir uygulamada iki kez değişemez: {d.kapsam}/{d.ad}")
-        gorulen.add((d.kapsam, d.ad))
+        gorulen.add((d.kapsam, anahtar_ad))
         liste.append(d)
     return liste
 

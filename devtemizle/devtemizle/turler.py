@@ -14,7 +14,8 @@ class Tur:
     """Aday türü tanımı.
 
     Kanıt tuple'ı boşsa kanıt aranmaz (örn. __pycache__).
-    risk: "guvenli" | "dikkat"
+    Kanıt, adayın KARDEŞ dosyalarında aranır (adayın bulunduğu dizinde; repo
+    kökünde değil). risk: "guvenli" | "dikkat"
     """
     ad: str
     grup: str
@@ -189,14 +190,14 @@ _TURLER: Final[list[Tur]] = [
         ad="htmlcov",
         grup="genel",
         risk="guvenli",
-        kanit=(),
+        kanit=("pyproject.toml", ".coveragerc", "setup.cfg", "tox.ini"),
         aciklama="test koşusu ile geri gelir",
         yeniden="test koşusu",
     ),
     Tur(
         ad="coverage",
         grup="genel",
-        risk="guvenli",
+        risk="dikkat",
         kanit=("package.json",),
         aciklama="test koşusu ile geri gelir",
         yeniden="test koşusu",
@@ -223,23 +224,23 @@ def tur_adlari() -> list[str]:
     return sorted(_TUR_HARITASI.keys())
 
 
-def risk_durumu(ad: str, repo_kok: str | None = None, tur: Tur | None = None) -> str:
+def risk_durumu(ad: str, kardes_dizin: str | None = None, tur: Tur | None = None) -> str:
     """Bir tür için risk durumunu hesaplar.
 
-    .venv/venv özel kuralı: bağımlılık listesi dosyası yoksa "dikkat".
-    Diğer türler tablodaki risk değerini kullanır.
+    .venv/venv özel kuralı: bağımlılık listesi dosyası (adayın kardeşi) yoksa "dikkat".
+    Diğer türler tablodaki risk değerini kullanır. Bilinmeyen tür: "dikkat".
     """
     t = tur or tur_ara(ad)
     if t is None:
-        return "guvenli"
+        return "dikkat"
 
     if ad in (".venv", "venv"):
         # pyvenv.cfg varlığı tara.py'de zaten kontrol ediliyor; burada sadece
         # bağımlılık listesi dosyası var mı diye bakıyoruz.
-        if repo_kok:
+        if kardes_dizin:
             from pathlib import Path
             for kanit_dosyasi in t.kanit:
-                if (Path(repo_kok) / kanit_dosyasi).exists():
+                if (Path(kardes_dizin) / kanit_dosyasi).exists():
                     return "guvenli"
             return "dikkat"
         return "guvenli"
@@ -251,11 +252,12 @@ def risk_durumu(ad: str, repo_kok: str | None = None, tur: Tur | None = None) ->
 _ORJINAL_TURLER = frozenset({"node_modules", "__pycache__", ".pytest_cache", ".venv", "venv"})
 
 
-def kanit_var_mi(ad: str, repo_kok: str) -> bool:
-    """Repoda türün kanıtı (en az bir kardeş dosya) var mı?
+def kanit_var_mi(ad: str, kardes_dizin: str) -> bool:
+    """Türün kanıtı, adayın KARDEŞ dizininde (kardes_dizin = adayın üst dizini) var mı?
 
+    Repo kökündeki bir dosya, alt dizindeki adayı (ör. src/coverage) kanıtlamaz.
     Orijinal 5 tür (node_modules, __pycache__, .pytest_cache, .venv, venv)
-    için geriye uyumlulık: kanıt aranmaz.
+    için geriye uyumluluk: kanıt aranmaz.
     """
     t = tur_ara(ad)
     if t is None or not t.kanit:
@@ -266,5 +268,5 @@ def kanit_var_mi(ad: str, repo_kok: str) -> bool:
         return True
 
     from pathlib import Path
-    kok = Path(repo_kok)
+    kok = Path(kardes_dizin)
     return any((kok / k).exists() for k in t.kanit)

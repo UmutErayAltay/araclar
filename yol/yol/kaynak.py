@@ -1,259 +1,260 @@
+"""Ortam degiskeni kaynaklari: Windows kayit defteri, JSON dosyasi, surec ortami.
+
+Kural: okuma/yazma hatasi YUTULMAZ, `KaynakHatasi` olarak yukari cikar; degisiklik
+katmani buna gore geri yukleme yapar. `winreg`/`ctypes` yalniz Windows'ta yuklenir,
+modul her platformda import edilebilir.
+"""
+
 from __future__ import annotations
 
 import json
 import os
-import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-if os.name == "nt":
-    try:
-        import winreg
-    except ImportError:
-        winreg = None
-    try:
-        import ctypes
-    except ImportError:
-        ctypes = None
-else:
-    winreg = None
-    ctypes = None
+KULLANICI = "kullanici"
+SISTEM = "sistem"
+SUREC = "surec"
 
-WINDOWS_HKCU_ENVIRONMENT = r"Environment"
-WINDOWS_HKLM_SESSION_MANAGER_ENVIRONMENT = r"SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment"
+_HKCU_YOL = "Environment"
+_HKLM_YOL = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+
+
+class KaynakHatasi(RuntimeError):
+    """Kaynak okunamadi/yazilamadi."""
+
+
 @dataclass(frozen=True)
 class Deger:
-    """Bir ortam değişkeninin değeri ve genişleme tipi."""
-
     metin: str
-    genisler: bool  # REG_EXPAND_SZ mi (True) REG_SZ mi (False)
-def _get_user_profile() -> Path:
-    """Windows'ta USERPROFILE değişkenini döndürür, aksi halde geçerli kullanıcının home dizinini kullanır."""
-    if os.name == "nt":
-        return Path(os.environ.get("USERPROFILE", ""))
-    else:
-        return Path.home()
+    genisler: bool = False  # REG_EXPAND_SZ (True) / REG_SZ (False)
+
+    def sozluk(self) -> dict:
+        return {"metin": self.metin, "genisler": self.genisler}
+
+    @classmethod
+    def sozlukten(cls, veri: dict) -> "Deger":
+        return cls(str(veri["metin"]), bool(veri.get("genisler", False)))
+
+
+class Kaynak(Protocol):
+    ad: str
+    ayirici: str          # PATH ayirici (";" Windows, ":" POSIX)
+    windows: bool         # PATHEXT ve buyuk/kucuk harf duyarsizligi uygulanir mi
+
+    def kapsamlar(self) -> tuple[str, ...]: ...
+    def oku(self, kapsam: str) -> dict[str, Deger]: ...
+    def yaz(self, kapsam: str, ad: str, deger: Deger) -> None: ...
+    def sil(self, kapsam: str, ad: str) -> None: ...
+    def yazilabilir(self, kapsam: str) -> bool: ...
+    def yayinla(self) -> None: ...
+
+
+def _kapsam_denetle(kaynak: Kaynak, kapsam: str) -> None:
+    if kapsam not in kaynak.kapsamlar():
+        raise KaynakHatasi(f"bilinmeyen kapsam: {kapsam!r}")
+
+
+# --------------------------------------------------------------------- Windows
+
 class WindowsKaynak:
-    """Windows'ta kullanici HKCU\\Environment ve sistem HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment kayıt defterini okur/yazar."""
+    """HKCU\\Environment (kullanici) ve HKLM ...\\Session Manager\\Environment (sistem)."""
+
+    ad = "windows"
+    ayirici = ";"
+    windows = True
 
     def __init__(self) -> None:
-        self.kullanici_anahtar = None
-        self.sistem_anahtar = None
-        if winreg is not None:
-            try:
-                self.kullanici_anahtar = winreg.OpenKey(winreg.HKEY_CURRENT_USER, WINDOWS_HKCU_ENVIRONMENT, 0, winreg.KEY_READ | winreg.KEY_WRITE)
-            except OSError:
-                # Kullanıcı ortam değişikliklerine yazamıyor olabilir; salt okunur anahtar açmayı deneyin
-                try:
-                    self.kullanici_anahtar = winreg.OpenKey(winreg.HKEY_CURRENT_USER, WINDOWS_HKCU_ENVIRONMENT, 0, winreg.KEY_READ)
-                except OSError:
-                    self.kullanici_anahtar = None
-            try:
-                self.sistem_anahtar = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, WINDOWS_HKLM_SESSION_MANAGER_ENVIRONMENT, 0, winreg.KEY_READ | winreg.KEY_WRITE)
-            except OSError:
-                try:
-                    self.sistem_anahtar = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, WINDOWS_HKLM_SESSION_MANAGER_ENVIRONMENT, 0, winreg.KEY_READ)
-                except OSError:
-                    self.sistem_anahtar = None
+        import winreg  # noqa: F401  (yalniz Windows)
+
+    def kapsamlar(self) -> tuple[str, ...]:
+        return (SISTEM, KULLANICI)
+
+    def _anahtar(self, kapsam: str, yaz: bool):
+        import winreg
+
+        _kapsam_denetle(self, kapsam)
+        kok, yol = (
+            (winreg.HKEY_CURRENT_USER, _HKCU_YOL) if kapsam == KULLANICI
+            else (winreg.HKEY_LOCAL_MACHINE, _HKLM_YOL)
+        )
+        erisim = winreg.KEY_READ | (winreg.KEY_SET_VALUE if yaz else 0)
+        try:
+            return winreg.OpenKey(kok, yol, 0, erisim)
+        except OSError as exc:
+            raise KaynakHatasi(f"{kapsam} anahtari acilamadi: {exc}") from exc
 
     def oku(self, kapsam: str) -> dict[str, Deger]:
-        """Windows kayıt defterinden verilen kapsam için değerleri okur."""
-        result: dict[str, Deger] = {}
-        if not winreg or (kapsam == "kullanici" and not self.kullanici_anahtar) or (kapsam == "sistem" and not self.sistem_anahtar):
-            return result
+        import winreg
 
-        anahtar = self.kullanici_anahtar if kapsam == "kullanici" else self.sistem_anahtar
-        i = 0
-        while True:
-            try:
-                ad, deger, tip = winreg.EnumValue(anahtar, i)
-                metin = str(deger)
-                genisler = (tip == winreg.REG_EXPAND_SZ)
-                result[ad] = Deger(metin=metin, genisler=genisler)
+        sonuc: dict[str, Deger] = {}
+        with self._anahtar(kapsam, yaz=False) as anahtar:
+            i = 0
+            while True:
+                try:
+                    ad, deger, tip = winreg.EnumValue(anahtar, i)
+                except OSError:
+                    break  # ERROR_NO_MORE_ITEMS
                 i += 1
-            except OSError:
-                break
-        return result
+                if tip in (winreg.REG_SZ, winreg.REG_EXPAND_SZ):
+                    sonuc[ad] = Deger(str(deger), tip == winreg.REG_EXPAND_SZ)
+                # Diger tipler (DWORD vb.) gosterilmez ve hic yazilmaz.
+        return sonuc
 
     def yaz(self, kapsam: str, ad: str, deger: Deger) -> None:
-        """Windows kayıt defterine verilen kapsam, ad ve değeri yazar."""
-        if not winreg:
-            return
-        anahtar = self.kullanici_anahtar if kapsam == "kullanici" else self.sistem_anahtar
-        if anahtar is None:
-            return
+        import winreg
+
         tip = winreg.REG_EXPAND_SZ if deger.genisler else winreg.REG_SZ
         try:
-            winreg.SetValueEx(anahtar, ad, 0, tip, deger.metin)
-        except OSError:
-            pass
+            with self._anahtar(kapsam, yaz=True) as anahtar:
+                winreg.SetValueEx(anahtar, ad, 0, tip, deger.metin)
+        except OSError as exc:
+            raise KaynakHatasi(f"{kapsam}/{ad} yazilamadi: {exc}") from exc
 
     def sil(self, kapsam: str, ad: str) -> None:
-        """Windows kayıt defterinden verilen kapsam, ad için değeri siler."""
-        if not winreg:
-            return
-        anahtar = self.kullanici_anahtar if kapsam == "kullanici" else self.sistem_anahtar
-        if anahtar is None:
-            return
+        import winreg
+
         try:
-            winreg.DeleteValue(anahtar, ad)
-        except OSError:
-            pass
+            with self._anahtar(kapsam, yaz=True) as anahtar:
+                winreg.DeleteValue(anahtar, ad)
+        except FileNotFoundError:
+            return  # zaten yok
+        except OSError as exc:
+            raise KaynakHatasi(f"{kapsam}/{ad} silinemedi: {exc}") from exc
 
     def yazilabilir(self, kapsam: str) -> bool:
-        """Windows'ta verilen kapsamın değerlerini yazıp yazamayacağımızı döndürür."""
-        if os.name != "nt":
-            return False
-        if ctypes is None:
-            return False
-        if kapsam == "kullanici":
-            return True  # HKEY_CURRENT_USER her zaman yazılabilir
-        else:  # sistem
-            return ctypes.windll.shell32.IsUserAnAdmin() > 0
+        if kapsam == KULLANICI:
+            return True
+        import ctypes
 
-    def yayinla(self) -> None:
-        """Windows'ta çevreleme mesajı göndererek ortam değişikliklerini bildirir."""
-        if os.name != "nt" or ctypes is None:
-            return
-        # SendMessageTimeoutW ile HWND_BROADCAST'a WM_SETTINGCHANGE mesajı gönder
-        # Parametreler: HWND_BROADCAST (0xFFFF), mesaj "Environment" (unicode)
         try:
-            ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x1A, 0, "Environment", 0x80 | 0x20, 5000)
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
         except (AttributeError, OSError):
-            pass
-class DosyaKaynak:
-    """JSON dosyasına okuma/yazma (kapsamlar: kullanici, sistem)."""
-
-    def __init__(self, yol: Path | str | None = None) -> None:
-        if yol is None:
-            yol = _get_user_profile() / ".yol" / "ortam.json"
-        self.yol = Path(yol)
-        self.yol.parent.mkdir(parents=True, exist_ok=True)
-
-    def _yükle(self) -> dict[str, dict[str, Deger]]:
-        """Depolanan ortam değişkenlerini içeren sözlüğü yükler."""
-        if not self.yol.exists():
-            return {"kullanici": {}, "sistem": {}}
-        try:
-            with open(self.yol, "r", encoding="utf-8") as f:
-                veri = json.load(f)
-                # Geçmiş veriyle uyumluluk için eski formatı destekle
-                if isinstance(veri, dict):
-                    return {"kullanici": {}, "sistem": {}, **veri}
-                return veri
-        except (OSError, json.JSONDecodeError):
-            return {"kullanici": {}, "sistem": {}}
-
-    def _kaydet(self, veri: dict[str, dict[str, Deger]]) -> None:
-        """Ortama özgü JSON dosyasını yazar."""
-        try:
-            with open(self.yol, "w", encoding="utf-8") as f:
-                json.dump(veri, f, ensure_ascii=False, indent=2)
-        except OSError:
-            pass
-
-    def oku(self, kapsam: str) -> dict[str, Deger]:
-        """Dosyadan verilen kapsam için değerleri okur."""
-        veri = self._yükle()
-        return veri.get(kapsam, {})
-
-    def yaz(self, kapsam: str, ad: str, deger: Deger) -> None:
-        """Verilen kapsam için adlı değişkeni verilen değere ayarlar."""
-        veri = self._yükle()
-        if "kullanici" not in veri:
-            veri["kullanici"] = {}
-        if "sistem" not in veri:
-            veri["sistem"] = {}
-        if kapsam not in veri:
-            veri[kapsam] = {}
-        veri[kapsam][ad] = deger
-        self._kaydet(veri)
-
-    def sil(self, kapsam: str, ad: str) -> None:
-        """Verilen kapsam için adlı değişkeni siler."""
-        veri = self._yükle()
-        if kapsam in veri and ad in veri[kapsam]:
-            del veri[kapsam][ad]
-            self._kaydet(veri)
-
-    def yazilabilir(self, kapsam: str) -> bool:
-        """Dosya kaynağı her zaman yazılabilir (üzerinde çalışma korumalı yapıya sahiptir)."""
-        return True
+            return False
 
     def yayinla(self) -> None:
-        """Dosya kaynağı yayım yapmak için bir mekanizmaya sahip değildir."""
-        pass
-class SurecKaynak:
-    """Mevcut ortam değişkenlerini okur (salt okunur, geçici kapsam)."""
+        """WM_SETTINGCHANGE("Environment"): yeni acilan surecler degisikligi gorur."""
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        gonder = user32.SendMessageTimeoutW
+        gonder.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPCWSTR,
+                           wintypes.UINT, wintypes.UINT, ctypes.POINTER(ctypes.c_size_t)]
+        gonder.restype = ctypes.c_size_t
+        sonuc = ctypes.c_size_t(0)
+        # HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG, 5 sn
+        gonder(0xFFFF, 0x001A, 0, "Environment", 0x0002, 5000, ctypes.byref(sonuc))
+
+
+# ----------------------------------------------------------------------- Dosya
+
+class DosyaKaynak:
+    """JSON dosyasi: {"ayirici": ";", "windows": true, "kullanici": {AD: {metin, genisler}}, "sistem": {...}}.
+
+    Testler, Linux demosu ve ekran goruntuleri icin. Yazma atomiktir.
+    """
+
+    ad = "dosya"
+
+    def __init__(self, yol: Path | str) -> None:
+        self.yol = Path(yol).expanduser()
+        veri = self._yukle()
+        self.ayirici = str(veri.get("ayirici", os.pathsep))
+        self.windows = bool(veri.get("windows", os.name == "nt"))
+
+    def kapsamlar(self) -> tuple[str, ...]:
+        return (SISTEM, KULLANICI)
+
+    def _yukle(self) -> dict:
+        if not self.yol.exists():
+            return {}
+        try:
+            return json.loads(self.yol.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise KaynakHatasi(f"{self.yol} okunamadi: {exc}") from exc
+
+    def _kaydet(self, veri: dict) -> None:
+        self.yol.parent.mkdir(parents=True, exist_ok=True)
+        fd, gecici = tempfile.mkstemp(dir=self.yol.parent, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as akim:
+                json.dump(veri, akim, ensure_ascii=False, indent=2)
+            os.replace(gecici, self.yol)
+        except BaseException:
+            Path(gecici).unlink(missing_ok=True)
+            raise
 
     def oku(self, kapsam: str) -> dict[str, Deger]:
-        """Güncel ortam değişkenlerini içeren sözlüğü döndürür (salt okunur)."""
-        result: dict[str, Deger] = {}
-        if kapsam != "surec":
-            return result
-        for ad, deger in os.environ.items():
-            result[ad] = Deger(metin=deger, genisler=False)
-        return result
+        _kapsam_denetle(self, kapsam)
+        return {ad: Deger.sozlukten(d) for ad, d in self._yukle().get(kapsam, {}).items()}
 
     def yaz(self, kapsam: str, ad: str, deger: Deger) -> None:
-        """Süreç kaynağı üzerinde yazma işlemi desteklemez (salt okunurdur)."""
-        pass
+        _kapsam_denetle(self, kapsam)
+        veri = self._yukle()
+        veri.setdefault(kapsam, {})[ad] = deger.sozluk()
+        try:
+            self._kaydet(veri)
+        except OSError as exc:
+            raise KaynakHatasi(f"{kapsam}/{ad} yazilamadi: {exc}") from exc
 
     def sil(self, kapsam: str, ad: str) -> None:
-        """Süreç kaynağı üzerinde silme işlemi desteklemez (salt okunurdur)."""
-        pass
+        _kapsam_denetle(self, kapsam)
+        veri = self._yukle()
+        if ad in veri.get(kapsam, {}):
+            del veri[kapsam][ad]
+            try:
+                self._kaydet(veri)
+            except OSError as exc:
+                raise KaynakHatasi(f"{kapsam}/{ad} silinemedi: {exc}") from exc
 
     def yazilabilir(self, kapsam: str) -> bool:
-        """Süreç kaynağı salt okunur olduğundan her zaman False döndürür."""
+        return kapsam in self.kapsamlar()
+
+    def yayinla(self) -> None:
+        return None
+
+
+# ----------------------------------------------------------------------- Surec
+
+class SurecKaynak:
+    """Calisan surecin ortami; salt okunur, tek kapsam."""
+
+    ad = "surec"
+    ayirici = os.pathsep
+    windows = os.name == "nt"
+
+    def kapsamlar(self) -> tuple[str, ...]:
+        return (SUREC,)
+
+    def oku(self, kapsam: str) -> dict[str, Deger]:
+        _kapsam_denetle(self, kapsam)
+        return {ad: Deger(deger) for ad, deger in os.environ.items()}
+
+    def yaz(self, kapsam: str, ad: str, deger: Deger) -> None:
+        raise KaynakHatasi("surec ortami salt okunur")
+
+    def sil(self, kapsam: str, ad: str) -> None:
+        raise KaynakHatasi("surec ortami salt okunur")
+
+    def yazilabilir(self, kapsam: str) -> bool:
         return False
 
     def yayinla(self) -> None:
-        """Süreç kaynağı yayım yapmak için bir mekanizmaya sahip değildir."""
-        pass
+        return None
 
-def kaynak_sec(kaynak_secimi: str | None = None) -> Kaynak:
-    """Verilen kaynak seçimine göre uygun Kaynak implementasyonunu döndürür.
 
-    Argümanlar:
-        kaynak_secimi: "windows", "dosya", "surec" veya "windows" hariç "null"/"none".
-            "windows" değerine veya None olarak geçerli bir değer verilmediğinde, OS kontrolü yapılır.
-            "YOL_KAYNAK=dosya:<yol>" ortam değişkeniyle geçerli bir dosya yolu belirtilebilir.
-
-    Döndürülen:
-        Yazma yetkisi (yazilabilir) ile birlikte oku, yaz, sil, yayinla metodlarını içeren bir Kaynak.
-    """
-    env = os.environ.get("YOL_KAYNAK", "").strip()
-    if kaynak_secimi is not None:
-        env = f"yol:{kaynak_secimi}"
-
-    if env.startswith("dosya:"):
-        yol = Path(env[6:]) if len(env) > 6 else None
-        return DosyaKaynak(yol)
-
-    if env == "surec" or (kaynak_secimi == "surec"):
+def kaynak_sec(secim: str | None = None) -> Kaynak:
+    """`secim` > YOL_KAYNAK ("dosya:<yol>" | "surec" | "windows") > platform varsayilani."""
+    secim = secim or os.environ.get("YOL_KAYNAK", "").strip()
+    if secim.startswith("dosya:"):
+        return DosyaKaynak(secim[len("dosya:"):])
+    if secim == "surec":
         return SurecKaynak()
-
-    if env == "windows" or (kaynak_secimi == "windows") or (kaynak_secimi is None and os.name == "nt"):
+    if secim == "windows" or (not secim and os.name == "nt"):
         return WindowsKaynak()
-
-    # Varsayılan seçenek
+    if secim:
+        raise KaynakHatasi(f"bilinmeyen YOL_KAYNAK: {secim!r} (dosya:<yol> | surec | windows)")
     return SurecKaynak()
-@dataclass
-class Kaynak(Protocol):
-    """İki kapsam için okuma, yazma, silme, varlık denetimi ve yayını destekler."""
-
-    def oku(self, kapsam: str) -> dict[str, Deger]:
-        """Verilen kapsam ("kullanici", "sistem" veya "surec") için depolanan değerleri dict olarak döndürür."""
-
-    def yaz(self, kapsam: str, ad: str, deger: Deger) -> None:
-        """Verilen kapsam için adlı değişkeni verilen değere ayarlar."""
-
-    def sil(self, kapsam: str, ad: str) -> None:
-        """Verilen kapsam için adlı değişkeni siler."""
-
-    def yazilabilir(self, kapsam: str) -> bool:
-        """Verilen kapsamdaki değişkenleri düzenleyebilecek yetkiye sahip olup olmadığımızı döndürür."""
-
-    def yayinla(self) -> None:
-        """Başka süreçler için değişikliği duyurur (örneğin Windows'ta çevreleme mesajı gönderir)."""

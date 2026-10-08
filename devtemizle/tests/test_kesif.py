@@ -191,3 +191,189 @@ def test_atlas_db_sirali_doner(tmp_path):
     yollar = [sahte_repo(tmp_path / f"r{i}") for i in range(3)]
     db = atlas_db_olustur(tmp_path / "a.db", yollar)
     assert [p.name for p in repo_listesi(None, atlas_db=db)] == ["r0", "r1", "r2"]
+
+
+# --------------------------------------------------------------------------
+# --ev bayrağı testleri (PLAN.md §3)
+# --------------------------------------------------------------------------
+
+
+def test_ev_bayragi_hariç_tutma_listesi(tmp_path, monkeypatch):
+    """--ev: AppData, Library, .cache, .local, .npm, .cargo, .rustup, .gradle,
+    OneDrive*, $Recycle.Bin, node_modules (repo değil), gizli dizinler (.git hariç)
+    hariç tutulur."""
+    ev = tmp_path / "ev"
+    ev.mkdir()
+
+    # Hariç tutulması gereken dizinler
+    for ad in ["AppData", "Library", ".cache", ".local", ".npm", ".cargo",
+               ".rustup", ".gradle", "$Recycle.Bin", "OneDrive", "OneDrive-Backup"]:
+        (ev / ad).mkdir()
+        sahte_repo(ev / ad / "repo-ici")  # Bu bulunmamalı
+
+    # node_modules (repo değil) içindeki repo
+    (ev / "node_modules").mkdir()
+    sahte_repo(ev / "node_modules" / "paket-repo")
+
+    # Gizli dizinler (.git hariç)
+    (ev / ".gizli").mkdir()
+    sahte_repo(ev / ".gizli" / "repo")
+
+    # Geçerli repo (hariç listede olmayan)
+    sahte_repo(ev / "projeler" / "gecerli-repo")
+
+    monkeypatch.setattr("devtemizle.kesif.Path.home", lambda: ev)
+    monkeypatch.setattr("devtemizle.kesif.os.name", "posix")
+
+    from devtemizle.kesif import _ev_tara
+    bulunan = _ev_tara()
+
+    # Sadece geçerli repo bulunmalı
+    assert [p.name for p in bulunan] == ["gecerli-repo"]
+
+
+def test_ev_bayragi_derinlik_5(tmp_path, monkeypatch):
+    """--ev: derinlik 5 sınırı uygulanır (ev + 5 alt).
+
+    Derinlik sayımı: ev = 0, ev/projeler = 1, ev/projeler/a = 2, ...
+    derinlik=5 -> 5 parça (ev/projeler/a/b/c/d) bulunur, ev/projeler/a/b/c/d/e (6 parça) bulunmaz.
+    """
+    ev = tmp_path / "ev"
+    ev.mkdir()
+
+    # Derinlik 5 içinde: ev/projeler/a/b/c/d = 5 parça (bulunmalı)
+    repo_derinlik_5 = sahte_repo(ev / "projeler" / "a" / "b" / "c" / "d")
+    # Derinlik 6: ev/projeler/a/b/c/d/e = 6 parça (bulunmamalı)
+    sahte_repo(ev / "projeler" / "a" / "b" / "c" / "d" / "e" / "repo")
+
+    monkeypatch.setattr("devtemizle.kesif.Path.home", lambda: ev)
+
+    from devtemizle.kesif import _ev_tara
+    bulunan = _ev_tara()
+
+    assert repo_derinlik_5 in bulunan
+    assert not any("e/repo" in str(p) for p in bulunan)
+
+
+def test_ev_bayragi_gizli_dizinler_hariç_git_dahil(tmp_path, monkeypatch):
+    """--ev: gizli dizinler hariç tutulur AMA .git içindeki repo bulunur."""
+    ev = tmp_path / "ev"
+    ev.mkdir()
+
+    # .git hariç gizli dizinler hariç
+    (ev / ".config").mkdir()
+    sahte_repo(ev / ".config" / "repo")
+
+    # .git içinde repo (worktree) - bu bir repo değil, .git dosyasıdır
+    # .git dizini repo olarak sayılmaz (repo_listesi zaten .git'i atlar)
+
+    monkeypatch.setattr("devtemizle.kesif.Path.home", lambda: ev)
+
+    from devtemizle.kesif import _ev_tara
+    bulunan = _ev_tara()
+
+    # .config/repo bulunmamalı (gizli dizin)
+    assert not any(".config" in str(p) for p in bulunan)
+
+
+def test_derinlik_maksimum_8(tmp_path, monkeypatch):
+    """--derinlik en fazla 8 olabilir (PLAN.md §3)."""
+    from devtemizle.kesif import MAX_DERINLIK, repo_listesi
+    assert MAX_DERINLIK == 8
+
+    kok = tmp_path / "projeler"
+    # Derinlik 8: kok/a/b/c/d/e/f/g/h = 8 seviye
+    repo_8 = sahte_repo(kok / "a" / "b" / "c" / "d" / "e" / "f" / "g" / "h")
+    # Derinlik 9: bulunmamalı
+    sahte_repo(kok / "a" / "b" / "c" / "d" / "e" / "f" / "g" / "h" / "i" / "repo")
+
+    bulunan = repo_listesi([kok], derinlik=8)
+    assert repo_8 in bulunan
+    assert not any("i/repo" in str(p) for p in bulunan)
+
+
+def test_derinlik_default_3(tmp_path):
+    """--derinlik varsayılan 3."""
+    from devtemizle.kesif import DERINLIK
+    assert DERINLIK == 3
+
+
+# --------------------------------------------------------------------------
+# Repo meta testleri (git yoksa meta None)
+# --------------------------------------------------------------------------
+
+
+def test_repo_meta_git_yoksa_son_commit_none(tmp_path, monkeypatch):
+    """git komutu yoksa son_commit=None, kirli=False."""
+    repo = sahte_repo(tmp_path / "r", git=True)
+    # git komutunu yok say
+    monkeypatch.setattr("devtemizle.kesif._git_var_mi", lambda: False)
+
+    from devtemizle.kesif import _repo_meta_al
+    meta = _repo_meta_al(repo)
+
+    assert meta.son_commit is None
+    assert meta.kirli is False
+
+
+def test_repo_meta_git_calisir_ama_hata(tmp_path, monkeypatch):
+    """git var ama hata dönerse sessizce None/False."""
+    repo = sahte_repo(tmp_path / "r", git=True)
+
+    def mock_git_calistir(args, cwd, timeout=5):
+        return False, ""
+
+    monkeypatch.setattr("devtemizle.kesif._git_calistir", mock_git_calistir)
+
+    from devtemizle.kesif import _repo_meta_al
+    meta = _repo_meta_al(repo)
+
+    assert meta.son_commit is None
+    assert meta.kirli is False
+
+
+def test_repo_meta_git_log_calisir(tmp_path, monkeypatch):
+    """git log -1 --format=%ct çalışırsa timestamp döner."""
+    repo = sahte_repo(tmp_path / "r", git=True)
+
+    def mock_git_calistir(args, cwd, timeout=5):
+        if args[:2] == ["log", "-1"]:
+            return True, "1704067200"  # 2024-01-01
+        if args[:2] == ["status", "--porcelain"]:
+            return True, "M  file.txt"
+        return False, ""
+
+    monkeypatch.setattr("devtemizle.kesif._git_calistir", mock_git_calistir)
+
+    from devtemizle.kesif import _repo_meta_al
+    meta = _repo_meta_al(repo)
+
+    assert meta.son_commit == 1704067200
+    assert meta.kirli is True
+
+
+def test_repo_meta_git_log_yok_head_mtime(tmp_path, monkeypatch):
+    """git log yoksa .git/HEAD mtime kullanılır."""
+    repo = sahte_repo(tmp_path / "r", git=True)
+    head = repo / ".git" / "HEAD"
+    head.write_text("ref: refs/heads/main\n", encoding="utf-8")
+    import time
+    mtime = time.time() - 86400 * 30  # 30 gün önce
+    import os
+    os.utime(head, (mtime, mtime))
+
+    def mock_git_calistir(args, cwd, timeout=5):
+        if args[:2] == ["log", "-1"]:
+            return False, ""  # git log başarısız
+        if args[:2] == ["status", "--porcelain"]:
+            return True, ""
+        return False, ""
+
+    monkeypatch.setattr("devtemizle.kesif._git_calistir", mock_git_calistir)
+
+    from devtemizle.kesif import _repo_meta_al
+    meta = _repo_meta_al(repo)
+
+    assert meta.son_commit is not None
+    assert abs(meta.son_commit - mtime) < 2  # saniye hassasiyetinde
+    assert meta.kirli is False

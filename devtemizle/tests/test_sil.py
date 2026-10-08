@@ -360,11 +360,18 @@ def test_aday_listesi_verilse_direkt_calisir(tmp_path):
     sonuc = sil([repo], uygula=True, yas=0)
     assert say(sonuc["silinecek"]) == len(adaylar) == 1
 
-def test_ara_dizindeki_junction_repo_disina_tasmaz(tmp_path):
-    """Regresyon: repo icindeki junction izlenmez; hedefteki venv/node_modules SILINMEZ."""
+def test_ara_dizinki_junction_repo_disina_tasmaz(tmp_path):
+    """Regresyon: repo icindeki junction izlenmez; hedefteki venv/node_modules SILINMEZ.
+    
+    Bu test Windows'ta junction (mklink /J) gerektirir; Linux/macOS'ta atlanır.
+    """
     import subprocess
     import pytest
+    import sys
     from devtemizle.sil import sil
+
+    if sys.platform != "win32":
+        pytest.skip("junction testi sadece Windows'ta geçerlidir")
 
     dis = tmp_path / "dis" / "eski"
     (dis / "node_modules").mkdir(parents=True)
@@ -378,3 +385,341 @@ def test_ara_dizindeki_junction_repo_disina_tasmaz(tmp_path):
     sonuc = sil([repo], uygula=True, yas=0)
     assert (dis / "node_modules" / "ONEMLI.txt").is_file()
     assert sonuc["silindi"] == []
+
+
+# --------------------------------------------------------------------------
+# sil_idler testleri (PLAN.md §4, §5)
+# --------------------------------------------------------------------------
+
+
+def test_sil_idler_rapor_id_cozulur(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: rapor ID'siyle aday bulunur ve silinir."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    import time
+
+    # Sahte rapor oluştur
+    simdi = time.time()
+    aday = {
+        "id": "abc123def456",
+        "repo": str(tmp_path / "repo"),
+        "yol": str(tmp_path / "repo" / "node_modules"),
+        "tur": "node_modules",
+        "grup": "js",
+        "risk": "guvenli",
+        "boyut": 1000,
+        "son_erisim": "2024-01-01T00:00:00+00:00",
+        "yas_gun": 30.0,
+        "atlandi": None,
+        "yeniden": "npm install",
+    }
+    veri = rapor.olustur(adaylar=[aday], simdi=simdi)
+    rapor.kaydet(veri)
+
+    # Repo ve aday oluştur
+    repo = sahte_repo(tmp_path / "repo")
+    sahte_aday(repo, "node_modules", bayt=1000)
+
+    # ID ile sil
+    sonuc = sil_idler(idler=["abc123def456"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+
+    assert len(sonuc["silindi"]) == 1
+    assert not (repo / "node_modules").exists()
+
+
+def test_sil_idler_bilinmeyen_id_atlanir(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: raporda olmayan ID atlanır ('raporda-yok' nedeni)."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    import time
+
+    veri = rapor.olustur(adaylar=[], simdi=time.time())
+    rapor.kaydet(veri)
+
+    sonuc = sil_idler(idler=["yok-boyle-id"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+
+    assert len(sonuc["atlanan"]) == 1
+    assert sonuc["atlanan"][0]["neden"] == "raporda-yok"
+    assert sonuc["atlanan"][0]["yol"] == "yok-boyle-id"
+
+
+def test_sil_idler_baglanti_silinmez(tmp_path, rapor_dizini, ev_isole, symlink_kur):
+    """sil_idler: baglanti (symlink) silinmez, hedef dokunulmaz."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    import time
+
+    repo = sahte_repo(tmp_path / "repo")
+    hedef = tmp_path / "hedef"
+    hedef.mkdir()
+    (hedef / "file.txt").write_text("data", encoding="utf-8")
+    link = symlink_kur(hedef, "node_modules", ust=repo)
+
+    aday = {
+        "id": "link12345678",
+        "repo": str(repo),
+        "yol": str(link),
+        "tur": "node_modules",
+        "grup": "js",
+        "risk": "guvenli",
+        "boyut": 0,
+        "son_erisim": "2024-01-01T00:00:00+00:00",
+        "yas_gun": 30.0,
+        "atlandi": "baglanti",
+        "yeniden": "npm install",
+    }
+    veri = rapor.olustur(adaylar=[aday], simdi=time.time())
+    rapor.kaydet(veri)
+
+    sonuc = sil_idler(idler=["link12345678"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+
+    assert len(sonuc["atlanan"]) == 1
+    assert sonuc["atlanan"][0]["neden"] == "baglanti"
+    assert link.exists()  # Link silinmez
+    assert hedef.exists()  # Hedef dokunulmaz
+    assert (hedef / "file.txt").is_file()
+
+
+def test_sil_idler_onbellek_temizleme(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: onbellek ID'siyle onbellek temizlenir."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    from unittest.mock import patch, MagicMock
+    import time
+
+    cache_dir = tmp_path / "pip-cache"
+    cache_dir.mkdir()
+    (cache_dir / "file").write_bytes(b"x" * 1000)
+
+    from devtemizle.onbellek import _onbellek_yolu_bul, _tum_kurallar
+    kural = next(k for k in _tum_kurallar() if k.ad == "pip")
+
+    with patch("devtemizle.onbellek._onbellek_yolu_bul", return_value=cache_dir):
+        with patch("devtemizle.onbellek.shutil.which", return_value="/usr/bin/pip"):
+            with patch("subprocess.run") as mock_run:
+                mock_result = MagicMock()
+                mock_result.returncode = 0
+                mock_result.stdout = "ok"
+                mock_result.stderr = ""
+                mock_run.return_value = mock_result
+
+                aday = {
+                    "id": "pip123456789",
+                    "ad": "pip",
+                    "grup": "python",
+                    "yol": str(cache_dir),
+                    "boyut": 1000,
+                    "risk": "guvenli",
+                    "komut": ["pip", "cache", "purge"],
+                    "var": True,
+                    "yontem": "komut",
+                    "aciklama": "pip cache purge calistirilir",
+                }
+                veri = rapor.olustur(adaylar=[], onbellekler=[aday], simdi=time.time())
+                rapor.kaydet(veri)
+
+                sonuc = sil_idler(idler=["pip123456789"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+
+    assert len(sonuc["onbellek_sonuclari"]) == 1
+    assert sonuc["onbellek_sonuclari"][0]["basarili"] is True
+
+
+def test_sil_idler_dikkat_dahil_false_risk_dikkat_atlanir(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: dikkat_dahil=False (varsayılan) -> risk=dikkat atlanır."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    import time
+
+    repo = sahte_repo(tmp_path / "repo")
+    sahte_aday(repo, "build", bayt=500)
+
+    aday = {
+        "id": "build1234567",
+        "repo": str(repo),
+        "yol": str(repo / "build"),
+        "tur": "build",
+        "grup": "jvm",
+        "risk": "dikkat",
+        "boyut": 500,
+        "son_erisim": "2024-01-01T00:00:00+00:00",
+        "yas_gun": 30.0,
+        "atlandi": None,
+        "yeniden": "proje derlemesi",
+    }
+    veri = rapor.olustur(adaylar=[aday], simdi=time.time())
+    rapor.kaydet(veri)
+
+    sonuc = sil_idler(idler=["build1234567"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+
+    assert len(sonuc["atlanan"]) == 1
+    assert sonuc["atlanan"][0]["neden"] == "risk-dikkat"
+    assert (repo / "build").exists()
+
+
+def test_sil_idler_dikkat_dahil_true_risk_dikkat_silinir(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: dikkat_dahil=True -> risk=dikkat silinir."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    import time
+
+    repo = sahte_repo(tmp_path / "repo")
+    sahte_aday(repo, "build", bayt=500)
+
+    aday = {
+        "id": "build1234567",
+        "repo": str(repo),
+        "yol": str(repo / "build"),
+        "tur": "build",
+        "grup": "jvm",
+        "risk": "dikkat",
+        "boyut": 500,
+        "son_erisim": "2024-01-01T00:00:00+00:00",
+        "yas_gun": 30.0,
+        "atlandi": None,
+        "yeniden": "proje derlemesi",
+    }
+    veri = rapor.olustur(adaylar=[aday], simdi=time.time())
+    rapor.kaydet(veri)
+
+    sonuc = sil_idler(idler=["build1234567"], uygula=True, dikkat_dahil=True, rapor_yol=rapor_dizini / "son.json")
+
+    assert len(sonuc["silindi"]) == 1
+    assert not (repo / "build").exists()
+
+
+def test_sil_idler_gunluk_yazilir(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: silinen öğe gunluk.jsonl'ye yazılır."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    import time
+
+    repo = sahte_repo(tmp_path / "repo")
+    sahte_aday(repo, "node_modules", bayt=1000)
+
+    aday = {
+        "id": "gunluk123456",
+        "repo": str(repo),
+        "yol": str(repo / "node_modules"),
+        "tur": "node_modules",
+        "grup": "js",
+        "risk": "guvenli",
+        "boyut": 1000,
+        "son_erisim": "2024-01-01T00:00:00+00:00",
+        "yas_gun": 30.0,
+        "atlandi": None,
+        "yeniden": "npm install",
+    }
+    veri = rapor.olustur(adaylar=[aday], simdi=time.time())
+    rapor.kaydet(veri)
+
+    sonuc = sil_idler(idler=["gunluk123456"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+
+    # Günlük kontrol
+    gunluk = rapor.gunluk_oku()
+    assert len(gunluk) >= 1
+    kayit = gunluk[-1]
+    assert kayit["yol"] == str(repo / "node_modules")
+    assert kayit["tur"] == "node_modules"
+    assert kayit["boyut"] == 1000
+    assert kayit["sonuc"] == "silindi"
+
+
+def test_sil_idler_repo_disi_atlanir(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: repo dışına çözülen yol atlanır ('repo-disi')."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    import time
+
+    repo = sahte_repo(tmp_path / "repo")
+    dis = tmp_path / "komsu"
+    dis.mkdir()
+    (dis / "file.txt").write_text("data", encoding="utf-8")
+
+    aday = {
+        "id": "disi12345678",
+        "repo": str(repo),
+        "yol": str(dis / "file.txt"),  # Repo dışı!
+        "tur": "node_modules",
+        "grup": "js",
+        "risk": "guvenli",
+        "boyut": 100,
+        "son_erisim": "2024-01-01T00:00:00+00:00",
+        "yas_gun": 30.0,
+        "atlandi": None,
+        "yeniden": "npm install",
+    }
+    veri = rapor.olustur(adaylar=[aday], simdi=time.time())
+    rapor.kaydet(veri)
+
+    sonuc = sil_idler(idler=["disi12345678"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+
+    assert len(sonuc["silinemedi"]) == 1
+    assert sonuc["silinemedi"][0]["neden"] == "repo-disi"
+    assert (dis / "file.txt").is_file()
+
+
+def test_sil_idler_yok_olan_aday_atlanir(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: artık yok olan aday atlanır ('yok-oldu')."""
+    from devtemizle.sil import sil_idler
+    from devtemizle import rapor
+    import time
+
+    repo = sahte_repo(tmp_path / "repo")
+    # Aday oluşturma, yok say
+
+    aday = {
+        "id": "yok123456789",
+        "repo": str(repo),
+        "yol": str(repo / "node_modules"),
+        "tur": "node_modules",
+        "grup": "js",
+        "risk": "guvenli",
+        "boyut": 1000,
+        "son_erisim": "2024-01-01T00:00:00+00:00",
+        "yas_gun": 30.0,
+        "atlandi": None,
+        "yeniden": "npm install",
+    }
+    veri = rapor.olustur(adaylar=[aday], simdi=time.time())
+    rapor.kaydet(veri)
+
+    sonuc = sil_idler(idler=["yok123456789"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+
+    assert len(sonuc["atlanan"]) == 1
+    assert sonuc["atlanan"][0]["neden"] == "yok-oldu"
+
+
+def test_sil_idler_onbellek_adlar_parametresi(tmp_path, rapor_dizini, ev_isole):
+    """sil_idler: onbellek_adlar parametresiyle onbellek temizlenir."""
+    from devtemizle.sil import sil_idler
+    from devtemizle.onbellek import onbellek_temizle
+    from devtemizle import rapor
+    from unittest.mock import patch, MagicMock
+    import time
+
+    cache_dir = tmp_path / "npm-cache"
+    cache_dir.mkdir()
+
+    # Boş rapor oluştur (yoksa sil_idler erken döner)
+    veri = rapor.olustur(adaylar=[], onbellekler=[], simdi=time.time())
+    rapor.kaydet(veri, rapor_dizini / "son.json")
+
+    with patch("devtemizle.onbellek._onbellek_yolu_bul", return_value=cache_dir):
+        with patch("devtemizle.onbellek.shutil.which", return_value="/usr/bin/npm"):
+            with patch("subprocess.run") as mock_run:
+                mock_result = MagicMock()
+                mock_result.returncode = 0
+                mock_result.stdout = "ok"
+                mock_result.stderr = ""
+                mock_run.return_value = mock_result
+
+                sonuc = sil_idler(
+                    idler=[],
+                    onbellek_adlar=["npm"],
+                    uygula=True,
+                    rapor_yol=rapor_dizini / "son.json"
+                )
+
+    assert len(sonuc["onbellek_sonuclari"]) == 1
+    assert sonuc["onbellek_sonuclari"][0]["ad"] == "npm"
+    assert sonuc["onbellek_sonuclari"][0]["basarili"] is True

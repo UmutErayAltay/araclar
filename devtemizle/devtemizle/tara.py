@@ -1,32 +1,30 @@
-"""Tarama: her repoda aday klasorleri (node_modules, __pycache__, sanal ortam...) bulur.
+"""Tarama: her repoda aday klasorleri bulur (turler.py kural tablosunu kullanir).
 
 Kurallar:
 - Bir adayin ICINE girilmez: ic ice node_modules ayri sayilmaz.
 - .git icine girilmez; baglanti (symlink/junction) ve pyvenv.cfg'siz sanal ortam
   ATLANIR ama raporda gorunur.
+- Kanıtı olmayan eşleşme aday değildir (rapora `atlandi: "kanit-yok"` ile girer).
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-#: Aday klasor adi -> tur.
-ADAYLAR = {
-    "node_modules": "node_modules",
-    "__pycache__": "__pycache__",
-    ".pytest_cache": ".pytest_cache",
-    ".venv": ".venv",
-    "venv": "venv",
-}
+from .turler import Tur, kanit_var_mi, risk_durumu, tum_turler, tur_adlari, tur_ara
 
 #: Windows FILE_ATTRIBUTE_REPARSE_POINT (junction noktasi). POSIX'te yok sayilir.
 REPARSE_POINT = 0x400
 
-#: Bunlarin icine girilmez: repo govdesi, aday klasorler, baglantilar.
-_ATLANAN = frozenset({".git"}) | frozenset(ADAYLAR)
+#: Aday isimleri (turler.py'den gelir; CLI choices icin)
+ADAYLAR = {t.ad: t.ad for t in tum_turler()}
+
+#: Bu dizinlerin ICINE girilmez: repo govdesi, aday klasorler, baglantilar.
+_ATLANAN = frozenset({".git"}) | frozenset(ADAYLAR.keys())
 
 
 def _baglanti(yol: Path) -> bool:
@@ -79,13 +77,28 @@ def _iso(an: float) -> str:
     return datetime.fromtimestamp(an, timezone.utc).isoformat(timespec="seconds")
 
 
+def _id_olustur(yol: str, tur_ad: str) -> str:
+    """Kararlı ID: yol + tür'ün sha1'inin ilk 12 hex'i."""
+    veri = (yol + tur_ad).encode("utf-8")
+    return hashlib.sha1(veri).hexdigest()[:12]
+
+
 def tara(repolar: list[Path], simdi: float | None = None) -> list[dict]:
-    """Aday klasorleri aday dict listesi olarak dondurur (dosya sistemi degismez)."""
+    """Aday klasorleri aday dict listesi olarak dondurur (dosya sistemi degismez).
+
+    Yeni alanlar (v2):
+    - id: kararlı tanımlayıcı (yol + tür sha1[:12])
+    - grup: "js" | "python" | "rust" | "jvm" | "genel"
+    - risk: "guvenli" | "dikkat" (venv özel kuralı dahil)
+    - yeniden: geri getirme komutu
+    - atlandi: None | "baglanti" | "pyvenv-yok" | "kanit-yok"
+    """
     simdi = time.time() if simdi is None else simdi
     adaylar: list[dict] = []
 
     for repo in repolar:
         repo = Path(repo)
+        repo_str = str(repo)
         for mevcut, dizinler, _dosyalar in os.walk(
             repo, topdown=True, followlinks=False, onerror=lambda _e: None
         ):
@@ -98,20 +111,31 @@ def tara(repolar: list[Path], simdi: float | None = None) -> list[dict]:
 
             for ad in bulunan:
                 yol = kok / ad
-                atlandi = None
+                yol_str = str(yol)
+                t = tur_ara(ad)
+                if t is None:
+                    continue  # olmamali
+
+                atlandi: str | None = None
                 if _baglanti(yol):
                     atlandi, boyut = "baglanti", 0
                 else:
-                    boyut = _boyut(yol)
-                    # Adlandigi halde pyvenv.cfg yoksa sanal ortam DEGILDIR.
-                    if ADAYLAR[ad] in (".venv", "venv") and not _pyvenv_cfg(yol):
-                        atlandi = "pyvenv-yok"
+                    # Kanıt kontrolü
+                    if not kanit_var_mi(ad, repo_str):
+                        atlandi = "kanit-yok"
+                        boyut = 0
+                    else:
+                        boyut = _boyut(yol)
+                        # Adlandigi halde pyvenv.cfg yoksa sanal ortam DEGILDIR.
+                        if ad in (".venv", "venv") and not _pyvenv_cfg(yol):
+                            atlandi = "pyvenv-yok"
+
                 son = _son_erisim(yol, repo)
                 adaylar.append(
                     {
-                        "repo": str(repo),
-                        "yol": str(yol),
-                        "tur": ADAYLAR[ad],
+                        "repo": repo_str,
+                        "yol": yol_str,
+                        "tur": ad,
                         "boyut": boyut,
                         "son_erisim": _iso(son),
                         "yas_gun": (simdi - son) / 86400,

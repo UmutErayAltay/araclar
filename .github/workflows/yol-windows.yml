@@ -1,0 +1,37 @@
+name: yol Windows CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'yol/**'
+      - '.github/workflows/yol-windows.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'yol/**'
+      - '.github/workflows/yol-windows.yml'
+
+jobs:
+  test-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r yol/requirements.txt
+
+    - name: Run tests
+      working-directory: yol
+      run: python -m pytest -q

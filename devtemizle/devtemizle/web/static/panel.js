@@ -8,6 +8,7 @@
   "use strict";
 
   var ANKET_MS = 700;
+  var RAPOR_UYARI_SAAT = 6;   /* bu yastan eski rapor icin gorunur uyari */
   var SVG_NS = "http://www.w3.org/2000/svg";
   var GRUP_ADI = { js: "JavaScript", python: "Python", rust: "Rust", jvm: "JVM", genel: "Genel" };
   var ATLAMA_NEDEN = {
@@ -231,6 +232,28 @@
 
   function raporKaydi() { return (raporVeri && raporVeri.rapor) || null; }
 
+  /* Rapor zamani ve eskilik uyarisi. Silmeden once yeniden tarama onerilir. */
+  function raporZamaniKur() {
+    var zaman = byId("rapor-zaman");
+    var uyari = byId("rapor-uyari");
+    var rapor = raporKaydi();
+    var ms = rapor && rapor.olusturma ? Date.parse(rapor.olusturma) : NaN;
+    if (isNaN(ms)) {
+      zaman.textContent = "Henüz rapor yok.";
+      uyari.hidden = true;
+      return;
+    }
+    zaman.textContent = "Rapor alındı: " + new Date(ms).toLocaleString("tr-TR");
+    var saat = Math.floor((Date.now() - ms) / 3600000);
+    if (saat >= RAPOR_UYARI_SAAT) {
+      uyari.textContent = "Rapor " + saat + " saat önce alındı; silmeden önce yeniden taramanız önerilir.";
+      uyari.hidden = false;
+    } else {
+      uyari.textContent = "";
+      uyari.hidden = true;
+    }
+  }
+
   function kartYaz(kimlik, deger, alt) {
     var kart = byId(kimlik);
     kart.querySelector(".kart-sayi").textContent = deger;
@@ -340,6 +363,7 @@
     return rapor ? (rapor.adaylar || []) : [];
   }
 
+  /* Risk "guvenli" disindaysa dikkat sayilir (eksik risk dahil), sunucuyla ayni kural. */
   function adayKaydi(a) {
     var repo = a.repo || "";
     return {
@@ -348,7 +372,7 @@
       boyut: a.boyut || 0,
       risk: a.risk || "dikkat",
       gosterim: repoAdi(repo) + "/" + gorelYol(a.yol, repo),
-      dikkat: a.risk === "dikkat"
+      dikkat: a.risk !== "guvenli"
     };
   }
 
@@ -359,7 +383,7 @@
       boyut: o.boyut || 0,
       risk: o.risk || "dikkat",
       gosterim: o.yol || "genel önbellek",
-      dikkat: o.risk === "dikkat"
+      dikkat: o.risk !== "guvenli"
     };
   }
 
@@ -606,6 +630,7 @@
   }
 
   function tumunuCiz() {
+    raporZamaniKur();
     ozetKur();
     dagilimKur();
     dockerKur();
@@ -665,15 +690,15 @@
   function silOnayla() {
     if (!secili.size || siliniyor) { return; }
     var idler = [];
-    var dikkat = false;
+    var dikkatIdler = [];
     secili.forEach(function (v) {
       idler.push(v.id);
-      if (v.dikkat) { dikkat = true; }
+      if (v.dikkat) { dikkatIdler.push(v.id); }
     });
     siliniyor = true;
     onayKur();
     durumYaz("Siliniyor…");
-    apiGonder("/api/sil", { idler: idler, dikkat_dahil: dikkat }).then(function () {
+    apiGonder("/api/sil", { idler: idler, dikkat_idler: dikkatIdler }).then(function () {
       anketAktif = true;
       anketBaslat();
       anketAdim();

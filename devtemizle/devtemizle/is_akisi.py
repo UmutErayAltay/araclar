@@ -41,7 +41,8 @@ def _zenginlestir(aday: dict) -> dict:
     tur = tur_ara(aday["tur"])
     if tur is not None:
         aday["grup"] = tur.grup
-        aday["risk"] = risk_durumu(aday["tur"], aday["repo"], tur)
+        # Kanit kardes dosyalarda aranir: adayin ust dizini
+        aday["risk"] = risk_durumu(aday["tur"], str(Path(aday["yol"]).parent), tur)
         aday["yeniden"] = tur.yeniden
     else:  # tara.py yalnizca kural tablosundaki adlari verir; savunma amacli
         aday.setdefault("grup", "genel")

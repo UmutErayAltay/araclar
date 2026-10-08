@@ -57,11 +57,16 @@ def test_python_cache_turleri_kanitsiz(tur_ad):
 
 
 @pytest.mark.parametrize("tur_ad", ["htmlcov"])
-def test_htmlcov_kanitsiz(tur_ad):
-    """htmlcov kanıtsız."""
+def test_htmlcov_kardes_kanit_gerekir(tur_ad, tmp_path):
+    """htmlcov kardes dosya kanitiyla gelir (coverage/pytest ciktisi ancak yapilandirmayla)."""
     t = tur_ara(tur_ad)
     assert t is not None
-    assert t.kanit == ()
+    assert set(t.kanit) == {"pyproject.toml", ".coveragerc", "setup.cfg", "tox.ini"}
+    repo = tmp_path / "r"
+    repo.mkdir()
+    assert kanit_var_mi(tur_ad, str(repo)) is False
+    (repo / ".coveragerc").write_text("", encoding="utf-8")
+    assert kanit_var_mi(tur_ad, str(repo)) is True
 
 
 @pytest.mark.parametrize("tur_ad", ["node_modules", "__pycache__", ".pytest_cache", ".venv", "venv"])

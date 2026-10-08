@@ -51,13 +51,13 @@ Ortam değişkeni varsa (ör. `PIP_CACHE_DIR`, `npm_config_cache`, `UV_CACHE_DIR
 
 | ad | Windows | Linux/mac | temizleme | risk |
 |---|---|---|---|---|
-| pip | `%LOCALAPPDATA%\pip\Cache` | `~/.cache/pip` | `pip cache purge` varsa onu, yoksa klasör | guvenli |
+| pip | `%LOCALAPPDATA%\pip\Cache` | `~/.cache/pip` | `pip cache purge` (komut yoksa ya da hata dönerse klasöre düşülmez) | guvenli |
 | npm | `%LOCALAPPDATA%\npm-cache` | `~/.npm/_cacache` | `npm cache clean --force` | guvenli |
 | yarn | `%LOCALAPPDATA%\Yarn\Cache` | `~/.cache/yarn` | `yarn cache clean` | guvenli |
 | pnpm store | `%LOCALAPPDATA%\pnpm\store` | `~/.local/share/pnpm/store` | `pnpm store prune` | guvenli |
 | uv | `%LOCALAPPDATA%\uv\cache` | `~/.cache/uv` | `uv cache clean` | guvenli |
-| cargo registry | `%USERPROFILE%\.cargo\registry` | `~/.cargo/registry` | klasör (`cache/`, `src/`) | guvenli |
-| gradle | `%USERPROFILE%\.gradle\caches` | `~/.gradle/caches` | klasör | guvenli |
+| cargo registry | `%USERPROFILE%\.cargo\registry` | `~/.cargo/registry` | klasör: `registry/` silinir (`cache/`, `src/` dahil; `bin/` ve `config.toml` korunur) | guvenli |
+| gradle | `%USERPROFILE%\.gradle\caches` | `~/.gradle/caches` | klasör: `caches/` silinir | guvenli |
 | playwright | `%LOCALAPPDATA%\ms-playwright` | `~/.cache/ms-playwright` | — | **dikkat** (tarayıcılar yeniden indirilir) |
 | huggingface | `%USERPROFILE%\.cache\huggingface` | `~/.cache/huggingface` | — | **dikkat** (modeller GB'larca, yeniden indirilir) |
 
@@ -67,7 +67,7 @@ konteyner / yerel volume / build cache boyutları **yalnız raporlanır**; panel
 satır "docker bulunamadı" olarak sessiz geçer, hata değil.
 
 Komutla temizlemede: komut `shutil.which` ile bulunur, `subprocess.run([...], shell=False,
-timeout=300)`; komut yoksa ya da hata dönerse klasör silmeye düşülmez, sonuç "komut başarısız"
+timeout=300)`; komut yoksa ya da hata dönerse klasöre HİÇ düşülmez (klasör silme yoktur), sonuç "komut başarısız"
 raporlanır (önbellek dizini başka sürecin kilidi altında olabilir).
 
 ## 3. Keşif (`kesif.py` genişler)

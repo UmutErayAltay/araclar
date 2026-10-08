@@ -1,8 +1,10 @@
 """Rapor: JSON kaydi (atomik) + terminal tablosu (v2).
 
-v2 semasi (PLAN.md §4):
+v2 semasi (PLAN.md §4). Surum alani 1 kalir (eski okuyucular icin); yeni sema
+"sema": 2 ile isaretlenir:
 {
-  "surum": 2,
+  "surum": 1,
+  "sema": 2,
   "olusturma": "...",
   "sure_sn": 12.4,
   "adaylar": [{"id": "...", "repo": "...", "yol": "...", "tur": "node_modules",
@@ -14,7 +16,8 @@ v2 semasi (PLAN.md §4):
   "repolar": [{"yol": "...", "son_commit": ..., "kirli": false, "aday_boyut": 0}]
 }
 
-v1 raporlari da okunabilir (surum alani yoksa 1 sayilir).
+v1 raporlari da okunabilir (surum alani yoksa 1 sayilir). Ust duzey JSON bir
+nesne degilse rapor yok sayilir (yukle None doner).
 """
 
 from __future__ import annotations
@@ -94,31 +97,33 @@ def kaydet(rapor: dict, yol: Path | None = None) -> Path:
 
 
 def yukle(yol: Path | None = None) -> dict | None:
-    """Son raporu okur; yoksa/bozuksa None.
+    """Son raporu okur; yoksa, bozuksa ya da ust duzeyi nesne degilse None.
 
-    v1 raporlari da okur (surum alani yoksa 1 sayilir, diger alanlar bos liste).
+    v1 raporlari da okunur (surum alani yoksa 1 sayilir); eksik alanlar bos
+    varsayilanla tamamlanir. Bilinmeyen anahtarlar ve "sema" korunur.
     """
     try:
         veri = json.loads(_yol(yol).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
+    if not isinstance(veri, dict):
+        return None
 
-    # Geriye uyumluluk: v1 raporu (surum yok veya 1)
-    surum = veri.get("surum", 1)
-    if surum == 1:
-        # v1 format: {"tarih": ..., "adaylar": [...]}
-        # v2'ye donustur - yeni alanları koru
-        return {
-            "surum": 1,
-            "olusturma": veri.get("tarih", ""),
-            "tarih": veri.get("tarih", ""),
-            "sure_sn": veri.get("sure_sn", 0.0),
-            "adaylar": veri.get("adaylar", []),
-            "onbellekler": veri.get("onbellekler", []),
-            "docker": veri.get("docker", {"var": False, "imaj": 0, "konteyner": 0, "volume": 0, "build_cache": 0}),
-            "repolar": veri.get("repolar", []),
-        }
-    return veri
+    if veri.get("surum", 1) != SURUM:
+        return veri  # bilinmeyen gelecek surum: oldugu gibi
+
+    tarih = veri.get("tarih", "")
+    return {
+        **veri,  # sema ve bilinmeyen anahtarlar korunur
+        "surum": SURUM,
+        "tarih": tarih,
+        "olusturma": veri.get("olusturma", tarih),
+        "sure_sn": veri.get("sure_sn", 0.0),
+        "adaylar": veri.get("adaylar", []),
+        "onbellekler": veri.get("onbellekler", []),
+        "docker": veri.get("docker", {"var": False, "imaj": 0, "konteyner": 0, "volume": 0, "build_cache": 0}),
+        "repolar": veri.get("repolar", []),
+    }
 
 
 def gunluk_yaz(kayit: dict) -> None:
@@ -227,7 +232,7 @@ def ozet_kartlari(rapor: dict) -> dict[str, Any]:
         "dikkat_gerektiren": int,       # dikkat aday toplam boyutu
         "taranan_repo": int,            # benzersiz repo sayisi
         "aday_sayisi": int,             # toplam aday sayisi
-        "simdiye_kadar_temizlenen": int # gunlukten toplam bosalan
+        "simdiye_kadar_temizlenen": int # gunlukte sonuc="silindi" kayitlarinin toplam boyutu
     }
     """
     adaylar = rapor.get("adaylar", [])
@@ -236,7 +241,8 @@ def ozet_kartlari(rapor: dict) -> dict[str, Any]:
 
     repo_set = set(a.get("repo") for a in adaylar if a.get("repo"))
     gunluk = gunluk_oku()
-    temizlenen = sum(k.get("bosalan_bayt", 0) for k in gunluk if k.get("basarili"))
+    # gunluk_yaz "sonuc" ve "boyut" yazar; yalniz basarili silmeler sayilir.
+    temizlenen = sum(int(k.get("boyut", 0) or 0) for k in gunluk if k.get("sonuc") == "silindi")
 
     return {
         "geri_kazanilabilir": guvenli_boyut,

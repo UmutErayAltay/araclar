@@ -27,7 +27,7 @@ from flask import Flask, Response, jsonify, render_template, request
 
 from .. import is_akisi, rapor
 from ..kesif import KesifHatasi
-from ..sil import sil_idler
+from ..sil import RaporYok, sil_idler
 
 # DNS rebinding korumasi: yalnizca gercek loopback adresleri.
 HOST_DESENI = re.compile(r"^(127\.0\.0\.1|localhost)(:\d{1,5})?$", re.IGNORECASE)
@@ -79,7 +79,7 @@ def _accepted(govde: dict) -> Response:
 
 
 def _hata_metni(exc: Exception) -> str:
-    if isinstance(exc, KesifHatasi):
+    if isinstance(exc, (KesifHatasi, RaporYok)):
         return str(exc)
     return f"beklenmeyen bir hata oluştu ({type(exc).__name__})"
 
@@ -168,9 +168,9 @@ def _tarama_isi(
     )
 
 
-def _silme_isi(durum: _Durum, idler: list[str], dikkat_dahil: bool) -> None:
+def _silme_isi(durum: _Durum, idler: list[str], dikkat_idler: list[str]) -> None:
     try:
-        sonuc = sil_idler(idler, uygula=True, dikkat_dahil=dikkat_dahil)
+        sonuc = sil_idler(idler, uygula=True, dikkat_idler=dikkat_idler)
     except Exception as exc:
         durum.bitir("sil", hata=_hata_metni(exc))
         return
@@ -194,15 +194,6 @@ def _gorunum(veri: dict | None, silinen: frozenset[str]) -> dict | None:
         yeni["aday_boyut"] = sum(a.get("boyut", 0) for a in adaylar if a.get("repo") == r.get("yol"))
         repolar.append(yeni)
     return {**veri, "adaylar": adaylar, "onbellekler": onbellekler, "repolar": repolar}
-
-
-def _temizlenen_toplam() -> int:
-    """Gunlukteki basarili silmelerin toplam boyutu (bayt)."""
-    return sum(
-        int(k.get("boyut", 0) or 0)
-        for k in rapor.gunluk_oku()
-        if k.get("sonuc") == "silindi"
-    )
 
 
 def uygulama_olustur(
@@ -267,10 +258,7 @@ def uygulama_olustur(
         silinen = durum.silinen()
         gorunum = _gorunum(rapor.yukle(), silinen)
         ozet = rapor.ozet_kartlari(gorunum or {})
-        # rapor.ozet_kartlari gunlugu "basarili"/"bosalan_bayt" anahtarlariyla okur;
-        # gunluk_yaz ise "sonuc"/"boyut" yazar. Toplam burada dogru hesaplanir.
-        temizlenen = _temizlenen_toplam()
-        ozet["simdiye_kadar_temizlenen"] = temizlenen
+        temizlenen = ozet["simdiye_kadar_temizlenen"]
         if gorunum and gorunum.get("repolar"):
             ozet["taranan_repo"] = len(gorunum["repolar"])
         return jsonify({
@@ -318,16 +306,23 @@ def uygulama_olustur(
             return _json_hata(f"idler: 1 ile {MAX_IDLER} arasında kimlik listesi olmalı.", 400)
         if not all(isinstance(x, str) and ID_DESENI.fullmatch(x) for x in idler):
             return _json_hata("Geçersiz kimlik.", 400)
-        dikkat_dahil = veri.get("dikkat_dahil", False)
-        if not isinstance(dikkat_dahil, bool):
-            return _json_hata("dikkat_dahil true veya false olmalı.", 400)
+        # Dikkat (risk != guvenli) yalnizca burada ACIKCA listelenen kimlikler icin
+        # gecerlidir; genel bir bayrak dikkat silmeyi acmaz.
+        dikkat_idler = veri.get("dikkat_idler", [])
+        if not isinstance(dikkat_idler, list):
+            return _json_hata("dikkat_idler bir liste olmalı.", 400)
+        if not all(isinstance(x, str) and ID_DESENI.fullmatch(x) for x in dikkat_idler):
+            return _json_hata("Geçersiz kimlik.", 400)
+        if not set(dikkat_idler) <= set(idler):
+            return _json_hata("dikkat_idler, idler içinde olmalı.", 400)
 
         essiz = list(dict.fromkeys(idler))
+        dikkat_essiz = list(dict.fromkeys(dikkat_idler))
         if not durum.baslat("silme", "sil", len(essiz)):
             return _json_hata("Başka bir tarama ya da silme sürüyor.", 409)
         is_parcacigi = threading.Thread(
             target=_silme_isi,
-            args=(durum, essiz, dikkat_dahil),
+            args=(durum, essiz, dikkat_essiz),
             name="devtemizle-sil",
             daemon=True,
         )

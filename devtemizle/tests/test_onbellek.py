@@ -130,30 +130,35 @@ def test_onbellek_yolu_bul_yoksa_none(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("kural_ad,env_var,yol_suffix", [
-    ("pip", "PIP_CACHE_DIR", "pip"),
-    ("npm", "npm_config_cache", "npm"),
-    ("yarn", "YARN_CACHE_FOLDER", "yarn"),
-    ("pnpm", "PNPM_STORE_PATH", "pnpm/store"),
-    ("uv", "UV_CACHE_DIR", "uv"),
-    ("cargo", "CARGO_HOME", "cargo"),
-    ("gradle", "GRADLE_USER_HOME", "gradle"),
-    ("playwright", "PLAYWRIGHT_BROWSERS_PATH", "playwright"),
-    ("huggingface", "HF_HOME", "huggingface"),
+@pytest.mark.parametrize("kural_ad,env_var,sonek", [
+    ("pip", "PIP_CACHE_DIR", ""),
+    ("npm", "npm_config_cache", ""),
+    ("yarn", "YARN_CACHE_FOLDER", ""),
+    ("pnpm", "PNPM_STORE_PATH", ""),
+    ("uv", "UV_CACHE_DIR", ""),
+    ("cargo", "CARGO_HOME", "registry"),
+    ("gradle", "GRADLE_USER_HOME", "caches"),
+    ("playwright", "PLAYWRIGHT_BROWSERS_PATH", ""),
+    ("huggingface", "HF_HOME", "hub"),
 ])
-def test_env_degiskeni_onceligi(kural_ad, env_var, yol_suffix, tmp_path, monkeypatch):
-    """Her önbellek için env değişkeni yollardan önce denenir."""
-    env_yol = tmp_path / "env" / yol_suffix
-    env_yol.mkdir(parents=True)
+def test_env_degiskeni_onceligi(kural_ad, env_var, sonek, tmp_path, monkeypatch):
+    """Her önbellek için env değişkeni yollardan önce denenir.
 
-    monkeypatch.setenv(env_var, str(env_yol))
+    Env değişkeni ANA dizindir; kuralın eki eklenir (CARGO_HOME -> registry/).
+    Ek olmayan kurallarda (sonek="") değer doğrudan önbellek klasörüdür.
+    """
+    env_kok = tmp_path / "env" / kural_ad
+    beklenen = env_kok / sonek if sonek else env_kok
+    beklenen.mkdir(parents=True)
+
+    monkeypatch.setenv(env_var, str(env_kok))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
 
     kural = next(k for k in _tum_kurallar() if k.ad == kural_ad)
     yol = _onbellek_yolu_bul(kural)
 
-    assert yol == env_yol, f"{kural_ad}: env değişkeni öncelikli olmalı"
+    assert yol == beklenen, f"{kural_ad}: env değişkeni öncelikli olmalı"
 
 
 # --------------------------------------------------------------------------

@@ -2,7 +2,11 @@
 
 - Yol cozumu platforma gore (Windows: LOCALAPPDATA/APPDATA; diger: ~/.cache, XDG_CACHE_HOME)
 - Ortam degiskeni onceligi (PIP_CACHE_DIR, npm_config_cache, UV_CACHE_DIR, CARGO_HOME, GRADLE_USER_HOME)
+  Ortam degiskeni bir ANA dizin verir; kural her degisken icin bir alt klasor eki
+  tanimlar (CARGO_HOME -> registry, GRADLE_USER_HOME -> caches). Ortam yollari MUTLAK olmalidir.
 - Komutla temizleme: shutil.which, shell=False, timeout=300; basarisizsa klasore DUSMEZ
+- Klasor silme: kok, ev dizini ve ev dizininin ust dizinleri REDDEDILIR; hata yutulmaz,
+  basarisizlik "basarili=False" olarak raporlanir.
 - docker system df: yalniz rapor, yoksa sessiz gecis
 """
 
@@ -17,6 +21,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from .tara import _baglanti
+
 
 @dataclass(frozen=True)
 class OnbellekKurali:
@@ -26,7 +32,9 @@ class OnbellekKurali:
     risk: str                  # "guvenli" | "dikkat"
     windows_yollar: tuple[str, ...]   # %LOCALAPPDATA%, %APPDATA% kullanir
     unix_yollar: tuple[str, ...]      # ~/, ~/.cache, XDG_CACHE_HOME kullanir
-    env_degiskenleri: tuple[str, ...] # once env, sonra yollar
+    #: (ortam degiskeni, alt klasor eki): deger ana dizindir, ek eklenerek onbellek bulunur.
+    #: Ek "" ise deger dogrudan onbellek klasorudur.
+    env_degiskenleri: tuple[tuple[str, str], ...]  # once env, sonra yollar
     temizleme_komutu: tuple[str, ...] | None  # None = klasor silme (dikkat!)
     aciklama: str
 
@@ -45,7 +53,7 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
             "~/.cache/pip",
             "$XDG_CACHE_HOME/pip",
         ),
-        env_degiskenleri=("PIP_CACHE_DIR",),
+        env_degiskenleri=(("PIP_CACHE_DIR", ""),),
         temizleme_komutu=("pip", "cache", "purge"),
         aciklama="pip cache purge calistirilir",
     ),
@@ -61,7 +69,7 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
             "~/.npm/_cacache",
             "$XDG_CACHE_HOME/npm",
         ),
-        env_degiskenleri=("npm_config_cache",),
+        env_degiskenleri=(("npm_config_cache", ""),),
         temizleme_komutu=("npm", "cache", "clean", "--force"),
         aciklama="npm cache clean --force calistirilir",
     ),
@@ -77,7 +85,7 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
             "~/.cache/yarn",
             "$XDG_CACHE_HOME/yarn",
         ),
-        env_degiskenleri=("YARN_CACHE_FOLDER",),
+        env_degiskenleri=(("YARN_CACHE_FOLDER", ""),),
         temizleme_komutu=("yarn", "cache", "clean"),
         aciklama="yarn cache clean calistirilir",
     ),
@@ -93,7 +101,8 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
             "~/.local/share/pnpm/store",
             "$XDG_CACHE_HOME/pnpm/store",
         ),
-        env_degiskenleri=("PNPM_HOME", "PNPM_STORE_PATH"),
+        # PNPM_HOME kendisi silinmez (bin/, global paketler); yalniz store alt klasoru.
+        env_degiskenleri=(("PNPM_HOME", "store"), ("PNPM_STORE_PATH", "")),
         temizleme_komutu=("pnpm", "store", "prune"),
         aciklama="pnpm store prune calistirilir",
     ),
@@ -109,7 +118,7 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
             "~/.cache/uv",
             "$XDG_CACHE_HOME/uv",
         ),
-        env_degiskenleri=("UV_CACHE_DIR",),
+        env_degiskenleri=(("UV_CACHE_DIR", ""),),
         temizleme_komutu=("uv", "cache", "clean"),
         aciklama="uv cache clean calistirilir",
     ),
@@ -122,11 +131,11 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
         ),
         unix_yollar=(
             "~/.cargo/registry",
-            "$CARGO_HOME/registry",
         ),
-        env_degiskenleri=("CARGO_HOME",),
-        temizleme_komutu=None,  # klasor: cache/ ve src/ silinir
-        aciklama="~/.cargo/registry/cache/ ve src/ silinir",
+        # CARGO_HOME: bin/ ve config.toml korunur; yalniz registry/ silinir.
+        env_degiskenleri=(("CARGO_HOME", "registry"),),
+        temizleme_komutu=None,  # klasor: registry/ (cache/ ve src/ dahil) silinir
+        aciklama="~/.cargo/registry/ silinir (cache/ ve src/ dahil)",
     ),
     OnbellekKurali(
         ad="gradle",
@@ -137,9 +146,9 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
         ),
         unix_yollar=(
             "~/.gradle/caches",
-            "$GRADLE_USER_HOME/caches",
         ),
-        env_degiskenleri=("GRADLE_USER_HOME",),
+        # GRADLE_USER_HOME: yalniz caches/ silinir (gradle.properties, wrapper/ korunur).
+        env_degiskenleri=(("GRADLE_USER_HOME", "caches"),),
         temizleme_komutu=None,  # klasor silinir
         aciklama="~/.gradle/caches silinir",
     ),
@@ -154,7 +163,7 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
             "~/.cache/ms-playwright",
             "$XDG_CACHE_HOME/ms-playwright",
         ),
-        env_degiskenleri=("PLAYWRIGHT_BROWSERS_PATH",),
+        env_degiskenleri=(("PLAYWRIGHT_BROWSERS_PATH", ""),),
         temizleme_komutu=None,
         aciklama="tarayicilar yeniden indirilir (GB'larca)",
     ),
@@ -168,36 +177,44 @@ _ONBELLEK_KURALLARI: Final[list[OnbellekKurali]] = [
         unix_yollar=(
             "~/.cache/huggingface",
             "$XDG_CACHE_HOME/huggingface",
-            "$HF_HOME",
         ),
-        env_degiskenleri=("HF_HOME", "HUGGINGFACE_HUB_CACHE"),
+        env_degiskenleri=(("HF_HOME", "hub"), ("HUGGINGFACE_HUB_CACHE", "")),
         temizleme_komutu=None,
         aciklama="modeller yeniden indirilir (GB'larca)",
     ),
 ]
 
 
-def _yol_coz(yol: str) -> Path | None:
-    """Yol string'ini cozer: ~, $VAR, %VAR% -> Path. Yoksa None."""
+def _yol_coz(yol: str, *, env: bool = False) -> Path | None:
+    """Yol string'ini cozer: ~, $VAR, %VAR% -> Path (varlik kontrolu YAPMAZ).
+
+    Ortam degiskeninden turetilen yol (env=True veya $/% iceren) MUTLAK olmalidir;
+    PLAYWRIGHT_BROWSERS_PATH=0 gibi goreli degerler None doner.
+    """
     if not yol:
         return None
-    # Ortam degiskeni genisletme ($VAR veya ${VAR})
-    genisletilmis = os.path.expandvars(yol)
-    # ~ genisletme
-    genisletilmis = os.path.expanduser(genisletilmis)
+    genisletilmis = os.path.expanduser(os.path.expandvars(yol))
     p = Path(genisletilmis)
-    return p if p.exists() else None
+    if (env or "$" in yol or "%" in yol) and not p.is_absolute():
+        return None
+    return p
 
 
 def _onbellek_yolu_bul(kural: OnbellekKurali) -> Path | None:
-    """Onbellek kurali icin once env degiskenleri, sonra platform yollarini dener."""
-    # Once ortam degiskenleri
-    for env in kural.env_degiskenleri:
+    """Onbellek kurali icin once env degiskenleri, sonra platform yollarini dener.
+
+    Ortam degiskeni ana dizin verir; kuralin eki eklenir (CARGO_HOME -> .../registry).
+    """
+    for env, sonek in kural.env_degiskenleri:
         deger = os.environ.get(env)
-        if deger:
-            p = _yol_coz(deger)
-            if p:
-                return p
+        if not deger:
+            continue
+        taban = _yol_coz(deger, env=True)
+        if taban is None:
+            continue
+        hedef = taban / sonek if sonek else taban
+        if hedef.exists():
+            return hedef
 
     # Platforma gore yollar
     if os.name == "nt":
@@ -207,8 +224,30 @@ def _onbellek_yolu_bul(kural: OnbellekKurali) -> Path | None:
 
     for yol in yollar:
         p = _yol_coz(yol)
-        if p:
+        if p is not None and p.exists():
             return p
+    return None
+
+
+def onbellek_riski(ad: str) -> str:
+    """Onbellek adina gore risk: statik kural tablosundan okunur (rapor kullanilmaz).
+
+    Bilinmeyen ad "dikkat" sayilir.
+    """
+    kural = next((k for k in _ONBELLEK_KURALLARI if k.ad == ad), None)
+    return kural.risk if kural is not None else "dikkat"
+
+
+def _silinemez_neden(yol: Path) -> str | None:
+    """Klasor silme korumasi: kok, ev dizini veya evin ust dizini ise neden metni."""
+    gercek = Path(os.path.realpath(yol))
+    if gercek.parent == gercek:  # "/" veya surucu koku
+        return "kok-dizin"
+    ev = Path(os.path.realpath(Path.home()))
+    if gercek == ev:
+        return "ev-dizini"
+    if gercek in ev.parents:
+        return "ev-dizininin-ust-dizini"
     return None
 
 
@@ -349,31 +388,48 @@ def onbellek_temizle(ad: str, *, uygula: bool = True, timeout: int = 300) -> dic
         }
 
     # Klasor temizleme (temizleme_komutu None)
+    return _klasor_temizle(ad, oid, yol, onceki_boyut)
+
+
+def _klasor_temizle(ad: str, oid: str, yol: Path, onceki_boyut: int) -> dict:
+    """Onbellek klasorunu siler. Hata yutulmaz; yol hala varsa basarili=False.
+
+    bosalan_bayt = silmeden once - silmeden sonra (olculen), tahmini degil.
+    """
+    sonuc = {
+        "id": oid,
+        "ad": ad,
+        "yol": str(yol),
+        "onceki_boyut": onceki_boyut,
+        "bosalan_bayt": 0,
+        "basarili": False,
+        "yontem": "klasor",
+        "hata": None,
+    }
+    neden = _silinemez_neden(yol)
+    if neden:
+        sonuc["hata"] = f"silinmez yol ({neden})"
+        return sonuc
+    if _baglanti(yol):
+        sonuc["hata"] = "baglanti; klasor silinmez"
+        return sonuc
+
+    hatalar: list[str] = []
     try:
-        if yol.is_dir():
-            shutil.rmtree(yol, onerror=lambda f, p, e: None)
-        yeni_boyut = 0
-        return {
-            "id": oid,
-            "ad": ad,
-            "yol": str(yol),
-            "onceki_boyut": onceki_boyut,
-            "bosalan_bayt": onceki_boyut,
-            "basarili": True,
-            "yontem": "klasor",
-            "hata": None,
-        }
+        if sys.version_info >= (3, 12):
+            shutil.rmtree(yol, onexc=lambda _f, p, e: hatalar.append(f"{p}: {e}"))
+        else:
+            shutil.rmtree(yol, onerror=lambda _f, p, e: hatalar.append(f"{p}: {e[1]}"))
     except OSError as exc:
-        return {
-            "id": oid,
-            "ad": ad,
-            "yol": str(yol),
-            "onceki_boyut": onceki_boyut,
-            "bosalan_bayt": 0,
-            "basarili": False,
-            "yontem": "klasor",
-            "hata": str(exc),
-        }
+        hatalar.append(str(exc))
+
+    kaldi = os.path.lexists(yol)
+    kalan = _boyut_hesapla(yol) if kaldi else 0
+    sonuc["bosalan_bayt"] = max(0, onceki_boyut - kalan)
+    sonuc["basarili"] = not kaldi
+    if kaldi:
+        sonuc["hata"] = "silinemedi: " + ("; ".join(hatalar) or "yol hala var")
+    return sonuc
 
 
 def docker_boyutlari() -> dict:

@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import is_akisi, rapor
 from .kesif import KesifHatasi, repo_listesi
-from .sil import sil, sil_idler
+from .sil import RaporYok, sil, sil_idler
 from .turler import tur_adlari
 
 KULLANIM_HATASI = 2
@@ -83,12 +83,17 @@ def _sil(args: argparse.Namespace) -> int:
 
     # ID listesiyle silme (yeni)
     if args.id:
-        sonuc = sil_idler(
-            idler=args.id,
-            onbellek_adlar=args.onbellek_ad,
-            uygula=args.uygula,
-            dikkat_dahil=args.dikkat_dahil,
-        )
+        try:
+            sonuc = sil_idler(
+                idler=args.id,
+                onbellek_adlar=args.onbellek_ad,
+                uygula=args.uygula,
+                dikkat_dahil=args.dikkat_dahil,
+                yas=args.yas,
+            )
+        except RaporYok as exc:
+            print(f"Hata: {exc}", file=sys.stderr)
+            return 1
         if args.json:
             print(json.dumps(sonuc, ensure_ascii=False, indent=2, default=str))
         else:

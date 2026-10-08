@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,9 @@ def izole(tmp_path, monkeypatch):
     (repo / "package.json").write_text("{}", encoding="utf-8")
     (repo / "node_modules").mkdir()
     (repo / "node_modules" / "x.js").write_text("x" * 1000, encoding="utf-8")
+    # Aday yasi 30 gun (yas esigi 7 gun; taze dizin silinmez).
+    eski = time.time() - 30 * 86400
+    os.utime(repo / "node_modules", (eski, eski))
     return kok, repo
 
 
@@ -388,6 +392,8 @@ def test_dikkat_aday_varsayilan_silinmez(izole):
     # dist: kanit (package.json) var, risk "dikkat".
     (repo / "dist").mkdir()
     (repo / "dist" / "bundle.js").write_text("y", encoding="utf-8")
+    eski = time.time() - 30 * 86400
+    os.utime(repo / "dist", (eski, eski))
     app, istemci = _istemci(kok)
     csrf = _csrf(istemci)
     _tara(app, istemci, csrf)
@@ -401,7 +407,7 @@ def test_dikkat_aday_varsayilan_silinmez(izole):
     assert any(a["yol"] == aday["yol"] and a["neden"] == "risk-dikkat" for a in ozet["atlanan"])
 
     istemci.post(
-        "/api/sil", json={"idler": [aday["id"]], "dikkat_dahil": True}, headers=_basliklar(csrf)
+        "/api/sil", json={"idler": [aday["id"]], "dikkat_idler": [aday["id"]]}, headers=_basliklar(csrf)
     )
     _bekle(app)
     assert not (repo / "dist").exists()

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from conftest import (
+    eskit,
     nedenler,
     sahte_aday,
     sahte_aday_soyut,
@@ -419,6 +420,7 @@ def test_sil_idler_rapor_id_cozulur(tmp_path, rapor_dizini, ev_isole):
     # Repo ve aday oluştur
     repo = sahte_repo(tmp_path / "repo")
     sahte_aday(repo, "node_modules", bayt=1000)
+    eskit(repo / "node_modules", 30)  # rapor 30 gun diyor: diskte de oyle olmali
 
     # ID ile sil
     sonuc = sil_idler(idler=["abc123def456"], uygula=True, rapor_yol=rapor_dizini / "son.json")
@@ -564,6 +566,8 @@ def test_sil_idler_dikkat_dahil_true_risk_dikkat_silinir(tmp_path, rapor_dizini,
 
     repo = sahte_repo(tmp_path / "repo")
     sahte_aday(repo, "build", bayt=500)
+    (repo / "build.gradle").write_text("", encoding="utf-8")  # build icin kardes kanit
+    eskit(repo / "build", 30)
 
     aday = {
         "id": "build1234567",
@@ -595,6 +599,7 @@ def test_sil_idler_gunluk_yazilir(tmp_path, rapor_dizini, ev_isole):
 
     repo = sahte_repo(tmp_path / "repo")
     sahte_aday(repo, "node_modules", bayt=1000)
+    eskit(repo / "node_modules", 30)
 
     aday = {
         "id": "gunluk123456",

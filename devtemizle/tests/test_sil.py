@@ -516,7 +516,7 @@ def test_sil_idler_onbellek_temizleme(tmp_path, rapor_dizini, ev_isole):
                     "aciklama": "pip cache purge calistirilir",
                 }
                 veri = rapor.olustur(adaylar=[], onbellekler=[aday], simdi=time.time())
-                rapor.kaydet(veri)
+                rapor.kaydet(veri, rapor_dizini / "son.json")
 
                 sonuc = sil_idler(idler=["pip123456789"], uygula=True, rapor_yol=rapor_dizini / "son.json")
 

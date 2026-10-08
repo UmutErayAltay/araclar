@@ -85,11 +85,11 @@ raporlanır (önbellek dizini başka sürecin kilidi altında olabilir).
 
 ## 4. Rapor modeli (`rapor.py` genişler, geriye uyumlu)
 
-`son.json` yeni alanlar alır, eski alanlar aynen kalır (`goster` eski raporu da okur):
+`son.json` yeni alanlar alır, eski alanlar aynen kalır (`goster` eski raporu da okur). `surum` 1 kalır (eski okuyucular ve testler); yeni şema `sema: 2` ile işaretlenir:
 
 ```json
 {
-  "surum": 2, "olusturma": "...", "sure_sn": 12.4,
+  "surum": 1, "sema": 2, "tarih": "...", "olusturma": "...", "sure_sn": 12.4,
   "adaylar": [{"id": "a1b2c3d4", "repo": "...", "yol": "...", "tur": "node_modules",
                "grup": "js", "risk": "guvenli", "boyut": 0, "son_erisim": "...",
                "yas_gun": 0.0, "atlandi": null, "yeniden": "npm install"}],

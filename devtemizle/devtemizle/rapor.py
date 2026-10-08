@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 SURUM = 1
+SURUM_V2 = 2
 VARSAYILAN_AD = "son.json"
 
 
@@ -53,14 +54,26 @@ def olustur(
     simdi: float | None = None,
     sure_sn: float = 0.0,
 ) -> dict:
-    """Rapor govdesi (yazmaz; kaydet() yazar). v1 sema (geriye uyumlu)."""
+    """Rapor govdesi (yazmaz; kaydet() yazar).
+
+    Yalniz adaylar verilirse v1 sema (surum/tarih/adaylar; eski cagrilar degismez).
+    onbellekler/docker/repolar'dan biri verilirse v2 sema (PLAN.md §4).
+    """
     olusturma = datetime.fromtimestamp(
         time.time() if simdi is None else simdi, timezone.utc
     ).isoformat(timespec="seconds")
+    if onbellekler is None and docker is None and repolar is None:
+        return {"surum": SURUM, "tarih": olusturma, "adaylar": adaylar}
     return {
-        "surum": SURUM,
+        "surum": SURUM,  # eski okuyucular icin degismez; yeni alanlar eklemeli
+        "sema": SURUM_V2,
         "tarih": olusturma,
+        "olusturma": olusturma,
+        "sure_sn": sure_sn,
         "adaylar": adaylar,
+        "onbellekler": onbellekler or [],
+        "docker": docker or {"var": False, "imaj": 0, "konteyner": 0, "volume": 0, "build_cache": 0},
+        "repolar": repolar or [],
     }
 
 
@@ -94,15 +107,16 @@ def yukle(yol: Path | None = None) -> dict | None:
     surum = veri.get("surum", 1)
     if surum == 1:
         # v1 format: {"tarih": ..., "adaylar": [...]}
-        # v2'ye donustur
+        # v2'ye donustur - yeni alanları koru
         return {
             "surum": 1,
             "olusturma": veri.get("tarih", ""),
-            "sure_sn": 0.0,
+            "tarih": veri.get("tarih", ""),
+            "sure_sn": veri.get("sure_sn", 0.0),
             "adaylar": veri.get("adaylar", []),
-            "onbellekler": [],
-            "docker": {"var": False, "imaj": 0, "konteyner": 0, "volume": 0, "build_cache": 0},
-            "repolar": [],
+            "onbellekler": veri.get("onbellekler", []),
+            "docker": veri.get("docker", {"var": False, "imaj": 0, "konteyner": 0, "volume": 0, "build_cache": 0}),
+            "repolar": veri.get("repolar", []),
         }
     return veri
 

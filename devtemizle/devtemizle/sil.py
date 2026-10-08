@@ -185,10 +185,12 @@ def _repo_adayi_sil(
 
     # 1. Rapordaki atlama bilgisi
     if aday.get("atlandi"):
-        return atla(aday["atlandi"]) or None
+        atla(aday["atlandi"])
+        return None
     # 2. Repo: gercek dizin ve .git
     if not _gecerli_repo(repo):
-        return atla("degisti") or None
+        atla("degisti")
+        return None
     # 3. Adayin ust dizini repo icinde mi? (sahte rapor: repo disina cikis)
     if not _icinde(os.path.realpath(yol.parent), os.path.realpath(repo)):
         sonuc["silinemedi"].append({"yol": str(yol), "neden": "repo-disi"})
@@ -196,16 +198,20 @@ def _repo_adayi_sil(
     # 4. Ad ve tur rapor ile tutarli ve bilinen tur mu?
     tur = tur_ara(tur_ad) if isinstance(tur_ad, str) else None
     if tur is None or yol.name != tur_ad:
-        return atla("gecersiz-rapor") or None
+        atla("gecersiz-rapor")
+        return None
     # 5. Risk rapordan DEGIL, kural tablosundan (eksik/yanlis risk = dikkat)
     risk = risk_durumu(tur_ad, str(yol.parent), tur)
     if risk != "guvenli" and not dikkat_izni:
-        return atla("risk-dikkat") or None
+        atla("risk-dikkat")
+        return None
     # 6. Hala var mi, baglanti mi?
     if not os.path.lexists(yol):
-        return atla("yok-oldu") or None
+        atla("yok-oldu")
+        return None
     if tara_modulu._baglanti(yol):
-        return atla("baglanti") or None
+        atla("baglanti")
+        return None
     # 7. Taze tarama: ayni yol, atlandi yok, yas yeterli
     kayit = next(
         (k for k in taze_tarama(repo)
@@ -213,11 +219,14 @@ def _repo_adayi_sil(
         None,
     )
     if kayit is None:
-        return atla("degisti") or None
+        atla("degisti")
+        return None
     if kayit.get("atlandi"):
-        return atla(kayit["atlandi"]) or None
+        atla(kayit["atlandi"])
+        return None
     if yas > 0 and kayit["yas_gun"] < yas:
-        return atla("yeni") or None
+        atla("yeni")
+        return None
 
     kimlikli = {**kayit, "id": aday.get("id")}
     if not uygula:
@@ -247,11 +256,11 @@ def _repo_adayi_sil(
     return aday.get("id")
 
 
-def _onbellek_sonucunu_yaz(sonuc: dict, onb_sonuc: dict, uygula: bool, etiket: str) -> str | None:
-    """Onbellek sonucunu kaydeder; basarili silmenin kimligi (varsa) dondurulur."""
+def _onbellek_sonucunu_yaz(sonuc: dict, onb_sonuc: dict, uygula: bool, etiket: str) -> None:
+    """Onbellek sonucunu listeye ve (uygula ise) gunluge yazar."""
     sonuc["onbellek_sonuclari"].append(onb_sonuc)
     if not uygula:
-        return None
+        return
     kayit = {
         "zaman": datetime_utc_iso(),
         "yol": onb_sonuc.get("yol", ""),
@@ -263,7 +272,6 @@ def _onbellek_sonucunu_yaz(sonuc: dict, onb_sonuc: dict, uygula: bool, etiket: s
         rapor.gunluk_yaz({**kayit, "sonuc": "silindi"})
     else:
         rapor.gunluk_yaz({**kayit, "sonuc": "basarisiz"})
-    return None
 
 
 def _rapordan_cikar(rapor_yol: Path | None, kimlikler: list[str]) -> str | None:

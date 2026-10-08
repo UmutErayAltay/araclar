@@ -728,3 +728,255 @@ def test_sil_idler_onbellek_adlar_parametresi(tmp_path, rapor_dizini, ev_isole):
     assert len(sonuc["onbellek_sonuclari"]) == 1
     assert sonuc["onbellek_sonuclari"][0]["ad"] == "npm"
     assert sonuc["onbellek_sonuclari"][0]["basarili"] is True
+
+
+# --------------------------------------------------------------------------
+# Regresyon: sil_idler rapora guvenmez; kapi sirasi; olculen bayt; yol sertlestirme
+# --------------------------------------------------------------------------
+
+
+def _rapor_adayi(id_, repo, yol, tur, **ek):
+    """Rapordaki repo adayi kaydi (sil_idler testleri icin)."""
+    aday = {
+        "id": id_, "repo": str(repo), "yol": str(yol), "tur": tur, "grup": "js",
+        "risk": "guvenli", "boyut": 0, "son_erisim": "2024-01-01T00:00:00+00:00",
+        "yas_gun": 30.0, "atlandi": None, "yeniden": "x",
+    }
+    aday.update(ek)
+    return aday
+
+
+def test_onbellek_dikkat_kapisi_cache_dalindan_once(tmp_path, rapor_dizini, ev_isole, monkeypatch):
+    """huggingface/playwright (risk dikkat) dikkat_dahil=False ile temizlenmez; rapor 'guvenli' dese de."""
+    import time
+    from devtemizle import rapor
+    from devtemizle import sil as sil_modulu
+    from devtemizle.sil import sil_idler
+
+    cagrilar: list[str] = []
+
+    def kaydet_sahte(ad, uygula=True, **_k):
+        cagrilar.append(ad)
+        return {"id": "", "ad": ad, "yol": "", "basarili": True, "bosalan_bayt": 0}
+
+    monkeypatch.setattr(sil_modulu, "onbellek_temizle", kaydet_sahte)
+    onbellekler = [
+        {"id": "hf1234567890", "ad": "huggingface", "yol": "/x", "boyut": 9, "risk": "guvenli",
+         "komut": None, "var": True},
+        {"id": "pw1234567890", "ad": "playwright", "yol": "/y", "boyut": 9, "komut": None, "var": True},
+    ]
+    rapor.kaydet(rapor.olustur(adaylar=[], onbellekler=onbellekler, simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["hf1234567890", "pw1234567890"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert cagrilar == []
+    assert nedenler(sonuc["atlanan"]) == ["risk-dikkat", "risk-dikkat"]
+
+    sil_idler(idler=["hf1234567890"], uygula=True, dikkat_dahil=True, rapor_yol=rapor_dizini / "son.json")
+    assert cagrilar == ["huggingface"]
+
+
+def test_sil_idler_eksik_risk_dikkat_sayilir(tmp_path, rapor_dizini, ev_isole):
+    """Raporda risk anahtari yoksa aday dikkat sayilir (build: tablo dikkat)."""
+    import time
+    from devtemizle import rapor
+    from devtemizle.sil import sil_idler
+
+    repo = sahte_repo(tmp_path / "repo", {"build.gradle": ""})
+    sahte_aday(repo, "build", bayt=500)
+    eskit(repo / "build", 30)
+    aday = _rapor_adayi("eksik1234567", repo, repo / "build", "build")
+    del aday["risk"]
+    rapor.kaydet(rapor.olustur(adaylar=[aday], simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["eksik1234567"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert (repo / "build").is_dir()
+    assert nedenler(sonuc["atlanan"]) == ["risk-dikkat"]
+
+
+def test_sil_idler_taze_dizin_raporun_yasi_yalan_olsa_da_silinmez(tmp_path, rapor_dizini, ev_isole):
+    """Rapor 30 gun diyor ama dizin bugun kullanildi: yas yeniden olculur, 'yeni' olarak atlanir."""
+    import time
+    from devtemizle import rapor
+    from devtemizle.sil import sil_idler
+
+    repo = sahte_repo(tmp_path / "repo")
+    sahte_aday(repo, "node_modules", bayt=100)
+    aday = _rapor_adayi("taze1234567", repo, repo / "node_modules", "node_modules")
+    rapor.kaydet(rapor.olustur(adaylar=[aday], simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["taze1234567"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert (repo / "node_modules").is_dir()
+    assert nedenler(sonuc["atlanan"]) == ["yeni"]
+
+
+def test_sil_idler_sahte_tur_ve_yol_eslesmezse_atlanir(tmp_path, rapor_dizini, ev_isole):
+    """Raporda tur node_modules, yol src: ad uyusmaz -> gecersiz-rapor; src silinmez."""
+    import time
+    from devtemizle import rapor
+    from devtemizle.sil import sil_idler
+
+    repo = sahte_repo(tmp_path / "repo")
+    (repo / "src").mkdir()
+    (repo / "src" / "kod.py").write_text("x", encoding="utf-8")
+    aday = _rapor_adayi("sahte1234567", repo, repo / "src", "node_modules")
+    rapor.kaydet(rapor.olustur(adaylar=[aday], simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["sahte1234567"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert (repo / "src" / "kod.py").is_file()
+    assert nedenler(sonuc["atlanan"]) == ["gecersiz-rapor"]
+
+
+def test_sil_idler_kanit_silmeden_once_yeniden_dogrulanir(tmp_path, rapor_dizini, ev_isole):
+    """Rapor 'guvenli' ve yasli diyor; Cargo.toml yok -> target kanitsiz, silinmez."""
+    import time
+    from devtemizle import rapor
+    from devtemizle.sil import sil_idler
+
+    repo = sahte_repo(tmp_path / "repo")
+    sahte_aday(repo, "target", bayt=100)
+    eskit(repo / "target", 30)
+    aday = _rapor_adayi("kanit1234567", repo, repo / "target", "target", risk="guvenli")
+    rapor.kaydet(rapor.olustur(adaylar=[aday], simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["kanit1234567"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert (repo / "target").is_dir()
+    assert nedenler(sonuc["atlanan"]) == ["kanit-yok"]
+
+
+def test_sil_idler_git_deposu_degilse_degisti(tmp_path, rapor_dizini, ev_isole):
+    """Repo kokunde .git yoksa rapor ne derse desin silinmez ('degisti')."""
+    import time
+    from devtemizle import rapor
+    from devtemizle.sil import sil_idler
+
+    repo = sahte_repo(tmp_path / "repo", git=False)
+    sahte_aday(repo, "node_modules", bayt=100)
+    eskit(repo / "node_modules", 30)
+    aday = _rapor_adayi("degisti1234", repo, repo / "node_modules", "node_modules")
+    rapor.kaydet(rapor.olustur(adaylar=[aday], simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["degisti1234"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert (repo / "node_modules").is_dir()
+    assert nedenler(sonuc["atlanan"]) == ["degisti"]
+
+
+def test_sil_idler_bosalan_bayt_olculen_degerdir(tmp_path, rapor_dizini, ev_isole):
+    """Raporda boyut 999999 yazsa da bosalan_bayt silmeden once-sonra olcumudur (1000)."""
+    import time
+    from devtemizle import rapor
+    from devtemizle.sil import sil_idler
+
+    repo = sahte_repo(tmp_path / "repo")
+    sahte_aday(repo, "node_modules", bayt=1000)
+    eskit(repo / "node_modules", 30)
+    aday = _rapor_adayi("olcum1234567", repo, repo / "node_modules", "node_modules", boyut=999999)
+    rapor.kaydet(rapor.olustur(adaylar=[aday], simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["olcum1234567"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert sonuc["bosalan_bayt"] == 1000
+
+
+def test_sil_idler_silinen_kimlik_rapor_dosyasindan_cikar(tmp_path, rapor_dizini, ev_isole):
+    """Basarili silme son.json'dan da cikarilir; yeniden baslatmada geri gelmez."""
+    import time
+    from devtemizle import rapor
+    from devtemizle.sil import sil_idler
+
+    repo = sahte_repo(tmp_path / "repo")
+    sahte_aday(repo, "node_modules", bayt=100)
+    eskit(repo / "node_modules", 30)
+    aday = _rapor_adayi("diskten1234", repo, repo / "node_modules", "node_modules")
+    rapor.kaydet(rapor.olustur(adaylar=[aday], simdi=time.time()), rapor_dizini / "son.json")
+
+    sil_idler(idler=["diskten1234"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert all(a.get("id") != "diskten1234" for a in rapor.yukle(rapor_dizini / "son.json")["adaylar"])
+
+
+def test_sil_idler_rapor_yoksa_hata(tmp_path, rapor_dizini, ev_isole):
+    """Rapor yoksa sessizce bos sonuc degil, RaporYok (CLI: 'once devtemizle tara')."""
+    from devtemizle.sil import RaporYok, sil_idler
+
+    with pytest.raises(RaporYok, match="devtemizle tara"):
+        sil_idler(idler=["abc12345"], uygula=True, rapor_yol=rapor_dizini / "yok.json")
+
+
+def test_sil_idler_baglanti_kontrolu_tara_baglantisini_kullanir(tmp_path, rapor_dizini, ev_isole, monkeypatch):
+    """Junction dahil baglanti denetimi tara._baglanti ile yapilir (yalniz is_symlink degil)."""
+    import time
+    from devtemizle import rapor
+    from devtemizle import tara as tara_modulu
+    from devtemizle.sil import sil_idler
+
+    repo = sahte_repo(tmp_path / "repo")
+    hedef = sahte_aday(repo, "node_modules", bayt=100)
+    eskit(hedef, 30)
+    gercek = tara_modulu._baglanti
+    monkeypatch.setattr(tara_modulu, "_baglanti", lambda y: Path(y) == hedef or gercek(y))
+    aday = _rapor_adayi("junction1234", repo, hedef, "node_modules")
+    rapor.kaydet(rapor.olustur(adaylar=[aday], simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["junction1234"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert hedef.is_dir()
+    assert nedenler(sonuc["atlanan"]) == ["baglanti"]
+
+
+def test_salt_okunur_sifirla_baglantidan_chmod_yapmaz(tmp_path, symlink_kur):
+    """Baglanti uzerinden chmod yok: hedef dizinin izni degismez, hata yukselir."""
+    from devtemizle.sil import _salt_okunur_sifirla
+
+    hedef = tmp_path / "hedef"
+    hedef.mkdir()
+    (hedef / "f.txt").write_text("x", encoding="utf-8")
+    hedef.chmod(0o755)
+    link = symlink_kur(hedef, "baglanti", ust=tmp_path)
+    try:
+        with pytest.raises(OSError):
+            _salt_okunur_sifirla(os.unlink, str(link), None)
+        assert stat.S_IMODE(hedef.stat().st_mode) == 0o755
+    finally:
+        hedef.chmod(0o755)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX dizin izni")
+def test_salt_okunur_sifirla_posix_ust_dizini_duzeltir(tmp_path):
+    """POSIX: silme dizin yazma iznine bagli; duzeltme ust dizinde yapilir, dosyada degil."""
+    from devtemizle.sil import _salt_okunur_sifirla
+
+    ust = tmp_path / "kilitli"
+    ust.mkdir()
+    dosya = ust / "f.txt"
+    dosya.write_text("x", encoding="utf-8")
+    dosya.chmod(stat.S_IREAD)
+    ust.chmod(stat.S_IREAD | stat.S_IEXEC)
+    try:
+        _salt_okunur_sifirla(os.unlink, str(dosya), None)
+        assert ust.stat().st_mode & stat.S_IWUSR, "ust dizin yazilabilir olmali"
+        assert not dosya.exists()
+    finally:
+        ust.chmod(0o755)
+
+
+def test_sil_idler_basarisiz_onbellek_gunlugu_basarisiz_yazar(tmp_path, rapor_dizini, ev_isole, monkeypatch):
+    """Klasor onbellegi silinemezse basarili=False, gunluge 'basarisiz' yazilir, 'silindi' yazilmaz."""
+    import time
+    from devtemizle import onbellek as onb_modulu
+    from devtemizle import rapor
+    from devtemizle.sil import sil_idler
+
+    hedef = tmp_path / "cache"
+    (hedef / "x").mkdir(parents=True)
+    (hedef / "x" / "f.bin").write_bytes(b"x" * 50)
+    monkeypatch.setattr(onb_modulu, "_onbellek_yolu_bul", lambda _k: hedef)
+
+    def kilitli(yol, *_a, **k):
+        k["onerror"](os.rmdir, str(yol), (OSError, OSError(13, "kilitli"), None))
+
+    monkeypatch.setattr(onb_modulu.shutil, "rmtree", kilitli)
+    kayit = {"id": "cache1234567", "ad": "cargo", "yol": str(hedef), "boyut": 50,
+             "risk": "guvenli", "komut": None, "var": True}
+    rapor.kaydet(rapor.olustur(adaylar=[], onbellekler=[kayit], simdi=time.time()), rapor_dizini / "son.json")
+
+    sonuc = sil_idler(idler=["cache1234567"], uygula=True, rapor_yol=rapor_dizini / "son.json")
+    assert sonuc["onbellek_sonuclari"][0]["basarili"] is False
+    assert sonuc["bosalan_bayt"] == 0
+    assert rapor.gunluk_oku()[-1]["sonuc"] == "basarisiz"

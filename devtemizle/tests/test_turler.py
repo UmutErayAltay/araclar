@@ -205,3 +205,7 @@ def test_gruplar_gecerli():
     izinli = {"js", "python", "rust", "jvm", "genel"}
     for t in tum_turler():
         assert t.grup in izinli, f"{t.ad}: geçersiz grup {t.grup}"
+
+def test_coverage_risk_dikkat():
+    """coverage (test ciktisi) risk=dikkat: varsayilan secimde degildir."""
+    assert tur_ara("coverage").risk == "dikkat"

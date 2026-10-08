@@ -318,3 +318,33 @@ def test_tablo_repo_sutunu_repo_adini_gosterir():
                         "yas_gun": 9.0, "atlandi": None}], 0)
     satir = rapor.tablo(r).splitlines()[1].split()
     assert satir[0] == "harita"
+
+
+# --------------------------------------------------------------------------
+# Regresyon: temizlenen toplam, bozuk ust duzey JSON, sema korunumu
+# --------------------------------------------------------------------------
+
+
+def test_ozet_temizlenen_yalniz_silindi_boyutu(rapor_dizini):
+    """simdiye_kadar_temizlenen: gunlukte sonuc='silindi' kayitlarinin boyutu toplami."""
+    rapor.gunluk_yaz({"zaman": "t", "yol": "/a", "tur": "node_modules", "boyut": 500, "sonuc": "silindi"})
+    rapor.gunluk_yaz({"zaman": "t", "yol": "/b", "tur": "pip", "boyut": 300, "sonuc": "basarisiz"})
+    assert rapor.ozet_kartlari({"adaylar": []})["simdiye_kadar_temizlenen"] == 500
+
+
+def test_yukle_ust_duzey_dizi_none(rapor_dizini):
+    """JSON bir nesne degilse (or. []) rapor yok sayilir: cokme yok."""
+    rapor_dizini.mkdir(parents=True, exist_ok=True)
+    (rapor_dizini / "son.json").write_text("[]", encoding="utf-8")
+    assert rapor.yukle() is None
+
+
+def test_yukle_sema_ve_bilinmeyen_anahtarlari_korur(rapor_dizini):
+    """v2 raporda sema=2 ve bilinmeyen anahtarlar yeniden kurulan sozlukte kalir."""
+    veri = rapor.olustur(adaylar=[], onbellekler=[], simdi=time.time())
+    veri["ozel_alan"] = 7
+    rapor.kaydet(veri)
+    okunan = rapor.yukle()
+    assert okunan["surum"] == 1
+    assert okunan["sema"] == 2
+    assert okunan["ozel_alan"] == 7

@@ -440,3 +440,127 @@ def test_komut_calistir_basarisiz(monkeypatch):
 
     assert basarili is False
     assert "error message" in cikti
+
+# --------------------------------------------------------------------------
+# Regresyon: ortam yolu (goreli reddi, alt klasor eki), koruma, hata bildirimi
+# --------------------------------------------------------------------------
+
+
+def _rmtree_kaydedici(monkeypatch):
+    """Gercek rmtree yerine cagrilari kaydeder: hatali kodda bile hicbir sey silinmez."""
+    from devtemizle import onbellek as onb_mod
+
+    cagrilar: list[str] = []
+    monkeypatch.setattr(onb_mod.shutil, "rmtree", lambda yol, *a, **k: cagrilar.append(str(yol)))
+    return cagrilar
+
+
+@pytest.mark.skipif(os.name == "nt", reason="unix yol kurallari")
+def test_goreli_ortam_yolu_yok_sayilir(tmp_path, monkeypatch):
+    """PLAYWRIGHT_BROWSERS_PATH=0 (goreli) cwd'deki '0' klasorune isaret etmez."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "0").mkdir()
+    ev = tmp_path / "home"
+    (ev / ".cache" / "ms-playwright").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(ev))
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    monkeypatch.setenv("PLAYWRIGHT_BROWSERS_PATH", "0")
+
+    kural = next(k for k in _tum_kurallar() if k.ad == "playwright")
+    assert _onbellek_yolu_bul(kural) == ev / ".cache" / "ms-playwright"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="unix yol kurallari")
+def test_cargo_klasor_silme_yalniz_registry(tmp_path, monkeypatch):
+    """CARGO_HOME'un bin/ ve config.toml'u korunur; yalniz registry/ silinir."""
+    ev = tmp_path / "home"
+    ev.mkdir()
+    monkeypatch.setenv("HOME", str(ev))
+    ch = tmp_path / "cargo-home"
+    (ch / "bin").mkdir(parents=True)
+    (ch / "bin" / "rustup").write_text("ikili", encoding="utf-8")
+    (ch / "config.toml").write_text("[net]\n", encoding="utf-8")
+    (ch / "registry" / "cache").mkdir(parents=True)
+    (ch / "registry" / "cache" / "x.crate").write_bytes(b"x" * 10)
+    monkeypatch.setenv("CARGO_HOME", str(ch))
+
+    sonuc = onbellek_temizle("cargo", uygula=True)
+
+    assert sonuc["basarili"] is True
+    assert not (ch / "registry").exists()
+    assert (ch / "bin" / "rustup").is_file(), "bin/ silindi"
+    assert (ch / "config.toml").is_file(), "config.toml silindi"
+
+
+def test_pnpm_home_degil_store_alt_klasoru(tmp_path, monkeypatch):
+    """PNPM_HOME kendisi onbellek degildir; yalniz store/ alt klasoru hedeftir."""
+    ph = tmp_path / "pnpm-home"
+    (ph / "bin").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("PNPM_STORE_PATH", raising=False)
+    monkeypatch.setenv("PNPM_HOME", str(ph))
+    kural = next(k for k in _tum_kurallar() if k.ad == "pnpm")
+    assert _onbellek_yolu_bul(kural) is None  # store/ yok: PNPM_HOME secilmez
+    (ph / "store").mkdir()
+    assert _onbellek_yolu_bul(kural) == ph / "store"
+
+
+def test_ev_dizini_ve_kok_klasor_silinmez(tmp_path, monkeypatch):
+    """Klasor silme korumasi: ev dizini, evin ust dizini ve kok asla rmtree'ye girmez."""
+    from devtemizle import onbellek as onb_mod
+
+    ev = tmp_path / "home"
+    (ev / "belge").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(ev))
+    monkeypatch.setattr(onb_mod, "_boyut_hesapla", lambda _yol: 0)
+    cagrilar = _rmtree_kaydedici(monkeypatch)
+
+    for hedef in (ev, tmp_path, Path(os.path.abspath(os.sep))):
+        monkeypatch.setattr(onb_mod, "_onbellek_yolu_bul", lambda _k, h=hedef: h)
+        sonuc = onbellek_temizle("cargo", uygula=True)
+        assert sonuc["basarili"] is False, f"{hedef} reddedilmeliydi"
+
+    assert cagrilar == [], f"korunan yol silinmeye calisildi: {cagrilar}"
+    assert (ev / "belge").is_dir()
+
+
+def test_klasor_silinemezse_basarisiz_ve_bayt_olculur(tmp_path, monkeypatch):
+    """rmtree hatayi bildirir ve yol kalir: basarili=False; bosalan silmeden sonra olculur."""
+    from devtemizle import onbellek as onb_mod
+
+    hedef = tmp_path / "cache"
+    (hedef / "x").mkdir(parents=True)
+    (hedef / "x" / "f.bin").write_bytes(b"x" * 100)
+    ev = tmp_path / "home"
+    ev.mkdir()
+    monkeypatch.setenv("HOME", str(ev))
+    monkeypatch.setattr(onb_mod, "_onbellek_yolu_bul", lambda _k: hedef)
+
+    def kismi_rmtree(yol, *a, **k):
+        (Path(yol) / "x" / "f.bin").unlink()  # yalniz dosya gider, dizin kilitli kalir
+        hata = OSError(13, "kilitli")
+        k["onerror"](os.rmdir, str(Path(yol) / "x"), (OSError, hata, None))
+
+    monkeypatch.setattr(onb_mod.shutil, "rmtree", kismi_rmtree)
+    sonuc = onbellek_temizle("cargo", uygula=True)
+
+    assert hedef.exists()
+    assert sonuc["basarili"] is False
+    assert sonuc["bosalan_bayt"] == 100
+    assert sonuc["hata"]
+
+
+def test_onbellek_riski_tablodan_bilinmeyen_dikkat():
+    """Risk statik tablodan okunur; bilinmeyen ad dikkat sayilir."""
+    from devtemizle.onbellek import onbellek_riski
+
+    assert onbellek_riski("pip") == "guvenli"
+    assert onbellek_riski("playwright") == "dikkat"
+    assert onbellek_riski("olmayan-onbellek") == "dikkat"
+
+
+def test_plan_md_guncel_metin():
+    """PLAN.md: cargo registry/ siler; pip komutu yoksa klasore dusulmez."""
+    plan = (Path(__file__).resolve().parents[1] / "PLAN.md").read_text(encoding="utf-8")
+    assert "registry/" in plan
+    assert "yoksa klasör" not in plan

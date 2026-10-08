@@ -7,6 +7,9 @@ dosya sistemi zamanina birakilir.
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +17,7 @@ from pathlib import Path
 import pytest
 from conftest import eskit, sahte_aday, sahte_repo
 
+from devtemizle import tara as tara_mod
 from devtemizle.tara import tara
 
 GUN = 86400.0
@@ -215,3 +219,113 @@ def test_tara_atlandiyi_ayiklamaz(tmp_path, symlink_kur):
         "node_modules": "baglanti",
         "__pycache__": None,
     }
+
+# --------------------------------------------------------------------------
+# Regresyon: kardes kanit, izlenen dosya, yas (iz + commit, negatif yok), sert baglanti
+# --------------------------------------------------------------------------
+
+
+def _aday(repo, tur):
+    return next(a for a in tara([repo]) if a["tur"] == tur)
+
+
+def test_kanit_repo_koku_degil_kardes_dosyadir(tmp_path):
+    """package.json kokte var ama coverage src/ altinda: kardesi yok -> kanit-yok."""
+    repo = sahte_repo(tmp_path / "r", {"package.json": "{}"})
+    (repo / "src" / "coverage").mkdir(parents=True)
+    (repo / "src" / "coverage" / "mod.js").write_text("kaynak", encoding="utf-8")
+    assert _aday(repo, "coverage")["atlandi"] == "kanit-yok"
+
+
+def test_cargo_kanit_alt_dizinde_bulunmaz(tmp_path):
+    """Cargo.toml kokte; tools/target kardesi Cargo.toml'siz -> kanit-yok."""
+    repo = sahte_repo(tmp_path / "r", {"Cargo.toml": "[package]\n"})
+    (repo / "tools" / "target").mkdir(parents=True)
+    (repo / "tools" / "target" / "x.rs").write_text("", encoding="utf-8")
+    assert _aday(repo, "target")["atlandi"] == "kanit-yok"
+
+
+def test_pyproject_kokte_docs_dist_kanit_sayilmaz(tmp_path):
+    """pyproject.toml kokte; docs/dist'in kardesi yok -> kanit-yok."""
+    repo = sahte_repo(tmp_path / "r", {"pyproject.toml": "[project]\n"})
+    (repo / "docs" / "dist").mkdir(parents=True)
+    (repo / "docs" / "dist" / "a.txt").write_text("", encoding="utf-8")
+    assert _aday(repo, "dist")["atlandi"] == "kanit-yok"
+
+
+def test_htmlcov_kardes_kanitsiz_atlanir(tmp_path):
+    """htmlcov kanitsiz aday degildir; kardes pyproject.toml ile aday olur."""
+    repo = sahte_repo(tmp_path / "r")
+    sahte_aday(repo, "htmlcov")
+    assert _aday(repo, "htmlcov")["atlandi"] == "kanit-yok"
+    (repo / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    assert _aday(repo, "htmlcov")["atlandi"] is None
+
+
+def test_git_izlenen_dosya_iceren_aday_atlanir(tmp_path, monkeypatch):
+    """git ls-files izlenen dosya dondururse aday atlanir (silme yok)."""
+    repo = sahte_repo(tmp_path / "r", {"package.json": "{}"})
+    sahte_aday(repo, "node_modules")
+    cagrilar = []
+
+    def sahte_calistir(args, **_kw):
+        cagrilar.append(list(args))
+        if "ls-files" in args:
+            return subprocess.CompletedProcess(args, 0, stdout="node_modules/paket.js\n", stderr="")
+        return subprocess.CompletedProcess(args, 128, stdout="", stderr="")
+
+    monkeypatch.setattr(tara_mod.shutil, "which", lambda _ad: "/usr/bin/git")
+    monkeypatch.setattr(tara_mod.subprocess, "run", sahte_calistir)
+    assert _aday(repo, "node_modules")["atlandi"] == "izlenen-dosya"
+    assert any("ls-files" in c for c in cagrilar)
+
+
+def test_git_yoksa_izlenen_kontrolu_atlanmaz(tmp_path, monkeypatch):
+    """git PATH'te yoksa izlenen-dosya denetimi yapilmaz; aday atlanmaz."""
+    repo = sahte_repo(tmp_path / "r")
+    sahte_aday(repo, "node_modules")
+    monkeypatch.setattr(tara_mod.shutil, "which", lambda _ad: None)
+
+    def git_cagrilmamali(*_a, **_k):
+        raise AssertionError("git yokken calistirilmamali")
+
+    monkeypatch.setattr(tara_mod.subprocess, "run", git_cagrilmamali)
+    assert _aday(repo, "node_modules")["atlandi"] is None
+
+
+def test_yas_ust_duzey_iz_en_yeni_zamani_alir(tmp_path):
+    """Adayin dizini eski ama pyvenv/.yarn-integrity gibi taze bir iz varsa yas taze sayilir."""
+    simdi = time.time()
+    repo = sahte_repo(tmp_path / "r")
+    yol = sahte_aday(repo, "node_modules")
+    (yol / ".yarn-integrity").write_text("x", encoding="utf-8")
+    eskit(yol, 30, simdi)
+    assert tara([repo], simdi=simdi)[0]["yas_gun"] < 1.0
+
+
+def test_repo_son_commit_yas_hesabina_girer(tmp_path, monkeypatch):
+    """Reponun son commit zamani (2 gun once) aday dizini 30 gun eski olsa da yasi belirler."""
+    simdi = time.time()
+    repo = sahte_repo(tmp_path / "r")
+    yol = sahte_aday(repo, "node_modules")
+    eskit(yol, 30, simdi)
+    monkeypatch.setattr(tara_mod, "_son_commit_zamani", lambda _repo: simdi - 2 * 86400, raising=False)
+    assert abs(tara([repo], simdi=simdi)[0]["yas_gun"] - 2.0) < 0.01
+
+
+def test_negatif_yas_sifira_kenetlenir(tmp_path):
+    """simdi, son erisimden once ise yas negatif degil 0'dir."""
+    repo = sahte_repo(tmp_path / "r")
+    sahte_aday(repo, "node_modules")
+    assert tara([repo], simdi=time.time() - 10 * 86400)[0]["yas_gun"] == 0.0
+
+
+def test_sert_baglanti_boyutu_bir_kez_sayilir(tmp_path):
+    """Ayni inode'a iki ad (sert baglanti) boyuta iki kez girmez."""
+    repo = sahte_repo(tmp_path / "r")
+    yol = sahte_aday(repo, "node_modules", bayt=100)
+    try:
+        os.link(yol / "paket.js", yol / "ayni.js")
+    except (OSError, NotImplementedError):
+        pytest.skip("sert baglanti olusturulamadi")
+    assert _aday(repo, "node_modules")["boyut"] == 100

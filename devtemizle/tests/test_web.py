@@ -432,3 +432,76 @@ def test_sil_ikinci_is_calisirken_409(izole, monkeypatch):
     assert ikinci.status_code == 409
     bekle.set()
     _bekle(app)
+
+
+# --------------------------------------------------------------------------
+# Regresyon: bozuk rapor, dikkat_idler, rapor dosyasi guncelleme, panel uyarisi
+# --------------------------------------------------------------------------
+
+
+def test_bozuk_ust_duzey_rapor_500_degil(izole):
+    """Rapor dosyasi bir JSON dizisi ise /api/rapor 200 doner ve rapor yok sayilir."""
+    kok, _ = izole
+    rapor_dizini = Path(os.environ["DEVTEMIZLE_DIR"])
+    rapor_dizini.mkdir(parents=True, exist_ok=True)
+    (rapor_dizini / "son.json").write_text("[]", encoding="utf-8")
+    _, istemci = _istemci(kok)
+    cevap = istemci.get("/api/rapor")
+    assert cevap.status_code == 200
+    assert cevap.get_json()["rapor"] is None
+
+
+def test_genel_dikkat_bayragi_tek_basina_dikkat_silmez(izole):
+    """dikkat_dahil:true tek basina yetmez; dikkat yalnizca dikkat_idler icindeki kimlikler icin."""
+    kok, repo = izole
+    (repo / "dist").mkdir()
+    (repo / "dist" / "bundle.js").write_text("y", encoding="utf-8")
+    eski = time.time() - 30 * 86400
+    os.utime(repo / "dist", (eski, eski))
+    app, istemci = _istemci(kok)
+    csrf = _csrf(istemci)
+    _tara(app, istemci, csrf)
+    aday = _aday(istemci, "dist")
+
+    istemci.post("/api/sil", json={"idler": [aday["id"]], "dikkat_dahil": True}, headers=_basliklar(csrf))
+    _bekle(app)
+    assert (repo / "dist").is_dir()
+
+
+def test_dikkat_idler_idler_icinde_olmali(izole):
+    """dikkat_idler, idler listesinin alt kumesi olmalidir; aksi 400."""
+    kok, _ = izole
+    app, istemci = _istemci(kok)
+    csrf = _csrf(istemci)
+    cevap = istemci.post(
+        "/api/sil", json={"idler": ["abcdef12"], "dikkat_idler": ["deadbeef12345678"]},
+        headers=_basliklar(csrf),
+    )
+    assert cevap.status_code == 400
+
+
+def test_silme_sonrasi_rapor_dosyasi_guncellenir(izole):
+    """Basarili silme son.json'dan da cikarir: yeniden baslatmada kimlik geri gelmez."""
+    from devtemizle import rapor
+
+    kok, repo = izole
+    app, istemci = _istemci(kok)
+    csrf = _csrf(istemci)
+    _tara(app, istemci, csrf)
+    aday = _aday(istemci, "node_modules")
+    istemci.post("/api/sil", json={"idler": [aday["id"]]}, headers=_basliklar(csrf))
+    _bekle(app)
+    assert not (repo / "node_modules").exists()
+    assert all(a.get("id") != aday["id"] for a in rapor.yukle()["adaylar"])
+
+
+def test_panel_dikkat_idler_ve_eski_rapor_uyarisi():
+    """Panel dikkat kimliklerini ayri gonderir; rapor zamani ve 6 saat uyarisi gorunur."""
+    kok_dizin = Path(__file__).resolve().parents[1] / "devtemizle" / "web"
+    js = (kok_dizin / "static" / "panel.js").read_text(encoding="utf-8")
+    html = (kok_dizin / "sablonlar" / "ana.html").read_text(encoding="utf-8")
+    assert "dikkat_idler" in js
+    assert "dikkat_dahil" not in js
+    assert "saat önce alındı" in js
+    assert 'id="rapor-zaman"' in html
+    assert 'id="rapor-uyari"' in html

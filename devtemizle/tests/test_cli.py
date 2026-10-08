@@ -318,3 +318,13 @@ def test_bilinmeyen_alt_komut_cikis_2(tmp_path):
     """Bilinmeyen alt komut: argparse hata, cikis 2."""
     proc = run_module_cli("uydur", cwd=tmp_path, env_ek=_env(tmp_path))
     assert proc.returncode == KULLANIM_HATASI
+
+def test_sil_id_rapor_yoksa_cikis_1(tmp_path):
+    """sil --id: rapor yoksa Turkce 'rapor yok' hatasi, cikis kodu 1 (sessiz 'silindi 0' degil)."""
+    proc = run_module_cli(
+        "sil", "--id", "abcdef12", "--uygula", cwd=tmp_path,
+        env_ek={"DEVTEMIZLE_DIR": str(tmp_path / "yok")},
+    )
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "rapor yok" in proc.stderr
+    assert "devtemizle tara" in proc.stderr

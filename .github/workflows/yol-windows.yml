@@ -34,4 +34,28 @@ jobs:
 
     - name: Run tests
       working-directory: yol
-      run: python -m pytest -q
+      run: python -m pytest -q --junitxml=pytest-sonuc.xml
+
+    # Ham job günlüğü her istemciden okunamıyor; düşen testleri check-run
+    # annotation'ı olarak yaz ki API'den (check-runs/<id>/annotations) görülsün.
+    - name: Düşen testleri annotation olarak yaz
+      if: failure()
+      working-directory: yol
+      shell: python
+      run: |
+        import pathlib
+        import xml.etree.ElementTree as ET
+
+        rapor = pathlib.Path("pytest-sonuc.xml")
+        if not rapor.exists():
+            print("::error title=pytest::Rapor yok; testler toplanamadan düşmüş olabilir")
+            raise SystemExit(0)
+
+        def kacis(metin):
+            return metin.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+        for vaka in ET.parse(rapor).getroot().iter("testcase"):
+            for hata in list(vaka.iter("failure")) + list(vaka.iter("error")):
+                ad = f"{vaka.get('classname')}::{vaka.get('name')}"
+                govde = (hata.get("message") or "") + "\n" + (hata.text or "")
+                print(f"::error title={kacis(ad)}::{kacis(govde[-1500:])}")

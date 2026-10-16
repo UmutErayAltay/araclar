@@ -331,7 +331,10 @@ def test_sablon_graf_fill_degisken_kullanir(istemci, db):
     import sqlite3
 
     b = sqlite3.connect(db)
-    for gun in ("2026-09-28", "2026-09-29", "2026-09-30"):
+    # Sabit tarih zamanla grafiğin son-N-gün penceresinden düşer; bugüne göre üret.
+    from orkestra.quota import son_gunler
+
+    for gun in son_gunler()[-3:]:
         b.execute(
             "INSERT INTO quota_snapshots (model, gun, istek, maliyet) VALUES (?,?,?,0)",
             ("a/b:free", gun, 7),

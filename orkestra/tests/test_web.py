@@ -652,7 +652,10 @@ def test_kota_sayfasi_model_renkleri(istemci, db):
 
 def test_kota_graf_svg(istemci, db):
     b = sqlite3.connect(db)
-    for gun in ("2026-09-28", "2026-09-29", "2026-09-30"):
+    # Sabit tarih zamanla grafiğin son-N-gün penceresinden düşer; bugüne göre üret.
+    from orkestra.quota import son_gunler
+
+    for gun in son_gunler()[-3:]:
         b.execute(
             "INSERT INTO quota_snapshots (model, gun, istek, maliyet) VALUES (?,?,?,0)",
             ("a/b:free", gun, 7),

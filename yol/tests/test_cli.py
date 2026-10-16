@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 
 import pytest
 
 from yol import cli
 from yol.yedek import yedekler
+
+# Bu testler POSIX kipini (':' ayirici) gercek gecici dizinlerle dener. Windows'ta
+# gecici yollar 'C:\\...' bicimindedir; suruc harfindeki ':' POSIX ayiricisiyla
+# bolunur, yani test POSIX kipini degil bozuk girdiyi olcer. Windows kipi
+# test_kaynak_windows.py ve dosya kaynagi testleriyle ayrica dogrulanir.
+posix_yollari = pytest.mark.skipif(
+    os.name == "nt", reason="POSIX ':' ayirici, Windows suruc harfiyle cakisir"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -40,6 +49,7 @@ def _kullanici_path(spec: str) -> str:
     return json.loads(open(_yol(spec), encoding="utf-8").read())["kullanici"]["PATH"]["metin"]
 
 
+@posix_yollari
 def test_denetle_temiz_kurulum_sifir(capsys, tmp_path, posix_kaynak, bin_dizinleri):
     bin1, bin2, _ = bin_dizinleri
     kaynak = posix_kaynak(sistem=str(bin2), kullanici=str(bin1))
@@ -61,6 +71,7 @@ def test_denetle_sorunlu_kurulum_bir(capsys, tmp_path, posix_kaynak, bin_dizinle
     assert "bos" in out
 
 
+@posix_yollari
 def test_denetle_json(capsys, bin_dizinleri, posix_kaynak):
     bin1, bin2, _ = bin_dizinleri
     kaynak = posix_kaynak(sistem=str(bin2), kullanici=str(bin1))
@@ -71,6 +82,7 @@ def test_denetle_json(capsys, bin_dizinleri, posix_kaynak):
     assert {"girdiler", "komutlar", "oneri", "path_adlari"} <= veri.keys()
 
 
+@posix_yollari
 def test_nerede_sistem_once_kazanan(capsys, bin_dizinleri, posix_kaynak):
     bin1, bin2, _ = bin_dizinleri
     kaynak = posix_kaynak(sistem=str(bin2), kullanici=str(bin1))
@@ -100,6 +112,7 @@ def test_temizle_kuru_calistirma_dosyayi_degistirmez(capsys, tmp_path, posix_kay
     assert yedekler() == []
 
 
+@posix_yollari
 def test_temizle_uygula_yedek_alir(capsys, tmp_path, posix_kaynak, bin_dizinleri):
     bin1, bin2, _ = bin_dizinleri
     kaynak = posix_kaynak(sistem=str(bin2), kullanici=f"{bin1}:{tmp_path / 'yok'}:{bin1}/")
@@ -110,6 +123,7 @@ def test_temizle_uygula_yedek_alir(capsys, tmp_path, posix_kaynak, bin_dizinleri
     assert "yedek:" in out
 
 
+@posix_yollari
 def test_ekle_kaldir_ve_tekrar_reddi(capsys, bin_dizinleri, posix_kaynak):
     bin1, bin2, bin3 = bin_dizinleri
     kaynak = posix_kaynak(sistem=None, kullanici=str(bin1))

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import os
+
 import pytest
 
 from yol.kaynak import (
@@ -94,7 +96,13 @@ def test_kaynak_sec(tmp_path, monkeypatch):
     yol = tmp_path / "k.json"
     assert isinstance(kaynak_sec(f"dosya:{yol}"), DosyaKaynak)
     assert isinstance(kaynak_sec("surec"), SurecKaynak)
-    assert isinstance(kaynak_sec(None), SurecKaynak)  # Linux varsayilani
+    # Platform varsayilani: Windows'ta kayit defteri, digerlerinde surec ortami.
+    if os.name == "nt":
+        from yol.kaynak import WindowsKaynak
+
+        assert isinstance(kaynak_sec(None), WindowsKaynak)
+    else:
+        assert isinstance(kaynak_sec(None), SurecKaynak)
     monkeypatch.setenv("YOL_KAYNAK", f"dosya:{yol}")
     assert isinstance(kaynak_sec(None), DosyaKaynak)
     with pytest.raises(KaynakHatasi):

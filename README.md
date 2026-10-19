@@ -29,6 +29,7 @@ araçlar bu istemciyi kendi paketlerine senkronlanan bir kopya olarak taşır.
 | `haftalik/` | Birden çok repodaki son N günün commit'lerini toplayıp yerel cor LLM'i ile Türkçe haftalık özete çevirir |
 | `mezar/` | Boşaltılmış ("mezar taşı") repoları silmeden önce denetler ve `KAPATILABILIR`/`DIKKAT` kararı verir |
 | `servis/` | Yerel servis yığınını (`cor`, `kule`, `liman`, `readbunny-postgres`) tek komutla başlatır, durdurur, durumunu gösterir |
+| `kisayol-paleti/` | Terminalde fuzzy-search ile sık kullanılan proje/komutları bulup o dizinde çalıştıran palet (`kp`); cor kullanmaz |
 
 Bu depoda olmayan ama aynı istemciyi kullanan projeler: `ne-izlesem` (film/kitap takip ürünü, ayrı repoda; kopyası
 `python3 tools/sync.py ../ne-izlesem/app/_corclient.py` ile güncellenir) ve `readbunny` (kendi istemcisi var).

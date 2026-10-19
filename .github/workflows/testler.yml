@@ -59,6 +59,8 @@ jobs:
             kur: pip install pytest
           - proje: servis
             kur: pip install pytest
+          - proje: kisayol-paleti
+            kur: pip install pytest -e .
     defaults:
       run:
         working-directory: ${{ matrix.proje }}
